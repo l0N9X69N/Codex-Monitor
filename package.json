@@ -1,0 +1,20 @@
+{
+  "name": "codex-monitor-wrapper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lightweight Codex CLI wrapper with a persistent local quota monitor.",
+  "type": "module",
+  "bin": {
+    "codexm": "./src/codexm.js"
+  },
+  "engines": {
+    "node": ">=20 <27"
+  },
+  "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "0.14.1"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
