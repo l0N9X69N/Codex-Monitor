@@ -1,4 +1,4 @@
-# Codex Monitor Wrapper v0.3.2
+# Codex Monitor Wrapper v0.3.7
 
 A lightweight Windows terminal wrapper for the **official OpenAI Codex CLI**.
 
@@ -115,38 +115,112 @@ Token/quota/state values therefore normally appear shortly after Codex writes th
 
 ## Installation
 
+### Requirements
+
+Before installing Codex Monitor, make sure these commands already work in a new
+PowerShell or Windows Terminal session:
+
+```powershell
+node --version
+npm --version
+codex --version
+```
+
 Requirements:
 
 - Windows 10/11 with ConPTY support.
-- Node.js 20-26.
-- Official Codex CLI already installed and working.
-- `@homebridge/node-pty-prebuilt-multiarch` installed by the wrapper installer.
+- Node.js **20-26**.
+- npm available on `PATH`.
+- The **official OpenAI Codex CLI** already installed and available as `codex`.
 
-Install the wrapper, then run:
+> Codex Monitor does not install, replace, patch, or modify the official Codex
+> CLI. It adds a separate `codexm` command.
+
+### 1. Clone the repository
+
+Open PowerShell or Windows Terminal:
 
 ```powershell
-codexm
+git clone https://github.com/l0N9X69N/Codex-Monitor.git
+cd Codex-Monitor
 ```
 
-The official CLI remains unchanged:
+If you downloaded the repository as a ZIP instead, extract it and open a
+terminal in the extracted `Codex-Monitor` folder.
+
+### 2. Run the installer
+
+Recommended:
 
 ```powershell
-codex
+.\install.cmd
 ```
 
-Diagnostic check:
+You can also run the PowerShell installer directly:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer automatically:
+
+1. checks the supported Node.js version;
+2. checks that the official `codex` command exists;
+3. installs the local runtime dependencies;
+4. verifies the ConPTY/PTY helper;
+5. registers `codexm` globally with npm;
+6. runs `codexm --doctor` as a final check.
+
+The installer uses the dependency versions declared by this project. You do not
+need to install `@homebridge/node-pty-prebuilt-multiarch` manually.
+
+### 3. Verify the installation
+
+When installation finishes, run:
 
 ```powershell
 codexm --doctor
 ```
 
-All normal Codex arguments are passed through, for example:
+If `codexm` is not found immediately, close the terminal, open a new one, and
+run the command again so the updated npm `PATH` is picked up.
+
+You can also test the dashboard without launching Codex:
+
+```powershell
+codexm --demo
+```
+
+### 4. Start Codex with the monitor
+
+```powershell
+codexm
+```
+
+The normal official Codex CLI is still available unchanged:
+
+```powershell
+codex
+```
+
+Normal Codex arguments are passed through the wrapper, for example:
 
 ```powershell
 codexm resume
 codexm --help
 ```
 
+### Updating an existing installation
+
+From your cloned repository:
+
+```powershell
+git pull
+.\install.cmd
+```
+
+Running the installer again refreshes the local dependencies and global
+`codexm` registration.
 ## Data and privacy
 
 The monitor reads local Codex session data and Git state from the current workspace. It does not send monitoring telemetry to a separate service and does not make extra model calls to obtain quota/token information.
@@ -173,8 +247,66 @@ The monitor automatically falls back to a compact layout. Wide terminals keep th
 
 ## Uninstall
 
-Removing the wrapper does not modify Codex, login state, or `~/.codex` session data. Use the project's uninstall script or remove the wrapper's global npm link/package as appropriate.
+Uninstalling Codex Monitor removes the `codexm` wrapper only. It does **not**
+remove or modify:
 
+- the official `codex` command;
+- your Codex login;
+- `%USERPROFILE%\.codex`;
+- Codex session/history files.
+
+### Recommended: use the included uninstall script
+
+Open a terminal in the cloned `Codex-Monitor` folder and run:
+
+```powershell
+.\uninstall.cmd
+```
+
+The uninstall script removes the globally registered npm package:
+
+```text
+codex-monitor-wrapper
+```
+
+### Uninstall manually
+
+If you already deleted the project folder, or you prefer to remove the command
+directly, this can be run from any PowerShell/Command Prompt:
+
+```powershell
+npm uninstall -g codex-monitor-wrapper
+```
+
+Afterwards, open a new terminal and verify that the wrapper is gone:
+
+```powershell
+Get-Command codexm -ErrorAction SilentlyContinue
+```
+
+If nothing is returned, `codexm` is no longer registered.
+
+The official Codex CLI should still work:
+
+```powershell
+codex --version
+```
+
+### Remove the cloned source files
+
+After uninstalling `codexm`, the cloned repository is no longer needed for the
+installed command and can be deleted normally.
+
+For example, after leaving the project directory:
+
+```powershell
+cd ..
+Remove-Item -Recurse -Force .\Codex-Monitor
+```
+
+Deleting the repository folder **before** running the uninstall command does
+not uninstall the globally registered `codexm` command; in that case use the
+manual `npm uninstall -g codex-monitor-wrapper` command above.
 ## v0.3.1 display safety
 
 `v0.3.1` reserves a real terminal scroll region above the monitor. Long Codex
