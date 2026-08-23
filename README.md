@@ -12,6 +12,11 @@ It does not replace, patch, or rebuild Codex. `codexm` launches your existing `c
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
+## Preview
+<p align="center">
+  <img src="assets/demo.png" alt="Codex Monitor Wrapper demo" width="1100">
+</p>
+
 ## What it does
 
 - Runs the official Codex CLI unchanged.
