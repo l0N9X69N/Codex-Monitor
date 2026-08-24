@@ -73,30 +73,12 @@ function quotaLabel(window, label, representation, width = 40) {
 function sectionDefinitions(config, state) {
   const authMode = value(state?.auth?.mode, 'unknown');
   const sections = [];
-  if (config.sections.context) sections.push({
-    id: 'context', enabled: config.metrics.context !== false, type: SECTION_TYPES.REGULAR,
-    minWidth: 22, preferredWidth: 34, maxWidth: 52, estimatedHeight: 2, priority: 100, stretchWeight: 2
-  });
-  if (config.sections.usage) sections.push({
-    id: 'usage', enabled: config.metrics.usage !== false, type: SECTION_TYPES.REGULAR,
-    minWidth: 28, preferredWidth: 42, maxWidth: 64, estimatedHeight: 2, priority: 90, stretchWeight: 2
-  });
-  if (config.sections.session) sections.push({
-    id: 'session', enabled: config.metrics.session !== false, type: SECTION_TYPES.SMALL,
-    minWidth: 22, preferredWidth: 32, maxWidth: 44, estimatedHeight: 2, priority: 80, stretchWeight: 1
-  });
-  if (config.sections.activity) sections.push({
-    id: 'activity', enabled: config.metrics.activity !== false, type: SECTION_TYPES.SMALL,
-    minWidth: 20, preferredWidth: 30, maxWidth: 44, estimatedHeight: 1, priority: 95, stretchWeight: 1
-  });
-  if (authMode === 'login' && config.metrics.quota !== false) sections.push({
-    id: 'quota', enabled: true, type: SECTION_TYPES.REGULAR,
-    minWidth: 26, preferredWidth: 42, maxWidth: 60, estimatedHeight: 2, priority: 98, stretchWeight: 2
-  });
-  if (config.sections.system && config.metrics.system !== false) sections.push({
-    id: 'system', enabled: true, type: SECTION_TYPES.SMALL,
-    minWidth: 22, preferredWidth: 32, maxWidth: 44, estimatedHeight: 1, priority: 40, stretchWeight: 1
-  });
+  if (config.sections.context) sections.push({ id: 'context', enabled: config.metrics.context !== false, type: SECTION_TYPES.REGULAR, minWidth: 22, preferredWidth: 34, maxWidth: 52, estimatedHeight: 2, priority: 100, stretchWeight: 2 });
+  if (config.sections.usage) sections.push({ id: 'usage', enabled: config.metrics.usage !== false, type: SECTION_TYPES.REGULAR, minWidth: 28, preferredWidth: 42, maxWidth: 64, estimatedHeight: 2, priority: 90, stretchWeight: 2 });
+  if (config.sections.session) sections.push({ id: 'session', enabled: config.metrics.session !== false, type: SECTION_TYPES.SMALL, minWidth: 22, preferredWidth: 32, maxWidth: 44, estimatedHeight: 2, priority: 80, stretchWeight: 1 });
+  if (config.sections.activity) sections.push({ id: 'activity', enabled: config.metrics.activity !== false, type: SECTION_TYPES.SMALL, minWidth: 20, preferredWidth: 30, maxWidth: 44, estimatedHeight: 1, priority: 95, stretchWeight: 1 });
+  if (authMode === 'login' && config.metrics.quota !== false) sections.push({ id: 'quota', enabled: true, type: SECTION_TYPES.REGULAR, minWidth: 26, preferredWidth: 42, maxWidth: 60, estimatedHeight: 2, priority: 98, stretchWeight: 2 });
+  if (config.sections.system && config.metrics.system !== false) sections.push({ id: 'system', enabled: true, type: SECTION_TYPES.SMALL, minWidth: 22, preferredWidth: 32, maxWidth: 44, estimatedHeight: 1, priority: 40, stretchWeight: 1 });
   return sections;
 }
 
@@ -174,7 +156,9 @@ export function buildLiveFrame({
   projectName = null,
   health = 'WAITING',
   gitLabel = null,
-  fast = false
+  fast = false,
+  previousLaneCount = null,
+  hysteresisCells = 4
 } = {}) {
   const theme = config?.theme ?? 'color';
   const options = { theme, cwd, nowMs, projectName, health, gitLabel, fast };
@@ -182,7 +166,7 @@ export function buildLiveFrame({
   const header = fitHeader({ left, tabs: config?.tabs ?? ['overview'], width, activeTab });
   const maxRows = Math.max(1, monitorRowBudget(height) - 2);
   const sections = activeTab === 'overview' ? sectionDefinitions(config, state) : [];
-  const layout = layoutSections(sections, { width, height, maxRows });
+  const layout = layoutSections(sections, { width, height, maxRows, previousLaneCount, hysteresisCells });
   const body = activeTab === 'overview'
     ? mergeLaneRows(layout, state, options)
     : [truncateCells(`${String(activeTab).toUpperCase()} · Phase 04 foundation`, width, '')];
