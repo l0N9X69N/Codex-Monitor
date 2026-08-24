@@ -19,6 +19,8 @@ test('TTL prevents duplicate runs before collector becomes due again', async () 
 
   await manager.runDue(now);
   assert.equal(runs, 1);
+  assert.equal(manager.stateFor('light', 1_499).freshness, 'current');
+  assert.equal(manager.stateFor('light', 1_501).freshness, 'stale');
   now = 1_499;
   await manager.runDue(now);
   assert.equal(runs, 1);
@@ -47,11 +49,13 @@ test('failure applies adaptive backoff and success resets it', async () => {
 
   const first = await manager.runCollector('retrying', now);
   assert.equal(first.ok, false);
+  assert.equal(manager.stateFor('retrying').freshness, 'stale');
   assert.equal(manager.stateFor('retrying').nextRunAtMs, 1_200);
   now = 1_200;
   fail = false;
   const second = await manager.runCollector('retrying', now);
   assert.equal(second.ok, true);
+  assert.equal(manager.stateFor('retrying').freshness, 'current');
   assert.equal(manager.stateFor('retrying').failureCount, 0);
   assert.equal(manager.stateFor('retrying').nextRunAtMs, 1_300);
 });
@@ -105,7 +109,7 @@ test('central scheduler owns at most one timer and stop removes it', () => {
 });
 
 test('instrumentation counts scheduler polls and collector runs only when enabled', async () => {
-  let now = 100;
+  const now = 100;
   const instrumentation = createTestInstrumentation();
   const registry = new CollectorRegistry();
   registry.register({ id: 'x', run: async () => 'ok' });
