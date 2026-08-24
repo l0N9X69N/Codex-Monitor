@@ -64,6 +64,13 @@ export function createNormalizedMonitorState({ runId = null, startedAtMs = Date.
       errorCount: metric(null),
       errorActive: metric(null)
     },
+    tools: {
+      current: metric(null),
+      last: metric(null),
+      recent: metric([]),
+      counts: metric({}),
+      errorCount: metric(0)
+    },
     compaction: {
       count: metric(null),
       lastCompactAtMs: metric(null),
@@ -72,18 +79,38 @@ export function createNormalizedMonitorState({ runId = null, startedAtMs = Date.
     },
     git: {
       branch: metric(null),
-      dirty: metric(null)
+      dirty: metric(null),
+      diff: metric(null),
+      aheadBehind: metric(null)
     },
     system: {
       cpuPercent: metric(null),
-      memoryBytes: metric(null)
+      memoryBytes: metric(null),
+      totalMemoryBytes: metric(null),
+      freeMemoryBytes: metric(null),
+      disk: metric(null)
+    },
+    performance: {
+      codexCpuPercent: metric(null),
+      codexMemoryBytes: metric(null),
+      monitorCpuPercent: metric(null),
+      monitorMemoryBytes: metric(null),
+      systemCpuPercent: metric(null),
+      systemMemoryBytes: metric(null),
+      samples: metric([])
+    },
+    processes: {
+      list: metric([]),
+      hot: metric(null),
+      rootPid: metric(null)
     },
     resources: {
       instructions: metric(null),
       skills: metric(null),
       mcp: metric(null),
       rules: metric(null),
-      permissions: metric(null)
+      permissions: metric(null),
+      scannedAtMs: metric(null)
     },
     freshness: {
       overall: FRESHNESS.WAITING
