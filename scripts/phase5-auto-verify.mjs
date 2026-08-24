@@ -4,7 +4,7 @@ import process from 'node:process';
 const steps = [
   ['Syntax', process.execPath, ['./scripts/check-syntax.mjs']],
   ['Full regression', process.execPath, ['--test']],
-  ['Phase 05 focused', process.execPath, ['--test', 'test/unit/phase5-snapshots.test.js', 'test/unit/phase5-ux-gate.test.js', 'test/fuzz/phase5-layout-fuzz.test.js']]
+  ['Phase 05 focused', process.execPath, ['--test', 'test/unit/phase5-snapshots.test.js', 'test/unit/phase5-ux-gate.test.js', 'test/fuzz/phase5-layout-fuzz.test.js', 'test/integration/phase5-live-pane-hysteresis.test.js']]
 ];
 
 for (const [label, command, args] of steps) {
