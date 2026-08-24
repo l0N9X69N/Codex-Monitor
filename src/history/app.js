@@ -23,6 +23,7 @@ export async function runHistoryTui({
   let activeDetailTab = 0;
   let selectedModel = sessions.length ? engine.ensureLoaded(sessions[0].id) : null;
   let liveTail = false;
+  let storageMode = false;
   let tailTimer = null;
   let done = false;
 
@@ -39,7 +40,7 @@ export async function runHistoryTui({
   const render = (force = false) => {
     const width = Math.max(40, stdout.columns || 100);
     const height = Math.max(12, stdout.rows || 30);
-    const frame = renderHistoryFrame({ sessions, selectedIndex, selectedModel, activeDetailTab, width, height, mode: colorMode, liveTail });
+    const frame = renderHistoryFrame({ sessions, selectedIndex, selectedModel, activeDetailTab, width, height, mode: colorMode, liveTail, storageMode });
     if (force) renderer.reset([]);
     renderer.render(frame.lines);
     return frame;
@@ -65,7 +66,8 @@ export async function runHistoryTui({
   const result = new Promise((resolve) => { finish = resolve; });
 
   const onInput = (data) => {
-    const action = normalizeHistoryInput(data);
+    const normalized = normalizeHistoryInput(data);
+    const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action || done) return;
     if (action === 'quit') {
       cleanup();
@@ -73,23 +75,32 @@ export async function runHistoryTui({
       return;
     }
     if (action === 'up' && sessions.length) {
+      storageMode = false;
       selectedIndex = (selectedIndex - 1 + sessions.length) % sessions.length;
       loadSelection();
     } else if (action === 'down' && sessions.length) {
+      storageMode = false;
       selectedIndex = (selectedIndex + 1) % sessions.length;
       loadSelection();
-    } else if (action === 'left') activeDetailTab = (activeDetailTab - 1 + DETAIL_TABS.length) % DETAIL_TABS.length;
-    else if (action === 'right') activeDetailTab = (activeDetailTab + 1) % DETAIL_TABS.length;
+    } else if (action === 'left') {
+      storageMode = false;
+      activeDetailTab = (activeDetailTab - 1 + DETAIL_TABS.length) % DETAIL_TABS.length;
+    } else if (action === 'right') {
+      storageMode = false;
+      activeDetailTab = (activeDetailTab + 1) % DETAIL_TABS.length;
+    } else if (action === 'storage') storageMode = !storageMode;
     else if (action === 'refresh') {
       const selectedId = sessions[selectedIndex]?.id ?? null;
       sessions = engine.discover();
-      selectedIndex = Math.max(0, selectedId ? sessions.findIndex((item) => item.id === selectedId) : 0);
-      if (selectedIndex < 0) selectedIndex = 0;
+      const found = selectedId ? sessions.findIndex((item) => item.id === selectedId) : 0;
+      selectedIndex = found >= 0 ? found : 0;
       loadSelection();
     } else if (action === 'tail') {
       liveTail = !liveTail;
       if (!liveTail && tailTimer) { clearTimer(tailTimer); tailTimer = null; }
       if (liveTail) scheduleTail();
+    } else if (action === 'mouse' && normalized && !normalized.release) {
+      storageMode = false;
     }
     render();
   };
