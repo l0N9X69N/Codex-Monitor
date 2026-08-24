@@ -93,6 +93,12 @@ test('Login shows quota while API does not show Login quota', () => {
   assert.doesNotMatch(api, /WEEK/);
 });
 
+test('unknown system telemetry renders as -- rather than zero', () => {
+  const text = stripAnsi(frame({ preset: 'full', theme: 'mono', width: 120, height: 35 }).lines.join('\n'));
+  assert.match(text, /SYSTEM CPU -- · RAM --/);
+  assert.doesNotMatch(text, /RAM 0(?:\s|$)/);
+});
+
 test('Color Mono Matrix preserve textual semantics', () => {
   const normalized = ['color', 'mono', 'matrix'].map((theme) => stripAnsi(frame({ theme, width: 120, height: 35, stateKind: 'tool' }).lines.join('\n')));
   assert.equal(normalized[0], normalized[1]);
