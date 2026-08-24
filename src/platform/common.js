@@ -15,6 +15,16 @@ export function commonPaths({ env = process.env, homedir = os.homedir() } = {}) 
   };
 }
 
+export function monitorConfigDir({ env = process.env, platform = process.platform, homedir = os.homedir() } = {}) {
+  if (env.CODEXM_CONFIG_HOME) return path.resolve(env.CODEXM_CONFIG_HOME);
+  if (platform === 'win32') {
+    const appData = env.APPDATA || path.join(homedir, 'AppData', 'Roaming');
+    return path.join(appData, 'codex-monitor');
+  }
+  const xdg = env.XDG_CONFIG_HOME || path.join(homedir, '.config');
+  return path.join(xdg, 'codex-monitor');
+}
+
 export function memorySnapshot() {
   return {
     totalBytes: os.totalmem(),
@@ -30,8 +40,8 @@ export function normalizeProcessRecord(record = {}) {
     ppid: Number.isFinite(Number(record.ppid)) ? Number(record.ppid) : null,
     name: record.name ? String(record.name) : '--',
     command: record.command ? String(record.command) : '--',
-    cpuPercent: Number.isFinite(Number(record.cpuPercent)) ? Number(record.cpuPercent) : null,
-    memoryBytes: Number.isFinite(Number(record.memoryBytes)) ? Number(record.memoryBytes) : null,
-    ageMs: Number.isFinite(Number(record.ageMs)) ? Number(record.ageMs) : null
+    cpuPercent: record.cpuPercent !== null && record.cpuPercent !== undefined && Number.isFinite(Number(record.cpuPercent)) ? Number(record.cpuPercent) : null,
+    memoryBytes: record.memoryBytes !== null && record.memoryBytes !== undefined && Number.isFinite(Number(record.memoryBytes)) ? Number(record.memoryBytes) : null,
+    ageMs: record.ageMs !== null && record.ageMs !== undefined && Number.isFinite(Number(record.ageMs)) ? Number(record.ageMs) : null
   };
 }
