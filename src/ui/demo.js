@@ -43,6 +43,7 @@ export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Dat
 export function renderDemo({
   state = 'idle',
   preset = 'recommended',
+  config: suppliedConfig = null,
   theme = null,
   language = null,
   authMode = 'login',
@@ -52,7 +53,9 @@ export function renderDemo({
   cwd = process.cwd(),
   nowMs = Date.now()
 } = {}) {
-  let config = normalizeConfig(configForPreset(preset));
+  let config = suppliedConfig
+    ? normalizeConfig(suppliedConfig)
+    : normalizeConfig(configForPreset(preset));
   if (theme) config.theme = theme;
   if (language) config.language = language;
   const monitorState = createDemoState(state, { authMode, nowMs });
