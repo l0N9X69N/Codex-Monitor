@@ -18,8 +18,10 @@
     "test": "node --test",
     "test:phase1": "node --test",
     "test:phase2": "node --test test/unit/phase2-parsers.test.js",
+    "test:phase3": "node --test test/unit/phase3-demand.test.js test/unit/phase3-scheduler.test.js test/unit/phase3-renderer.test.js test/unit/phase3-ring-buffer.test.js test/integration/phase3-demand-scheduler.test.js",
     "verify:phase1": "node ./scripts/phase1-auto-verify.mjs",
     "verify:phase2": "node ./scripts/phase2-auto-verify.mjs",
+    "verify:phase3": "node ./scripts/phase3-auto-verify.mjs",
     "dev": "node ./src/cli/codexm.js"
   },
   "license": "MIT"
