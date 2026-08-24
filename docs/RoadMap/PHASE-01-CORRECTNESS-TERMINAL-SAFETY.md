@@ -74,7 +74,7 @@ Không còn stale telemetry/API-Login leak/terminal corruption/Actual Model gues
 ## Trạng thái hiện tại
 
 ```text
-IMPLEMENTED — WAITING MANUAL PTY / TERMINAL ACCEPTANCE
+CLOSED
 ```
 
-Automated tests và syntax checks đã được chạy trong môi trường build. Phase chỉ được chuyển sang `CLOSED` sau khi các manual P0/P1 trong `docs/qa/phase-01/MANUAL-TEST-REQUIRED.md` được xác nhận trên terminal thật.
+Automated verification đã PASS; toàn bộ manual P0/P1 trong `docs/qa/phase-01/MANUAL-TEST-REQUIRED.md` đã được xác nhận trên terminal Windows thật. Không còn blocker/P0 mở cho Phase 01.
