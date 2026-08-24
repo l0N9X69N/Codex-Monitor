@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { runCodexLive } from '../../src/runtime/live-runner.js';
+import { createDemoState } from '../../src/ui/demo.js';
+import { normalizeConfig, configForPreset } from '../../src/config/schema.js';
 
 function fakeIo() {
   const stdin = new EventEmitter();
@@ -28,6 +30,7 @@ function fakeChild({ autoExitCode = null } = {}) {
   const child = {
     killed: false,
     writes: [],
+    resizes: [],
     dataHandler: null,
     exitHandler: null,
     onData(handler) { this.dataHandler = handler; },
@@ -36,7 +39,7 @@ function fakeChild({ autoExitCode = null } = {}) {
       if (Number.isFinite(autoExitCode)) setImmediate(() => handler({ exitCode: autoExitCode }));
     },
     write(value) { this.writes.push(value); },
-    resize() {},
+    resize(cols, rows) { this.resizes.push([cols, rows]); },
     kill() { this.killed = true; }
   };
   return child;
@@ -73,4 +76,52 @@ test('SIGTERM kills child, restores terminal, and returns signal exit code', asy
   assert.equal(code, 143);
   assert.equal(child.killed, true);
   assert.deepEqual(io.stdin.rawCalls, [true, false]);
+});
+
+test('Live monitor reserves a terminal scroll region above HUD and restores it on exit', async () => {
+  const io = fakeIo();
+  const child = fakeChild({ autoExitCode: 0 });
+  const state = createDemoState('idle', { authMode: 'login', nowMs: 1000 });
+  const config = normalizeConfig(configForPreset('recommended'));
+
+  const code = await runCodexLive({
+    codexPath: 'codex',
+    auth: { mode: 'login', forced: false },
+    monitorState: state,
+    monitorConfig: config,
+    ...io,
+    spawnPty: async () => child
+  });
+
+  assert.equal(code, 0);
+  assert.match(io.stdout.output, /\x1b\[1;\d+r/);
+  assert.match(io.stdout.output, /\x1b\[r/);
+});
+
+test('resize keeps PTY height aligned with reserved scroll region', async () => {
+  const io = fakeIo();
+  const child = fakeChild();
+  const state = createDemoState('idle', { authMode: 'login', nowMs: 1000 });
+  const config = normalizeConfig(configForPreset('recommended'));
+  const running = runCodexLive({
+    codexPath: 'codex',
+    auth: { mode: 'login', forced: false },
+    monitorState: state,
+    monitorConfig: config,
+    ...io,
+    spawnPty: async () => child
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  io.stdout.columns = 90;
+  io.stdout.rows = 24;
+  io.stdout.emit('resize');
+  await new Promise((resolve) => setTimeout(resolve, 90));
+
+  assert.ok(child.resizes.length >= 1);
+  const [, rows] = child.resizes.at(-1);
+  assert.match(io.stdout.output, new RegExp(`\\x1b\\[1;${rows}r`));
+
+  child.exitHandler({ exitCode: 0 });
+  assert.equal(await running, 0);
 });
