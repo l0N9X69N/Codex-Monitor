@@ -3,11 +3,13 @@ import { installProcessSafety } from '../terminal/process-safety.js';
 import { childEnvironmentForAuth, codexArgsForAuth } from '../core/auth.js';
 import { applyNormalizedEvent } from '../core/reducer.js';
 import { PROVENANCE } from '../core/provenance.js';
+import { setMetric } from '../core/normalized-state.js';
 import { parsePtyTransient } from '../parsers/pty-transient.js';
 import { spawnCodexPty } from '../platform/pty.js';
 import { LivePaneController } from './live-pane.js';
 
 const SIGNAL_EXIT_CODE = Object.freeze({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 });
+const F4_SEQUENCES = new Set(['\x1bOS', '\x1b[14~']);
 
 export async function runCodexLive({
   codexPath,
@@ -15,13 +17,14 @@ export async function runCodexLive({
   auth,
   monitorState = null,
   monitorConfig = null,
+  platformAdapter = null,
   cwd = process.cwd(),
   env = process.env,
   stdin = process.stdin,
   stdout = process.stdout,
   stderr = process.stderr,
   processRef = process,
-  spawnPty = spawnCodexPty,
+  spawnPty = null,
   faultAfterStartMs = null
 } = {}) {
   if (!stdin?.isTTY || !stdout?.isTTY) {
@@ -37,6 +40,8 @@ export async function runCodexLive({
   const initialGeometry = pane?.geometry?.() ?? null;
   const cols = Math.max(20, stdout.columns || 80);
   const rows = initialGeometry?.childRows ?? Math.max(8, stdout.rows || 24);
+  const spawnFn = spawnPty
+    ?? (platformAdapter?.spawnPty ? (options) => platformAdapter.spawnPty(options) : spawnCodexPty);
 
   let child = null;
   let exiting = false;
@@ -52,6 +57,7 @@ export async function runCodexLive({
     pane?.dispose?.();
     guard.restore();
     disposeSafety();
+    try { void platformAdapter?.cleanup?.(); } catch {}
   };
 
   const finish = (code) => {
@@ -75,13 +81,28 @@ export async function runCodexLive({
     else resizeChild();
   };
 
+  const requestHistory = async () => {
+    if (!platformAdapter?.openHistoryTerminal) return false;
+    try {
+      const result = await platformAdapter.openHistoryTerminal({ command: 'codexm', args: ['--history'], cwd });
+      if (result?.ok) return true;
+    } catch {}
+    try { stderr.write('\nCould not open a new terminal.\nRun: codexm --history\n'); } catch {}
+    return false;
+  };
+
   const onInput = (data) => {
     if (!child || exiting) return;
-    try { child.write(data.toString('utf8')); } catch {}
+    const text = data.toString('utf8');
+    if (F4_SEQUENCES.has(text)) {
+      void requestHistory();
+      return;
+    }
+    try { child.write(text); } catch {}
   };
 
   try {
-    child = await spawnPty({
+    child = await spawnFn({
       codexPath,
       args: childArgs,
       cols,
@@ -90,6 +111,9 @@ export async function runCodexLive({
       env: childEnv
     });
 
+    if (monitorState && Number.isFinite(child?.pid)) {
+      setMetric(monitorState.processes, 'rootPid', child.pid, { source: PROVENANCE.LOCAL, observedAtMs: Date.now(), evidence: 'pty-child-pid' });
+    }
     if (pane) guard.setScrollRegion(1, rows);
     guard.enterRawMode();
     stdin.resume?.();
@@ -131,8 +155,6 @@ export async function runCodexLive({
         for (const event of parsePtyTransient(data, Date.now())) {
           applyNormalizedEvent(monitorState, event, { source: PROVENANCE.LOCAL });
         }
-        // Codex may clear/repaint its viewport, so redraw the reserved HUD after
-        // PTY output. The controller coalesces bursts instead of running a FPS loop.
         pane.invalidate({ force: true });
       }
     });
