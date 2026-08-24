@@ -78,15 +78,18 @@ Live gọn, readable, không overflow/wrap; Custom tự layout; user nghiệm th
 ## Trạng thái hiện tại
 
 ```text
-IMPLEMENTED — WAITING AUTOMATED VERIFICATION + MANUAL VISUAL/RESPONSIVE ACCEPTANCE
+CLOSED
 ```
 
-Implementation đã có config/presets/custom foundation, cell-width + responsive lane engine, Overview renderer, Login/API quota semantics, Color/Mono/Matrix, Live pane runtime, demo mode và Phase 04 test harness.
+Acceptance cuối:
 
-Chạy:
+- automated verification PASS;
+- manual responsive/visual direction PASS;
+- Login/API quota isolation PASS;
+- Live thật + resize + clean exit PASS;
+- unknown telemetry regression fixed (`--` không biến thành `0`);
+- BLOCKER = 0;
+- P0 = 0;
+- open Phase 04 P1 = 0.
 
-```powershell
-.\scripts\phase4-verify.ps1
-```
-
-Sau automated PASS, làm checklist trong `docs/qa/phase-04/MANUAL-TEST-REQUIRED.md` trước khi chuyển sang `CLOSED`.
+Phase 04 đã đóng và sẵn sàng chuyển sang Phase 05.
