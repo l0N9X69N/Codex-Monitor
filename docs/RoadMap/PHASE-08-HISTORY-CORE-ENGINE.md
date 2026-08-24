@@ -1,76 +1,39 @@
 # Phase 08 — History Core Engine
 
-> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor Final Project Specification v1, design freeze 2026-08-24. Nếu tài liệu phase mâu thuẫn với `PROJECT-SPEC.md`, **PROJECT-SPEC.md thắng**.
-
-> **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
-
-
-## Spec liên quan
-
-Spec Phase E; mục 31–32, 36–43, 45, 48.
+> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor Final Project Specification v1, design freeze 2026-08-24.
 
 ## Mục tiêu
 
-Xây data engine cho `codexm --history`: local JSONL, RAM index, lazy parse, live-tail, không DB.
+Data engine cho `codexm --history`: local JSONL, RAM index, lazy parse, incremental live-tail, không DB.
 
-## Phạm vi phải làm
+## Implementation
 
-- Session discovery từ Codex sessions path.
-- Startup nhẹ: discover/stat -> show metadata -> parse visible/selected lazily.
-- RAM-only index v1; không SQLite/CSV/history DB.
-- Historical normalized model cho Info/Tokens/Turns/Tools/Resources/Errors.
-- Incremental live-tail bằng remembered offset; không reread toàn file.
-- Historical provenance: không scan config/filesystem hiện tại để bịa session cũ.
-- Missing values giữ `--`; không cost/pricing.
+- Session discovery/stat metadata-only.
+- Lazy selected-session parse.
+- RAM-only index/cache; không SQLite/CSV/history DB.
+- Historical model Info/Tokens/Turns/Tools/Resources/Errors.
+- `official-history` provenance tách khỏi Live current-run.
+- Incremental tail theo byte offset, partial append/no duplicate, truncate reload.
+- Resources evidence-only; không scan filesystem hiện tại để bịa session cũ.
+- Missing = `--`; không cost/pricing.
+- `--history` Monitor-owned và không spawn Codex.
 
-## Không làm trong phase
+## Auto/manual gate
 
-- Chưa làm visual cyberpunk hoàn chỉnh.
-- Chưa render charts.
-- Chưa delete.
+- 1000+ fake sessions không deep parse startup.
+- partial/complete append, truncate/rotation, no DB.
+- real large session folder + live-tail manual.
 
-## Đầu ra bắt buộc
+## Deliverables
 
-- History discovery/index API.
-- Lazy parser.
-- Incremental tail.
-- Historical normalized model.
-- Sanitized History fixtures.
+`docs/qa/phase-08/` chứa đủ 4 handoff files.
 
-Ngoài ra luôn phải có bộ bàn giao chung:
+## Trạng thái hiện tại
 
 ```text
-PHASE-08-RESULT.md
-AUTO-TEST-REPORT.md
-MANUAL-TEST-REQUIRED.md
-KNOWN-ISSUES.md
+IMPLEMENTED — WAITING BATCH 06-09 AUTOMATED VERIFICATION + WINDOWS HISTORY DATA ACCEPTANCE
 ```
 
-## Auto test
-
-- 0/1/1000+ fake sessions.
-- Startup không deep parse tất cả.
-- Visible-first/selected parse.
-- Partial append + complete append + no duplicate.
-- File truncate/rotation/error safe.
-- Completed session static.
-- Resources evidence-only.
-- No DB created.
-- `--history` không spawn Codex.
-
-## Manual test / phần cần người dùng xác nhận
-
-- Folder session thật lớn.
-- Live-tail một session Codex đang grow.
-
-Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL-TEST-REQUIRED.md`; không được im lặng coi như đã PASS.
-
-## Exit gate
-
-History data layer độc lập UI, lazy và incremental, không historical fabrication.
-
-## Trạng thái ban đầu
-
-```text
-NOT STARTED
+```powershell
+.\scripts\phase6-9-verify.ps1
 ```
