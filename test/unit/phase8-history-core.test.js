@@ -24,8 +24,7 @@ test('History discovery of 1000+ sessions stats metadata but does not deep parse
   const root = tempDir();
   for (let i = 0; i < 1001; i += 1) fs.writeFileSync(path.join(root, `s-${String(i).padStart(4, '0')}.jsonl`), '');
   let reads = 0;
-  const fsRef = Object.create(fs);
-  fsRef.readFileSync = (...args) => { reads += 1; return fs.readFileSync(...args); };
+  const fsRef = { ...fs, readFileSync: (...args) => { reads += 1; return fs.readFileSync(...args); } };
   const engine = new HistoryEngine({ sessionsPath: root, fsRef });
   const index = engine.discover();
   assert.equal(index.length, 1001);
