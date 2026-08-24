@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**WAITING USER RUN**
+**PASS — verified on user Windows working tree.**
 
 ## Lệnh chuẩn
 
@@ -18,7 +18,15 @@ Full cumulative regression: node --test
 Focused Phase 03 demand/scheduler/renderer tests
 ```
 
-## Coverage Phase 03
+## Kết quả người dùng xác nhận
+
+```text
+Phase 03 automated verification: PASS
+AUTO TEST: PASS
+Phase 03 demand/scheduler/diff-renderer gate passed.
+```
+
+## Coverage Phase 03 đã PASS
 
 - metric OFF -> collector demand OFF;
 - inactive heavy tab -> continuous collector OFF;
@@ -44,4 +52,4 @@ Full regression FAIL = 0
 Focused Phase 03 FAIL = 0
 ```
 
-Automated PASS chưa tự đóng phase vì Phase 03 còn manual PTY responsiveness acceptance.
+**Automated gate Phase 03: PASS.**
