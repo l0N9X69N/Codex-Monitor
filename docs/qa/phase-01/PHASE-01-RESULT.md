@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**IMPLEMENTED — chờ manual PTY/terminal acceptance trên máy người dùng.**
+**CLOSED — automated gate và manual PTY/terminal acceptance đã PASS.**
 
 ## Đã làm
 
@@ -15,8 +15,19 @@
 - Activity priority helper.
 - PTY wrapper baseline cho official Codex, chưa render HUD ở Phase 01.
 - TerminalGuard + process safety cho signal/fatal paths.
+- Windows PTY lifecycle đã được harden để wrapper thực sự kết thúc sau khi Codex exit.
 - CLI contract tối thiểu: `--help`, `--doctor`, `--monitor-version`, `--auth`, `--` passthrough.
 - Automated unit/integration tests + PowerShell verification script.
+
+## Manual acceptance đã xác nhận
+
+- P0-01 — Codex `/exit` quay lại PowerShell bình thường: PASS.
+- P0-02 — Ctrl+C / interrupt không để wrapper treo: PASS.
+- P0-03 — injected monitor crash phục hồi terminal: PASS.
+- P1-04 — resize stress: PASS.
+- P0-05 — Login -> API isolation / forced API behavior: PASS.
+- P0-06 — API -> Login explicit override: PASS.
+- Terminal sau exit/crash không bị kẹt raw mode, cursor hay input: PASS.
 
 ## Cố ý chưa làm
 
@@ -25,6 +36,14 @@
 - Cross-platform adapter hoàn chỉnh: Phase 07.
 - History: Phase 08+.
 
-## Gate còn lại
+## Exit gate
 
-Manual PTY/terminal tests trong `MANUAL-TEST-REQUIRED.md` phải PASS trên máy thật trước khi Phase 01 được coi là CLOSED.
+```text
+mandatory auto tests PASS
+BLOCKER = 0
+P0 = 0
+manual P0/P1 confirmed
+required deliverables complete
+```
+
+**Phase 01 đã đóng. Có thể bắt đầu Phase 02.**
