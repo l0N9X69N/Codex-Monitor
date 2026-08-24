@@ -7,9 +7,12 @@ import { setMetric } from '../core/normalized-state.js';
 import { parsePtyTransient } from '../parsers/pty-transient.js';
 import { spawnCodexPty } from '../platform/pty.js';
 import { LivePaneController } from './live-pane.js';
+import { LiveDataRuntime } from './live-data.js';
 
 const SIGNAL_EXIT_CODE = Object.freeze({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 });
 const F4_SEQUENCES = new Set(['\x1bOS', '\x1b[14~']);
+const PREVIOUS_VIEW_SEQUENCES = new Set(['\x1b[1;3D', '\x1b[1;9D']);
+const NEXT_VIEW_SEQUENCES = new Set(['\x1b[1;3C', '\x1b[1;9C']);
 
 export async function runCodexLive({
   codexPath,
@@ -37,6 +40,16 @@ export async function runCodexLive({
   const pane = monitorState && monitorConfig
     ? new LivePaneController({ stdout, state: monitorState, config: monitorConfig, cwd })
     : null;
+  const dataRuntime = monitorState && monitorConfig && platformAdapter
+    ? new LiveDataRuntime({
+      state: monitorState,
+      config: monitorConfig,
+      adapter: platformAdapter,
+      cwd,
+      processRef,
+      onUpdate() { pane?.invalidate?.(); }
+    })
+    : null;
   const initialGeometry = pane?.geometry?.() ?? null;
   const cols = Math.max(20, stdout.columns || 80);
   const rows = initialGeometry?.childRows ?? Math.max(8, stdout.rows || 24);
@@ -54,6 +67,7 @@ export async function runCodexLive({
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.off?.('data', onInput); } catch {}
     try { stdin.pause?.(); } catch {}
+    dataRuntime?.stop?.();
     pane?.dispose?.();
     guard.restore();
     disposeSafety();
@@ -91,11 +105,28 @@ export async function runCodexLive({
     return false;
   };
 
+  const shiftView = (delta) => {
+    if (!pane) return false;
+    const before = pane.activeTab;
+    const next = pane.shiftTab(delta);
+    if (next === before) return false;
+    dataRuntime?.setActiveTab?.(next);
+    return true;
+  };
+
   const onInput = (data) => {
     if (!child || exiting) return;
     const text = data.toString('utf8');
     if (F4_SEQUENCES.has(text)) {
       void requestHistory();
+      return;
+    }
+    if (PREVIOUS_VIEW_SEQUENCES.has(text)) {
+      shiftView(-1);
+      return;
+    }
+    if (NEXT_VIEW_SEQUENCES.has(text)) {
+      shiftView(1);
       return;
     }
     try { child.write(text); } catch {}
@@ -114,6 +145,7 @@ export async function runCodexLive({
     if (monitorState && Number.isFinite(child?.pid)) {
       setMetric(monitorState.processes, 'rootPid', child.pid, { source: PROVENANCE.LOCAL, observedAtMs: Date.now(), evidence: 'pty-child-pid' });
     }
+    dataRuntime?.start?.();
     if (pane) guard.setScrollRegion(1, rows);
     guard.enterRawMode();
     stdin.resume?.();
