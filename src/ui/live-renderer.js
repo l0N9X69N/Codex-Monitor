@@ -49,17 +49,26 @@ function headerItem(item, state, options) {
   return null;
 }
 
-function quotaLabel(window, label, representation) {
+function quotaBar(remainingPercent, cells = 10) {
+  const remaining = Math.max(0, Math.min(100, Number(remainingPercent)));
+  if (!Number.isFinite(remaining)) return '─'.repeat(cells);
+  const filled = Math.round((remaining / 100) * cells);
+  return `${'━'.repeat(filled)}${'─'.repeat(Math.max(0, cells - filled))}`;
+}
+
+function quotaLabel(window, label, representation, width = 40) {
   const q = value(window);
   if (!q) return `${label} --`;
   const remaining = Number(q.remainingPercent);
   if (!Number.isFinite(remaining)) return `${label} --`;
   if (representation === REPRESENTATION.MICRO) return `${label} ${Math.round(remaining)}%`;
   const reset = q.resetsAt ? ` ↻ ${q.resetsAt}` : '';
-  return `${label} ${Math.round(remaining)}% left${representation === REPRESENTATION.FULL ? reset : ''}`;
+  if (representation === REPRESENTATION.COMPACT) return `${label} ${Math.round(remaining)}% left`;
+  const barCells = Math.max(6, Math.min(18, width - 24));
+  return `${label.padEnd(4)} ${quotaBar(remaining, barCells)} ${Math.round(remaining)}% left${reset}`;
 }
 
-function sectionDefinitions(config, state, options) {
+function sectionDefinitions(config, state) {
   const authMode = value(state?.auth?.mode, 'unknown');
   const sections = [];
   if (config.sections.context) sections.push({
@@ -125,7 +134,7 @@ function contentLines(item, state, options) {
   if (item.id === 'quota') {
     if (rep === REPRESENTATION.MICRO) return [`${quotaLabel(state?.quota?.fiveHour, '5H', rep)} · ${quotaLabel(state?.quota?.weekly, 'W', rep)}`];
     if (rep === REPRESENTATION.COMPACT) return [`${quotaLabel(state?.quota?.fiveHour, '5H', rep)} · ${quotaLabel(state?.quota?.weekly, 'WEEK', rep)}`];
-    return ['QUOTA', `${quotaLabel(state?.quota?.fiveHour, '5H', rep)} · ${quotaLabel(state?.quota?.weekly, 'WEEK', rep)}`];
+    return [quotaLabel(state?.quota?.fiveHour, '5H', rep, item.width), quotaLabel(state?.quota?.weekly, 'WEEK', rep, item.width)];
   }
   if (item.id === 'system') {
     const cpu = value(state?.system?.cpuPercent);
@@ -170,7 +179,7 @@ export function buildLiveFrame({
   const left = (config?.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4);
   const header = fitHeader({ left, tabs: config?.tabs ?? ['overview'], width, activeTab });
   const maxRows = Math.max(1, monitorRowBudget(height) - 2);
-  const sections = activeTab === 'overview' ? sectionDefinitions(config, state, options) : [];
+  const sections = activeTab === 'overview' ? sectionDefinitions(config, state) : [];
   const layout = layoutSections(sections, { width, height, maxRows });
   const body = activeTab === 'overview'
     ? mergeLaneRows(layout, state, options)
