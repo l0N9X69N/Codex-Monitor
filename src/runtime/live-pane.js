@@ -34,7 +34,7 @@ export class LivePaneController {
     this.resizeDebounceMs = resizeDebounceMs;
     this.hysteresisCells = hysteresisCells;
     this.setTimer = setTimer;
-    this.clearTimer = clearTimeout;
+    this.clearTimer = clearTimer;
     this.now = now;
     this.timer = null;
     this.resizeTimer = null;
