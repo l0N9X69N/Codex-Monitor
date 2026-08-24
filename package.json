@@ -20,10 +20,13 @@
     "test:phase2": "node --test test/unit/phase2-parsers.test.js",
     "test:phase3": "node --test test/unit/phase3-demand.test.js test/unit/phase3-scheduler.test.js test/unit/phase3-renderer.test.js test/unit/phase3-ring-buffer.test.js test/integration/phase3-demand-scheduler.test.js",
     "test:phase4": "node --test test/unit/phase4-ui.test.js test/integration/phase4-live-pane.test.js",
+    "test:phase5": "node --test test/unit/phase5-snapshots.test.js test/unit/phase5-ux-gate.test.js test/fuzz/phase5-layout-fuzz.test.js",
     "verify:phase1": "node ./scripts/phase1-auto-verify.mjs",
     "verify:phase2": "node ./scripts/phase2-auto-verify.mjs",
     "verify:phase3": "node ./scripts/phase3-auto-verify.mjs",
     "verify:phase4": "node ./scripts/phase4-auto-verify.mjs",
+    "verify:phase5": "node ./scripts/phase5-auto-verify.mjs",
+    "demo:phase5": "node ./scripts/phase5-demo-matrix.mjs",
     "dev": "node ./src/cli/codexm.js"
   },
   "license": "MIT"
