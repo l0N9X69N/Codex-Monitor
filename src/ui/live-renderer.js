@@ -9,6 +9,7 @@ function value(metric, fallback = null) {
 }
 
 function fmtNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
   const n = Number(raw);
   if (!Number.isFinite(n)) return '--';
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}m`;
@@ -17,6 +18,7 @@ function fmtNumber(raw) {
 }
 
 function fmtDuration(ms) {
+  if (ms === null || ms === undefined || ms === '') return '--';
   const n = Number(ms);
   if (!Number.isFinite(n)) return '--';
   if (n < 1000) return `${Math.round(n)}ms`;
