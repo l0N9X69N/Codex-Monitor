@@ -79,6 +79,18 @@ function modelName(state, runtime) {
   return runtime?.observedModel || state?.meta?.model || 'Codex';
 }
 
+function actualModelText(state, runtime) {
+  if (runtime?.profile?.auth !== 'api') return '--';
+  return runtime?.actualModel || 'waiting…';
+}
+
+function actualModelColor(state, runtime) {
+  const actual = runtime?.actualModel;
+  if (!actual) return MUTED;
+  const requested = modelName(state, runtime);
+  return String(actual).toLowerCase() === String(requested).toLowerCase() ? GREEN : ORANGE;
+}
+
 function reasoningName(state, runtime) {
   return runtime?.observedReasoning || state?.meta?.reasoningEffort || 'default';
 }
@@ -204,11 +216,14 @@ function usageColumn(state, nowMs, runtime, width) {
   const last = state?.usage?.last;
 
   if (runtime?.profile?.auth === 'api') {
+    const requested = modelName(state, runtime);
+    const actual = actualModelText(state, runtime);
+    const actualColor = actualModelColor(state, runtime);
     return [
+      `${LABEL}MODEL${RESET} ${GOLD}${BOLD}${requested}${RESET}`,
+      `${LABEL}ACTUAL${RESET} ${actualColor}${BOLD}${actual}${RESET}`,
       `${LABEL}IN${RESET} ${BRIGHT}${formatTokens(total?.inputTokens)}${RESET} ${FRAME}·${RESET} ${LABEL}OUT${RESET} ${BLUE}${formatTokens(total?.outputTokens)}${RESET}`,
-      `${LABEL}RSN${RESET} ${PURPLE}${formatTokens(total?.reasoningOutputTokens)}${RESET}`,
-      `${LABEL}TURN${RESET} ${GOLD}${formatTokens(last?.inputTokens)} in / ${formatTokens(last?.outputTokens)} out${RESET}`,
-      `${LABEL}quota${RESET} ${MUTED}n/a${RESET}`
+      `${LABEL}RSN${RESET} ${PURPLE}${formatTokens(total?.reasoningOutputTokens)}${RESET} ${FRAME}·${RESET} ${LABEL}TURN${RESET} ${GOLD}${formatTokens(last?.inputTokens)} in / ${formatTokens(last?.outputTokens)} out${RESET}`
     ];
   }
 

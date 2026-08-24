@@ -110,20 +110,77 @@ const runtime = {
   dirtyCount: initialGit.dirtyCount,
   observedModel: null,
   observedReasoning: null,
+  actualModel: null,
+  actualModelSource: null,
   profile: PROFILE,
   authSource: authSourceSummary(PROFILE)
 };
 
 const CHILD_ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const MODEL_OBSERVATION_TAIL_CHARS = 640;
+let modelObservationTail = '';
+
+function lastFreshMatch(text, pattern, freshBoundary) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const re = new RegExp(pattern.source, flags);
+  let selected = null;
+  for (const match of text.matchAll(re)) {
+    const end = (match.index ?? 0) + match[0].length;
+    if (end > freshBoundary) selected = match;
+  }
+  return selected;
+}
 
 function observeChildOutput(data) {
-  const text = String(data).replace(CHILD_ANSI_RE, ' ').replace(/[\r\n]+/g, ' ');
-  const changed = text.match(/Model\s+changed\s+to\s+([^\s]+)\s+([A-Za-z0-9_-]+)/i);
-  const card = text.match(/model:\s*([^\s]+)\s+([A-Za-z0-9_-]+)/i);
-  const match = changed || card;
-  if (!match) return;
-  runtime.observedModel = match[1];
-  runtime.observedReasoning = match[2];
+  const fresh = String(data).replace(CHILD_ANSI_RE, ' ').replace(/[\r\n]+/g, ' ');
+  const boundary = modelObservationTail.length;
+  const text = `${modelObservationTail}${fresh}`;
+
+  // Requested/configured model shown by the Codex TUI. Reset ACTUAL whenever
+  // the user changes the requested model; the next completed API turn will
+  // confirm it again unless a server reroute is observed first.
+  const changed = lastFreshMatch(text, /Model\s+changed\s+to\s+([^\s]+)\s+([A-Za-z0-9_-]+)/i, boundary);
+  const card = lastFreshMatch(text, /model:\s*([^\s]+)\s+([A-Za-z0-9_-]+)/i, boundary);
+  const requested = changed || card;
+  if (requested) {
+    const nextModel = requested[1];
+    if (runtime.observedModel && runtime.observedModel !== nextModel) {
+      runtime.actualModel = null;
+      runtime.actualModelSource = null;
+    }
+    runtime.observedModel = nextModel;
+    runtime.observedReasoning = requested[2];
+  }
+
+  // Current Codex receives the effective server model in the `openai-model`
+  // response header. The TUI does not expose the live ModelReroute event, but
+  // on a mismatch it does render a warning that contains the fallback model.
+  // Capture that warning without allowing a complete match from the retained
+  // tail to fire again on a later redraw.
+  const routed =
+    lastFreshMatch(text, /routed\s+to\s+([A-Za-z0-9._:-]+)\s+as\s+a\s+fallback/i, boundary)
+    || lastFreshMatch(text, /server\s+reported\s+model\s+([A-Za-z0-9._:-]+)\s+while\s+requested\s+model\s+was\s+([A-Za-z0-9._:-]+)/i, boundary)
+    || lastFreshMatch(text, /model\s+rerouted.*?\bto\s+([A-Za-z0-9._:-]+)/i, boundary);
+  if (routed && PROFILE.auth === 'api') {
+    runtime.actualModel = routed[1];
+    runtime.actualModelSource = 'server-reroute';
+  }
+
+  modelObservationTail = text.slice(-MODEL_OBSERVATION_TAIL_CHARS);
+}
+
+function updateActualApiModelFromState(state) {
+  if (PROFILE.auth !== 'api' || runtime.actualModel) return;
+  const completedAt = state?.meta?.lastTurnCompletedAtMs;
+  if (!Number.isFinite(completedAt) || completedAt < WRAPPER_STARTED_AT - 2_000) return;
+  const requested = runtime.observedModel || state?.meta?.model;
+  if (!requested) return;
+
+  // If Codex completed a current API turn and no reroute warning was observed,
+  // the best available live signal is that the effective model matched the
+  // requested model. Never populate ACTUAL from an older rollout.
+  runtime.actualModel = requested;
+  runtime.actualModelSource = 'completed-turn';
 }
 
 function fullRendererActive(cols, totalRows) {
@@ -259,6 +316,8 @@ function runDemo(fixedState = null) {
     dirtyCount: 2,
     observedModel: 'gpt-5.4-mini',
     observedReasoning: 'medium',
+    actualModel: PROFILE.auth === 'api' ? 'gpt-5.4-mini' : null,
+    actualModelSource: PROFILE.auth === 'api' ? 'demo' : null,
     profile: PROFILE,
     authSource: authSourceSummary(PROFILE)
   };
@@ -392,6 +451,7 @@ function drawMonitor() {
   if (exiting) return;
   const nowMs = Date.now();
   const state = transient.overlayState(tracker.refresh(), nowMs);
+  updateActualApiModelFromState(state);
   const lines = renderDashboard(state, cols, totalRows, nowMs, runtime);
   // Re-assert the child scroll region on every HUD repaint. This also heals
   // terminals that reset margins after alternate-screen or full-screen ops.

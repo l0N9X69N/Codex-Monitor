@@ -1,0 +1,80 @@
+{
+  "sourceOfTruth": "PROJECT-SPEC.md",
+  "designFreeze": "2026-08-24",
+  "language": "vi",
+  "phaseCount": 12,
+  "phases": [
+    {
+      "id": 1,
+      "title": "Correctness & Terminal Safety",
+      "file": "PHASE-01-CORRECTNESS-TERMINAL-SAFETY.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 2,
+      "title": "Normalized State & Parser Test Harness",
+      "file": "PHASE-02-NORMALIZED-STATE-PARSERS.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 3,
+      "title": "Demand Graph, Central Scheduler & ANSI Diff Renderer",
+      "file": "PHASE-03-DEMAND-SCHEDULER-DIFF-RENDERER.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 4,
+      "title": "Live Monitor UI hiện đại + Responsive + Custom",
+      "file": "PHASE-04-LIVE-UI-RESPONSIVE-CUSTOM.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 5,
+      "title": "Live UI Fuzz, Snapshot & UX Gate",
+      "file": "PHASE-05-LIVE-UI-FUZZ-UX-GATE.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 6,
+      "title": "Live Views & Lazy Collectors",
+      "file": "PHASE-06-LIVE-VIEWS-LAZY-COLLECTORS.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 7,
+      "title": "Platform Adapters: Windows / Linux / macOS",
+      "file": "PHASE-07-PLATFORM-ADAPTERS.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 8,
+      "title": "History Core Engine",
+      "file": "PHASE-08-HISTORY-CORE-ENGINE.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 9,
+      "title": "History Cyberpunk / Netrunner TUI",
+      "file": "PHASE-09-HISTORY-CYBERPUNK-TUI.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 10,
+      "title": "History Charts & Live Dynamics",
+      "file": "PHASE-10-HISTORY-CHARTS-LIVE-DYNAMICS.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 11,
+      "title": "History Storage, Delete Safety & History QA",
+      "file": "PHASE-11-HISTORY-STORAGE-QA.md",
+      "status": "NOT STARTED"
+    },
+    {
+      "id": 12,
+      "title": "Productization, Full QA, Packaging & Release Candidate",
+      "file": "PHASE-12-PRODUCTIZATION-RELEASE.md",
+      "status": "NOT STARTED"
+    }
+  ]
+}
