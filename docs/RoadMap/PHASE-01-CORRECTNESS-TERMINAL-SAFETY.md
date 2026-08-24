@@ -4,7 +4,6 @@
 
 > **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
 
-
 ## Spec liên quan
 
 Spec Phase A; các mục 7–10, 21–24, 57.
@@ -72,8 +71,10 @@ Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL
 
 Không còn stale telemetry/API-Login leak/terminal corruption/Actual Model guessing.
 
-## Trạng thái ban đầu
+## Trạng thái hiện tại
 
 ```text
-NOT STARTED
+IMPLEMENTED — WAITING MANUAL PTY / TERMINAL ACCEPTANCE
 ```
+
+Automated tests và syntax checks đã được chạy trong môi trường build. Phase chỉ được chuyển sang `CLOSED` sau khi các manual P0/P1 trong `docs/qa/phase-01/MANUAL-TEST-REQUIRED.md` được xác nhận trên terminal thật.
