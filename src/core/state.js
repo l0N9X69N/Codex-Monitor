@@ -8,16 +8,20 @@ export function createCurrentRunState({
   runId = null
 } = {}) {
   const state = createNormalizedMonitorState({ startedAtMs, runId });
-  setMetric(state.auth, 'mode', authMode, {
-    source: authMode === 'unknown' ? PROVENANCE.UNKNOWN : PROVENANCE.LOCAL,
-    observedAtMs: startedAtMs,
-    evidence: authMode === 'unknown' ? null : authSource
-  });
-  setMetric(state.auth, 'source', authSource, {
-    source: authSource === 'unresolved' ? PROVENANCE.UNKNOWN : PROVENANCE.LOCAL,
-    observedAtMs: startedAtMs,
-    evidence: authSource === 'unresolved' ? null : 'auth-detection'
-  });
+  if (authMode !== 'unknown') {
+    setMetric(state.auth, 'mode', authMode, {
+      source: PROVENANCE.LOCAL,
+      observedAtMs: startedAtMs,
+      evidence: authSource !== 'unresolved' ? authSource : null
+    });
+  }
+  if (authSource !== 'unresolved') {
+    setMetric(state.auth, 'source', authSource, {
+      source: PROVENANCE.LOCAL,
+      observedAtMs: startedAtMs,
+      evidence: 'auth-detection'
+    });
+  }
   return state;
 }
 
@@ -34,15 +38,21 @@ export function resetCurrentRunState(previousState = null, options = {}) {
 
 export function withDetectedAuth(state, auth) {
   const observedAtMs = Date.now();
-  setMetric(state.auth, 'mode', auth?.mode ?? 'unknown', {
-    source: auth?.mode && auth.mode !== 'unknown' ? PROVENANCE.LOCAL : PROVENANCE.UNKNOWN,
-    observedAtMs,
-    evidence: auth?.source ?? null
-  });
-  setMetric(state.auth, 'source', auth?.source ?? 'unresolved', {
-    source: auth?.source ? PROVENANCE.LOCAL : PROVENANCE.UNKNOWN,
-    observedAtMs,
-    evidence: 'auth-detection'
-  });
+  const mode = auth?.mode ?? 'unknown';
+  const source = auth?.source ?? 'unresolved';
+  if (mode !== 'unknown') {
+    setMetric(state.auth, 'mode', mode, {
+      source: PROVENANCE.LOCAL,
+      observedAtMs,
+      evidence: source !== 'unresolved' ? source : null
+    });
+  }
+  if (source !== 'unresolved') {
+    setMetric(state.auth, 'source', source, {
+      source: PROVENANCE.LOCAL,
+      observedAtMs,
+      evidence: 'auth-detection'
+    });
+  }
   return state;
 }
