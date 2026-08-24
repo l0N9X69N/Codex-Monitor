@@ -15,7 +15,7 @@ function fmtNumber(raw) {
   return String(Math.round(n * 10) / 10);
 }
 
-function pct(raw) { return Number.isFinite(Number(raw)) ? `${Math.round(Number(raw))}%` : '--'; }
+function pct(raw) { return raw !== null && raw !== undefined && Number.isFinite(Number(raw)) ? `${Math.round(Number(raw))}%` : '--'; }
 
 function sparkline(values = [], width = 16) {
   const chars = '▁▂▃▄▅▆▇█';
@@ -35,10 +35,11 @@ function quota(window, label) {
 
 function usageLines(state) {
   const auth = value(state?.auth?.mode, 'unknown');
+  const cacheRatio = value(state?.usage?.cacheRatio, null);
   const lines = [
     `CONTEXT ${fmtNumber(value(state?.context?.usedTokens))} used · ${fmtNumber(value(state?.context?.leftTokens))} left · ${fmtNumber(value(state?.context?.windowTokens))} window`,
     `TOKENS  in ${fmtNumber(value(state?.usage?.inputTokens))} · cached ${fmtNumber(value(state?.usage?.cachedInputTokens))} · out ${fmtNumber(value(state?.usage?.outputTokens))} · reasoning ${fmtNumber(value(state?.usage?.reasoningTokens))}`,
-    `TURN    in ${fmtNumber(value(state?.usage?.turnInputTokens))} · out ${fmtNumber(value(state?.usage?.turnOutputTokens))} · cache ${pct((value(state?.usage?.cacheRatio) ?? 0) * 100)}`,
+    `TURN    in ${fmtNumber(value(state?.usage?.turnInputTokens))} · out ${fmtNumber(value(state?.usage?.turnOutputTokens))} · cache ${pct(cacheRatio == null ? null : cacheRatio * 100)}`,
     `MODEL   requested ${value(state?.model?.requested, '--')} · actual ${value(state?.model?.actual, '--')} · reasoning ${value(state?.model?.reasoning, '--')}`,
     `FRESH   session ${state?.session?.lastEventAtMs?.freshness ?? 'waiting'} · usage ${state?.usage?.inputTokens?.freshness ?? 'waiting'}`
   ];
