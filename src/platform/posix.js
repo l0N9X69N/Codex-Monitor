@@ -39,6 +39,21 @@ function parsePs(text) {
   }).filter(Boolean);
 }
 
+function spawnChecked(file, args, { cwd, env }) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const child = spawn(file, args, { cwd, env, detached: true, stdio: 'ignore' });
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      if (ok) child.unref();
+      resolve(ok ? { ok: true, launcher: file } : null);
+    };
+    child.once('spawn', () => finish(true));
+    child.once('error', () => finish(false));
+  });
+}
+
 export function createPosixMethods({ platform, env = process.env, terminalLaunchers = [] } = {}) {
   return {
     async spawnPty(options) { return spawnCodexPty({ ...options, platform }); },
@@ -51,9 +66,7 @@ export function createPosixMethods({ platform, env = process.env, terminalLaunch
     },
     async getProcessTree() {
       try {
-        const output = execFileSync('ps', ['-axo', 'pid=,ppid=,comm=,%cpu=,rss=,etime=,args='], {
-          encoding: 'utf8', timeout: 2500, stdio: ['ignore', 'pipe', 'ignore']
-        });
+        const output = execFileSync('ps', ['-axo', 'pid=,ppid=,comm=,%cpu=,rss=,etime=,args='], { encoding: 'utf8', timeout: 2500, stdio: ['ignore', 'pipe', 'ignore'] });
         return parsePs(output);
       } catch (error) { return unsupportedResult('processTree', error?.message ?? 'ps failed'); }
     },
@@ -71,9 +84,8 @@ export function createPosixMethods({ platform, env = process.env, terminalLaunch
       for (const launcher of terminalLaunchers) {
         try {
           const spec = launcher({ command, args, cwd });
-          const child = spawn(spec.file, spec.args, { cwd, env, detached: true, stdio: 'ignore' });
-          child.unref();
-          return { ok: true, launcher: spec.file };
+          const result = await spawnChecked(spec.file, spec.args, { cwd, env });
+          if (result) return result;
         } catch {}
       }
       return { ok: false, error: 'could not open a supported terminal launcher' };
