@@ -1,16 +1,10 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { monitorConfigDir } from '../platform/common.js';
 import { DEFAULT_CONFIG, normalizeConfig } from './schema.js';
 
-export function getMonitorConfigDir({ env = process.env, platform = process.platform } = {}) {
-  if (env.CODEXM_CONFIG_HOME) return path.resolve(env.CODEXM_CONFIG_HOME);
-  if (platform === 'win32') {
-    const appData = env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-    return path.join(appData, 'codex-monitor');
-  }
-  const xdg = env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  return path.join(xdg, 'codex-monitor');
+export function getMonitorConfigDir(options = {}) {
+  return monitorConfigDir(options);
 }
 
 export function getMonitorConfigPath(options = {}) {
