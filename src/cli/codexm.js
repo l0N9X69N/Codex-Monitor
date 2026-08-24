@@ -2,6 +2,7 @@
 import process from 'node:process';
 import { detectAuth } from '../core/auth.js';
 import { createCurrentRunState, withDetectedAuth } from '../core/state.js';
+import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
@@ -60,8 +61,8 @@ async function main() {
 }
 
 main()
-  .then((code) => { process.exitCode = Number.isFinite(code) ? code : 0; })
+  .then((code) => { completeHostExit(code); })
   .catch((error) => {
     process.stderr.write(`codexm: ${error?.stack ?? error}\n`);
-    process.exitCode = 1;
+    completeHostExit(1);
   });
