@@ -4,16 +4,37 @@ import { spawnCodexPty } from './pty.js';
 import { commonPaths, memorySnapshot, normalizeProcessRecord } from './common.js';
 import { normalizeCapabilities, unsupportedResult } from './contract.js';
 
+function elapsedToMs(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  let days = 0;
+  let clock = text;
+  if (text.includes('-')) {
+    const parts = text.split('-', 2);
+    days = Number(parts[0]);
+    clock = parts[1];
+  }
+  const parts = clock.split(':').map(Number);
+  if (parts.some((item) => !Number.isFinite(item))) return null;
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+  if (parts.length === 3) [hours, minutes, seconds] = parts;
+  else if (parts.length === 2) [minutes, seconds] = parts;
+  else if (parts.length === 1) [seconds] = parts;
+  else return null;
+  return ((((days * 24) + hours) * 60 + minutes) * 60 + seconds) * 1000;
+}
+
 function parsePs(text) {
   const lines = String(text ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   return lines.map((line) => {
-    const match = line.match(/^(\d+)\s+(\d+)\s+(\S+)\s+([\d.]+)\s+(\d+)\s+(\d+)-(\d+):(\d+):(\d+)\s*(.*)$/);
+    const match = line.match(/^(\d+)\s+(\d+)\s+(\S+)\s+([\d.]+)\s+(\d+)\s+(\S+)\s*(.*)$/);
     if (!match) return null;
-    const [, pid, ppid, name, cpu, rssKb, days, hours, minutes, seconds, command] = match;
-    const ageMs = ((((Number(days) * 24) + Number(hours)) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000;
+    const [, pid, ppid, name, cpu, rssKb, elapsed, command] = match;
     return normalizeProcessRecord({
       pid: Number(pid), ppid: Number(ppid), name, cpuPercent: Number(cpu), memoryBytes: Number(rssKb) * 1024,
-      ageMs, command: command || name
+      ageMs: elapsedToMs(elapsed), command: command || name
     });
   }).filter(Boolean);
 }
@@ -62,3 +83,5 @@ export function createPosixMethods({ platform, env = process.env, terminalLaunch
     async cleanup() { return true; }
   };
 }
+
+export { elapsedToMs, parsePs };
