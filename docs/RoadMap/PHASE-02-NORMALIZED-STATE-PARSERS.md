@@ -66,13 +66,20 @@ Parser/state tests xanh và renderer không cần đọc raw rollout trực ti�
 ## Trạng thái hiện tại
 
 ```text
-IMPLEMENTED — WAITING AUTOMATED VERIFICATION
+CLOSED
 ```
 
-Chạy:
+Verification trên Windows / PowerShell, Node.js v24.19.0:
 
-```powershell
-.\scripts\phase2-verify.ps1
+```text
+Syntax files checked: 41 PASS
+Full regression:      45 / 45 PASS
+Focused Phase 02:     15 / 15 PASS
+Failed:               0
+Skipped:              0
+Cancelled:            0
+BLOCKER:              0
+P0:                   0
 ```
 
-Phase 02 chỉ chuyển sang `CLOSED` khi syntax + full cumulative regression + focused parser/ingest tests đều PASS.
+Không có manual P0/P1 bắt buộc sau automated verification PASS. Có thể bắt đầu Phase 03.
