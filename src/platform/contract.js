@@ -26,7 +26,8 @@ export function normalizeCapabilities(value = {}) {
     diskInfo: value.diskInfo !== false,
     historyTerminal: value.historyTerminal !== false,
     mouse: value.mouse !== false,
-    truecolor: value.truecolor ?? null
+    truecolor: value.truecolor ?? null,
+    caseInsensitivePaths: value.caseInsensitivePaths === true
   };
 }
 
