@@ -4,7 +4,6 @@
 
 > **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
 
-
 ## Spec liên quan
 
 Spec mục 25–30 và checklist UI/performance mục 63.
@@ -61,8 +60,24 @@ Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL
 
 0 layout invariant failure; 0 P0 UI bug; user chốt Live visual.
 
-## Trạng thái ban đầu
+## Trạng thái hiện tại
 
 ```text
-NOT STARTED
+IMPLEMENTED — WAITING AUTOMATED VERIFICATION + MANUAL UX VISUAL ACCEPTANCE
 ```
+
+Implementation hiện có deterministic fuzz seed, 4000-iteration default fuzz run, golden snapshots, canonical 8-case demo matrix, lane hysteresis và resize sequence/UX hierarchy tests.
+
+Chạy:
+
+```powershell
+.\scripts\phase5-verify.ps1
+```
+
+Sau automated PASS, chạy:
+
+```powershell
+npm run demo:phase5
+```
+
+rồi nghiệm thu `docs/qa/phase-05/MANUAL-TEST-REQUIRED.md` trước khi chuyển sang `CLOSED`.
