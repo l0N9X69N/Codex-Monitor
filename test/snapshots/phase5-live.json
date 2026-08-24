@@ -10,7 +10,7 @@
       "● IDLE │ [Ov] Tools Res",
       "CONTEXT",
       "84k used · 116k left · 200k window",
-      "F4 History"
+      "Alt+←/→ View · F4 History"
     ]
   },
   "normal-60x24": {
@@ -25,7 +25,7 @@
       "CONTEXT",
       "84k used · 116k left · 200k window",
       "5H 64% · W 82%",
-      "F4 History"
+      "Alt+←/→ View · F4 History"
     ]
   },
   "two-lane-90x24": {
@@ -40,7 +40,7 @@
       "CONTEXT                                       5H   ━━━━━━━━━━━━────── 64% left ↻ 3h42m",
       "84k used · 116k left · 200k window            WEEK ━━━━━━━━━━━━━━━─── 82% left ↻ 6d06h",
       "● IDLE · waiting for input                    TOK 28k↑ 4.2k↓",
-      "F4 History"
+      "Alt+←/→ View · F4 History"
     ]
   },
   "wide-120x35": {
@@ -57,7 +57,7 @@
       "● IDLE · waiting for input                                   USAGE",
       "SESSION                                                      in 28k · cached 19k · out 4.2k · reasoning 1.8k",
       "18 turns · last 8s · compact 2",
-      "F4 History"
+      "Alt+←/→ View · F4 History"
     ]
   },
   "ultrawide-160x35": {
@@ -73,7 +73,7 @@
       "84k used · 116k left · 200k window                    WEEK ━━━━━━━━━━━━━━━─── 82% left ↻ 6d06h              USAGE",
       "SESSION                                                                                                     in 28k · cached 19k · out 4.2k · reasoning 1.8k",
       "18 turns · last 8s · compact 2",
-      "F4 History"
+      "Alt+←/→ View · F4 History"
     ]
   }
 }
