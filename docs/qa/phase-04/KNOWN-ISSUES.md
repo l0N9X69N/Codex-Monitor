@@ -2,17 +2,21 @@
 
 ## BLOCKER
 
-Chưa biết cho đến khi `phase4-verify.ps1` và manual visual/responsive acceptance được chạy trên working tree mới nhất.
+**0**
 
 ## P0
 
-Chưa có P0 đã biết trong implementation Phase 04.
+**0**
 
-## P1 cần nghiệm thu
+## P1
 
-- Real PTY + reserved HUD rows phải được kiểm tra resize/exit trên Windows Terminal thật.
-- Visual hierarchy Color/Mono/Matrix cần user nghiệm thu direction.
-- Custom nhiều metric/header/tabs cần kiểm tra bằng terminal thật vì font/cell rendering khác nhau.
+**0 open for Phase 04.**
+
+Manual visual/responsive acceptance đã PASS trên Windows Terminal.
+
+## Resolved during acceptance
+
+- Unknown System RAM từng format sai thành `0`; đã sửa để unknown giữ `--` và chỉ actual zero mới hiển thị `0`.
 
 ## DEFERRED đúng roadmap
 
