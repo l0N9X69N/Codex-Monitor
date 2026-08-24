@@ -27,16 +27,7 @@ function walkJsonl(root, fsRef = fs, limit = Number.POSITIVE_INFINITY) {
 function metadata(filePath, fsRef = fs) {
   try {
     const stat = fsRef.statSync(filePath);
-    return {
-      id: filePath,
-      filePath,
-      name: path.basename(filePath, path.extname(filePath)),
-      sizeBytes: stat.size,
-      createdAtMs: stat.birthtimeMs || stat.ctimeMs || null,
-      modifiedAtMs: stat.mtimeMs || null,
-      parsed: false,
-      error: null
-    };
+    return { id: filePath, filePath, name: path.basename(filePath, path.extname(filePath)), sizeBytes: stat.size, createdAtMs: stat.birthtimeMs || stat.ctimeMs || null, modifiedAtMs: stat.mtimeMs || null, parsed: false, error: null };
   } catch (error) {
     return { id: filePath, filePath, name: path.basename(filePath), sizeBytes: null, createdAtMs: null, modifiedAtMs: null, parsed: false, error: error?.message ?? 'stat failed' };
   }
@@ -61,10 +52,18 @@ function historicalModel(filePath) {
   };
 }
 
+function addResourceEvidence(model, kind, value, atMs) {
+  const clean = sanitizeText(value, { maxLength: 100 });
+  if (!clean) return;
+  if (model.resources.evidence.some((item) => item.kind === kind && item.value === clean)) return;
+  model.resources.evidence.push({ kind, value: clean, atMs });
+  if (model.resources.evidence.length > 100) model.resources.evidence.shift();
+}
+
 function applyHistoryEvent(model, event) {
   if (!event) return;
   const atMs = Number.isFinite(event.atMs) ? event.atMs : null;
-  applyNormalizedEvent(model.normalized, event, { source: PROVENANCE.LOCAL });
+  applyNormalizedEvent(model.normalized, event, { source: PROVENANCE.OFFICIAL_HISTORY });
   if (atMs != null) {
     if (model.info.startedAtMs == null || atMs < model.info.startedAtMs) model.info.startedAtMs = atMs;
     model.info.lastEventAtMs = Math.max(model.info.lastEventAtMs ?? 0, atMs);
@@ -85,6 +84,7 @@ function applyHistoryEvent(model, event) {
     model.tools.byName[name] = (model.tools.byName[name] ?? 0) + 1;
     model.tools.recent.push({ atMs, name, callId: sanitizeText(event.callId, { maxLength: 80 }) });
     if (model.tools.recent.length > 50) model.tools.recent.shift();
+    if (String(event.rawType ?? '').startsWith('mcp_tool_call')) addResourceEvidence(model, 'MCP', name, atMs);
   } else if (event.kind === 'error') model.errors.push({ atMs, detail: sanitizeDetail(event.detail) });
   else if (event.kind === 'usage') {
     if (event.inputTokens != null) model.tokens.input = event.inputTokens;
@@ -109,14 +109,6 @@ function consumeText(model, text, { final = false } = {}) {
       if (event) applyHistoryEvent(model, event);
     } catch { model.rejectedLines += 1; }
   }
-  if (final && model.remainder.trim()) {
-    try {
-      const event = parseRolloutObject(JSON.parse(model.remainder));
-      model.parsedLines += 1;
-      if (event) applyHistoryEvent(model, event);
-    } catch { model.rejectedLines += 1; }
-    model.remainder = '';
-  }
   return model;
 }
 
@@ -129,9 +121,7 @@ export class HistoryEngine {
   }
 
   discover({ limit = Number.POSITIVE_INFINITY } = {}) {
-    this.index = walkJsonl(this.sessionsPath, this.fs, limit)
-      .map((filePath) => metadata(filePath, this.fs))
-      .sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
+    this.index = walkJsonl(this.sessionsPath, this.fs, limit).map((filePath) => metadata(filePath, this.fs)).sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
     return this.index;
   }
 
@@ -157,9 +147,7 @@ export class HistoryEngine {
   tail(id) {
     const model = this.ensureLoaded(id);
     let stat;
-    try { stat = this.fs.statSync(model.filePath); } catch (error) {
-      return { changed: false, reset: false, error: sanitizeDetail(error?.message), model };
-    }
+    try { stat = this.fs.statSync(model.filePath); } catch (error) { return { changed: false, reset: false, error: sanitizeDetail(error?.message), model }; }
     if (stat.size < model.offset) {
       const reset = this.load(id);
       return { changed: true, reset: true, error: null, model: reset };
