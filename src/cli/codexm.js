@@ -7,6 +7,9 @@ import { configureMonitor } from '../config/configure.js';
 import { getMonitorConfigPath, loadMonitorConfig, resetMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
+import { createPlatformAdapter } from '../platform/index.js';
+import { HistoryEngine } from '../history/engine.js';
+import { runHistoryTui } from '../history/app.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { renderDemo } from '../ui/demo.js';
@@ -19,6 +22,7 @@ function printHelp() {
   process.stdout.write('Usage: codexm [monitor options] [codex arguments]\n\n');
   process.stdout.write('Monitor options:\n');
   process.stdout.write('  --help                        Show Monitor help\n');
+  process.stdout.write('  --history                     Open local full-screen History viewer\n');
   process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
   process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
@@ -32,11 +36,13 @@ function printHelp() {
   process.stdout.write('  --demo                        Render Live Monitor demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n');
   process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
+  process.stdout.write('Live: Alt+Left/Right changes configured view; F4 opens History in another terminal.\n');
   process.stdout.write('Example: codexm -- --help   # official Codex help\n');
 }
 
 async function main() {
   const parsed = parseMonitorArgs(process.argv.slice(2));
+  const platformAdapter = createPlatformAdapter();
   const configPath = getMonitorConfigPath();
   const loaded = loadMonitorConfig({ filePath: configPath });
   const config = applyRuntimeOverrides(loaded.config, parsed.overrides);
@@ -44,6 +50,11 @@ async function main() {
   if (loaded.error) process.stderr.write(`codexm: config could not be read; using defaults (${loaded.error.message}).\n`);
 
   if (parsed.action === 'help') { printHelp(); return 0; }
+  if (parsed.action === 'history') {
+    const sessionsPath = platformAdapter.paths()?.sessions;
+    const engine = new HistoryEngine({ sessionsPath });
+    return await runHistoryTui({ engine });
+  }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
     const report = doctorReport();
@@ -91,7 +102,8 @@ async function main() {
     codexArgs: parsed.codexArgs,
     auth,
     monitorState: state,
-    monitorConfig: config
+    monitorConfig: config,
+    platformAdapter
   });
 }
 
