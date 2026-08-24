@@ -2,25 +2,45 @@
 
 ## Trạng thái
 
-**WAITING USER RUN**
+**PASS — verified on user Windows working tree.**
 
-Automated runner đã được tạo nhưng chưa được coi là PASS cho đến khi chạy trên working tree đã pull đầy đủ.
+## Môi trường thực thi
 
-## Lệnh chuẩn
+- OS: Windows / PowerShell
+- Node.js: v24.19.0
+- Command: `./scripts/phase2-verify.ps1`
 
-```powershell
-.\scripts\phase2-verify.ps1
-```
+## Kết quả
 
-Script chạy:
+### Syntax
 
 ```text
-Syntax check
-Full cumulative regression: node --test
-Focused Phase 02 parser/ingest tests
+Syntax check passed: 41 file(s).
 ```
 
-## Coverage Phase 02
+### Full cumulative regression
+
+```text
+Tests:      45
+Passed:     45
+Failed:     0
+Skipped:    0
+Cancelled:  0
+```
+
+Full suite vẫn bao gồm regression của Phase 01: auth isolation, PTY lifecycle, terminal safety, session binding và Windows spawn/host-exit behavior.
+
+### Focused Phase 02
+
+```text
+Tests:      15
+Passed:     15
+Failed:     0
+Skipped:    0
+Cancelled:  0
+```
+
+## Coverage Phase 02 đã PASS
 
 - normalized state domains/provenance;
 - IDLE/THINKING/TOOL/APPROVAL/ERROR;
@@ -28,16 +48,17 @@ Focused Phase 02 parser/ingest tests
 - retry/error/compaction;
 - turn start/complete + duration;
 - usage/context/cache derived metrics;
-- Login/API Phase 01 regression vẫn được chạy trong full suite;
+- Login/API Phase 01 regression trong full suite;
 - rate-limit 5H/Week normalization;
 - malformed JSON;
 - partial appended JSONL line;
 - rollout `event_msg`/`response_item` envelope;
 - ANSI/control character sanitization;
 - PTY transient parser;
-- requested model không tự biến thành actual model.
+- requested model không tự biến thành actual model;
+- Windows PTY lifecycle regression từ Phase 01 vẫn xanh.
 
-## PASS condition
+## Exit gate
 
 ```text
 Syntax PASS
@@ -45,4 +66,4 @@ Full regression FAIL = 0
 Focused Phase 02 FAIL = 0
 ```
 
-Khi user gửi output, file này sẽ được cập nhật bằng số test thực tế và trạng thái cuối.
+**Automated gate Phase 02: PASS.**
