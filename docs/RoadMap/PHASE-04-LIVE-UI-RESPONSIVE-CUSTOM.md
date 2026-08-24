@@ -4,7 +4,6 @@
 
 > **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
 
-
 ## Spec liên quan
 
 Spec Phase D; mục 11–15, 20, 24–26, 50–52.
@@ -76,8 +75,18 @@ Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL
 
 Live gọn, readable, không overflow/wrap; Custom tự layout; user nghiệm thu direction.
 
-## Trạng thái ban đầu
+## Trạng thái hiện tại
 
 ```text
-NOT STARTED
+IMPLEMENTED — WAITING AUTOMATED VERIFICATION + MANUAL VISUAL/RESPONSIVE ACCEPTANCE
 ```
+
+Implementation đã có config/presets/custom foundation, cell-width + responsive lane engine, Overview renderer, Login/API quota semantics, Color/Mono/Matrix, Live pane runtime, demo mode và Phase 04 test harness.
+
+Chạy:
+
+```powershell
+.\scripts\phase4-verify.ps1
+```
+
+Sau automated PASS, làm checklist trong `docs/qa/phase-04/MANUAL-TEST-REQUIRED.md` trước khi chuyển sang `CLOSED`.
