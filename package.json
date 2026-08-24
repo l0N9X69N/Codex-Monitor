@@ -17,7 +17,9 @@
     "check": "node ./scripts/check-syntax.mjs",
     "test": "node --test",
     "test:phase1": "node --test",
+    "test:phase2": "node --test test/unit/phase2-parsers.test.js",
     "verify:phase1": "node ./scripts/phase1-auto-verify.mjs",
+    "verify:phase2": "node ./scripts/phase2-auto-verify.mjs",
     "dev": "node ./src/cli/codexm.js"
   },
   "license": "MIT"
