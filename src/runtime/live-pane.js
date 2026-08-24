@@ -19,6 +19,7 @@ export class LivePaneController {
     activeTab = 'overview',
     debounceMs = 30,
     resizeDebounceMs = 75,
+    hysteresisCells = 4,
     setTimer = setTimeout,
     clearTimer = clearTimeout,
     now = () => Date.now()
@@ -30,6 +31,7 @@ export class LivePaneController {
     this.activeTab = activeTab;
     this.debounceMs = debounceMs;
     this.resizeDebounceMs = resizeDebounceMs;
+    this.hysteresisCells = hysteresisCells;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.now = now;
@@ -55,7 +57,9 @@ export class LivePaneController {
       height,
       activeTab: this.activeTab,
       cwd: this.cwd,
-      nowMs: this.now()
+      nowMs: this.now(),
+      previousLaneCount: this.lastGeometry?.frame?.layout?.laneCount ?? null,
+      hysteresisCells: this.hysteresisCells
     });
     const monitorRows = Math.max(3, frame.rowCount);
     const childRows = Math.max(8, height - monitorRows);
