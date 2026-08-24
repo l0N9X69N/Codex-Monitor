@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 
 export function quoteWindowsCmdArg(value) {
@@ -43,6 +44,45 @@ export function resolveCodexExecutable({
   }
 }
 
+function resolveWindowsNpmCodexLauncher(codexPath, existsSync = fs.existsSync) {
+  if (!/\.(cmd|bat)$/i.test(codexPath)) return null;
+  const shimDir = path.dirname(codexPath);
+  const launcher = path.join(shimDir, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  return existsSync(launcher) ? launcher : null;
+}
+
+export function createCodexPtySpawnPlan({
+  codexPath,
+  args = [],
+  env = process.env,
+  platform = process.platform,
+  execPath = process.execPath,
+  existsSync = fs.existsSync
+} = {}) {
+  if (platform === 'win32' && /\.(cmd|bat)$/i.test(codexPath)) {
+    const launcher = resolveWindowsNpmCodexLauncher(codexPath, existsSync);
+    if (launcher) {
+      const localNode = path.join(path.dirname(codexPath), 'node.exe');
+      const nodePath = existsSync(localNode) ? localNode : execPath;
+      return {
+        kind: 'windows-npm-shim-bypass',
+        file: nodePath,
+        args: [launcher, ...args]
+      };
+    }
+
+    const comspec = env.ComSpec || process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
+    const command = [quoteWindowsCmdArg(codexPath), ...args.map(quoteWindowsCmdArg)].join(' ');
+    return {
+      kind: 'windows-cmd-fallback',
+      file: comspec,
+      args: ['/d', '/s', '/c', command]
+    };
+  }
+
+  return { kind: 'direct', file: codexPath, args: [...args] };
+}
+
 export async function spawnCodexPty({
   codexPath,
   args = [],
@@ -61,12 +101,6 @@ export async function spawnCodexPty({
     cwd,
     env: { ...env, TERM: env.TERM || process.env.TERM || 'xterm-256color' }
   };
-
-  if (platform === 'win32' && /\.(cmd|bat)$/i.test(codexPath)) {
-    const comspec = env.ComSpec || process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
-    const command = [quoteWindowsCmdArg(codexPath), ...args.map(quoteWindowsCmdArg)].join(' ');
-    return pty.spawn(comspec, ['/d', '/s', '/c', command], options);
-  }
-
-  return pty.spawn(codexPath, args, options);
+  const plan = createCodexPtySpawnPlan({ codexPath, args, env, platform });
+  return pty.spawn(plan.file, plan.args, options);
 }
