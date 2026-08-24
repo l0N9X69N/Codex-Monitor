@@ -14,7 +14,10 @@ function eventTimeMs(obj) {
 }
 
 function eventType(obj) {
-  return String(obj?.type ?? obj?.event ?? obj?.payload?.type ?? obj?.payload?.event ?? '').trim();
+  const outer = String(obj?.type ?? obj?.event ?? '').trim();
+  const inner = String(obj?.payload?.type ?? obj?.payload?.event ?? '').trim();
+  if (['event_msg', 'response_item'].includes(outer) && inner) return inner;
+  return outer || inner;
 }
 
 function payloadOf(obj) {
@@ -44,20 +47,20 @@ export function parseRolloutObject(obj) {
     return { ...common, kind: 'turn-start', turnId: sanitizeText(payload?.turn_id ?? payload?.turnId ?? payload?.id) };
   }
   if (type === 'turn_complete' || type === 'task_complete') {
-    return { ...common, kind: 'turn-complete', turnId: sanitizeText(payload?.turn_id ?? payload?.turnId ?? payload?.id), error: sanitizeDetail(payload?.error?.message ?? payload?.error ?? payload?.terminal_error) };
+    return { ...common, kind: 'turn-complete', turnId: sanitizeText(payload?.turn_id ?? payload?.turnId ?? payload?.id), error: sanitizeDetail(payload?.error?.message ?? payload?.error ?? payload?.terminal_error ?? payload?.terminalError) };
   }
   if (/^(exec_command|mcp_tool_call|web_search|patch_apply|image_generation)_begin$/.test(type) || ['function_call','custom_tool_call','local_shell_call','computer_call'].includes(type)) {
-    return { ...common, kind: 'tool-start', callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id), tool: sanitizeText(payload?.name ?? payload?.tool_name ?? payload?.server_name ?? type.replace(/_begin$/, '')) };
+    return { ...common, kind: 'tool-start', callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id ?? payload?.itemId), tool: sanitizeText(payload?.name ?? payload?.tool_name ?? payload?.toolName ?? payload?.server_name ?? payload?.serverName ?? type.replace(/_begin$/, '')) };
   }
   if (/^(exec_command|mcp_tool_call|web_search|patch_apply|image_generation)_end$/.test(type) || ['function_call_output','custom_tool_call_output','local_shell_call_output','computer_call_output'].includes(type)) {
-    return { ...common, kind: 'tool-end', callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id) };
+    return { ...common, kind: 'tool-end', callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id ?? payload?.itemId) };
   }
   if (['exec_approval_request','apply_patch_approval_request','request_permissions','request_user_input','elicitation_request'].includes(type)) {
     return { ...common, kind: 'approval', detail: sanitizeDetail(payload?.message ?? payload?.reason ?? type) };
   }
   if (type === 'stream_error') return { ...common, kind: 'retry', detail: sanitizeDetail(payload?.message ?? payload?.error?.message) };
   if (type === 'error') return { ...common, kind: 'error', detail: sanitizeDetail(payload?.message ?? payload?.error?.message ?? payload?.error) };
-  if (type === 'context_compacted') return { ...common, kind: 'compaction' };
+  if (type === 'context_compacted' || type === 'compacted') return { ...common, kind: 'compaction' };
 
   if (type === 'token_count' || type === 'token_usage') {
     const info = payload?.info ?? payload;
@@ -82,7 +85,7 @@ export function parseRolloutObject(obj) {
   }
 
   if (type === 'model_reroute') {
-    return { ...common, kind: 'actual-model', model: sanitizeText(payload?.to ?? payload?.model ?? payload?.actual_model) };
+    return { ...common, kind: 'actual-model', model: sanitizeText(payload?.to ?? payload?.model ?? payload?.actual_model ?? payload?.actualModel) };
   }
 
   return { ...common, kind: 'unknown' };
