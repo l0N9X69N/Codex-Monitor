@@ -6,7 +6,7 @@ import { setMetric } from '../core/normalized-state.js';
 import { PROVENANCE } from '../core/provenance.js';
 import { parseRolloutObject } from '../parsers/rollout-event.js';
 
-function discoverJsonl(root, fsRef = fs, maxFiles = 200) {
+function discoverJsonl(root, fsRef = fs, maxFiles = 500) {
   if (!root || !fsRef.existsSync(root)) return [];
   const files = [];
   const stack = [root];
@@ -56,34 +56,45 @@ export class CurrentSessionTailer {
     this.boundPath = null;
     this.offset = 0;
     this.remainder = '';
+    this.lastBindAttemptAtMs = 0;
   }
 
   bind() {
     if (this.boundPath) return this.boundPath;
+    const nowMs = this.now();
+    if (nowMs - this.lastBindAttemptAtMs < 750) return null;
+    this.lastBindAttemptAtMs = nowMs;
     const runStartedAtMs = this.state?.run?.startedAtMs;
-    const candidates = discoverJsonl(this.sessionsPath, this.fs).map((filePath) => {
-      let stat;
-      try { stat = this.fs.statSync(filePath); } catch { return null; }
+    const recent = discoverJsonl(this.sessionsPath, this.fs).map((filePath) => {
+      try {
+        const stat = this.fs.statSync(filePath);
+        return { filePath, stat };
+      } catch { return null; }
+    }).filter(Boolean)
+      // mtime is only a cheap prefilter. It is never accepted as current-run evidence.
+      .filter(({ stat }) => !Number.isFinite(runStartedAtMs) || stat.mtimeMs >= runStartedAtMs - 10_000)
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)
+      .slice(0, 20);
+
+    const candidates = recent.map(({ filePath, stat }) => {
       const meta = firstSessionMeta(filePath, this.fs);
       return {
         filePath,
         startedAtMs: meta?.atMs ?? null,
         lastEventAtMs: stat.mtimeMs,
-        // Initial binding never treats mtime as proof of a current run. The
-        // session_meta event timestamp is the required evidence here.
         appendedAfterRun: false,
         cwd: meta?.cwd ?? null,
         currentProcessHint: false,
         sizeBytes: stat.size
       };
-    }).filter(Boolean);
+    });
     const selected = selectCurrentSession(candidates, { runStartedAtMs, cwd: this.cwd, toleranceMs: 5000 });
     if (!selected) return null;
     this.boundPath = selected.filePath;
     this.offset = 0;
     this.remainder = '';
-    setMetric(this.state.session, 'bound', true, { source: PROVENANCE.LOCAL, observedAtMs: this.now(), evidence: 'current-session-meta' });
-    setMetric(this.state.session, 'filePath', this.boundPath, { source: PROVENANCE.LOCAL, observedAtMs: this.now(), evidence: 'current-session-meta' });
+    setMetric(this.state.session, 'bound', true, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'current-session-meta' });
+    setMetric(this.state.session, 'filePath', this.boundPath, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'current-session-meta' });
     return this.boundPath;
   }
 
