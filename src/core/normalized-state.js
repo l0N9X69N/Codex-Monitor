@@ -47,7 +47,7 @@ export function createNormalizedMonitorState({ runId = null, startedAtMs = Date.
       filePath: metric(null),
       threadId: metric(null),
       turnCount: metric(null),
-      turnInProgress: metric(false),
+      turnInProgress: metric(null),
       currentTurnId: metric(null),
       currentTurnStartedAtMs: metric(null),
       lastTurnDurationMs: metric(null),
@@ -58,11 +58,11 @@ export function createNormalizedMonitorState({ runId = null, startedAtMs = Date.
       state: metric('IDLE'),
       detail: metric(null),
       source: metric('runtime'),
-      activeTools: metric([]),
-      approvalPending: metric(false),
+      activeTools: metric(null),
+      approvalPending: metric(null),
       retryCount: metric(null),
       errorCount: metric(null),
-      errorActive: metric(false)
+      errorActive: metric(null)
     },
     compaction: {
       count: metric(null),
