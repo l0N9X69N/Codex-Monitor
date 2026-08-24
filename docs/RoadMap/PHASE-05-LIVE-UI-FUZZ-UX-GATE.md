@@ -63,21 +63,18 @@ Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL
 ## Trạng thái hiện tại
 
 ```text
-IMPLEMENTED — WAITING AUTOMATED VERIFICATION + MANUAL UX VISUAL ACCEPTANCE
+CLOSED
 ```
 
-Implementation hiện có deterministic fuzz seed, 4000-iteration default fuzz run, golden snapshots, canonical 8-case demo matrix, lane hysteresis và resize sequence/UX hierarchy tests.
+Phase 05 đã PASS deterministic fuzz/snapshot/hysteresis/UX automation và manual Live review. Manual test đã phát hiện một lỗi HUD đè prompt; lỗi được sửa bằng terminal scroll-region isolation và user retest PASS.
 
-Chạy:
+Final gate:
 
-```powershell
-.\scripts\phase5-verify.ps1
+```text
+Automated verification        PASS
+Layout invariant failures     0
+P0 UI bugs                     0
+Open Phase 05 P1              0
+Manual Live visual acceptance PASS
+HUD/prompt isolation          PASS
 ```
-
-Sau automated PASS, chạy:
-
-```powershell
-npm run demo:phase5
-```
-
-rồi nghiệm thu `docs/qa/phase-05/MANUAL-TEST-REQUIRED.md` trước khi chuyển sang `CLOSED`.
