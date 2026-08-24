@@ -19,6 +19,7 @@ Chưa có P0 đã biết trong implementation Phase 05.
 - Thêm lane hysteresis để tránh layout đổi 1/2/3 lane liên tục khi width jitter quanh threshold.
 - Fuzz failure có seed + iteration để reproduce.
 - Golden snapshots khóa các layout canonical thay vì update hàng loạt vô điều kiện.
+- Very-short terminal geometry không còn reserve HUD vượt quá terminal height; Monitor tự giảm/hide HUD rows để giữ tối thiểu 8 rows cho Codex child PTY.
 
 ## DEFERRED đúng roadmap
 
