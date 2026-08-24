@@ -22,35 +22,16 @@ function updateActivity(state, atMs, detail = null, source = PROVENANCE.OFFICIAL
 }
 
 function writeDerived(state, atMs) {
-  const context = deriveContext({
-    windowTokens: state.context.windowTokens.value,
-    usedTokens: state.context.usedTokens.value,
-    updatedAtMs: atMs
-  });
+  const context = deriveContext({ windowTokens: state.context.windowTokens.value, usedTokens: state.context.usedTokens.value, updatedAtMs: atMs });
   if (context.leftTokens != null) {
     setMetric(state.context, 'leftTokens', context.leftTokens, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: context.provenance.evidence });
     setMetric(state.context, 'usedPercent', context.usedPercent, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: context.provenance.evidence });
     setMetric(state.context, 'leftPercent', context.leftPercent, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: context.provenance.evidence });
   }
-
-  const cache = deriveCacheRatio({
-    inputTokens: state.usage.inputTokens.value,
-    cachedInputTokens: state.usage.cachedInputTokens.value,
-    updatedAtMs: atMs
-  });
-  if (cache.ratio != null) {
-    setMetric(state.usage, 'cacheRatio', cache.ratio, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: cache.provenance.evidence });
-  }
-
-  const compact = deriveTurnsSinceCompact({
-    turnCount: state.session.turnCount.value,
-    lastEventAtMs: atMs
-  }, {
-    lastCompactTurn: state.compaction.lastCompactTurn.value
-  });
-  if (compact.turnsSinceCompact != null) {
-    setMetric(state.compaction, 'turnsSinceCompact', compact.turnsSinceCompact, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: compact.provenance.evidence });
-  }
+  const cache = deriveCacheRatio({ inputTokens: state.usage.inputTokens.value, cachedInputTokens: state.usage.cachedInputTokens.value, updatedAtMs: atMs });
+  if (cache.ratio != null) setMetric(state.usage, 'cacheRatio', cache.ratio, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: cache.provenance.evidence });
+  const compact = deriveTurnsSinceCompact({ turnCount: state.session.turnCount.value, lastEventAtMs: atMs }, { lastCompactTurn: state.compaction.lastCompactTurn.value });
+  if (compact.turnsSinceCompact != null) setMetric(state.compaction, 'turnsSinceCompact', compact.turnsSinceCompact, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: compact.provenance.evidence });
 }
 
 function applyQuota(state, event, atMs, source) {
@@ -58,12 +39,44 @@ function applyQuota(state, event, atMs, source) {
     const window = normalizeQuotaWindow(raw, slot);
     const bucket = classifyQuotaWindow(window, slot);
     if (!window || !bucket) continue;
-    setMetric(state.quota, bucket, window, {
-      source,
-      observedAtMs: atMs,
-      evidence: `rate-limit:${slot}`
-    });
+    setMetric(state.quota, bucket, window, { source, observedAtMs: atMs, evidence: `rate-limit:${slot}` });
   }
+}
+
+function trackToolStart(state, event, atMs, source) {
+  if (!state.tools) return;
+  const name = event.tool ?? 'tool';
+  const record = { callId: event.callId ?? null, name, startedAtMs: atMs, turnId: state.session.currentTurnId.value ?? null };
+  const counts = { ...(state.tools.counts?.value ?? {}) };
+  counts[name] = (Number(counts[name]) || 0) + 1;
+  const recent = Array.isArray(state.tools.recent?.value) ? [...state.tools.recent.value] : [];
+  recent.push(record);
+  while (recent.length > 20) recent.shift();
+  setMetric(state.tools, 'current', record, { source, observedAtMs: atMs, evidence: 'tool-start' });
+  setMetric(state.tools, 'counts', counts, { source, observedAtMs: atMs, evidence: 'current-run aggregate' });
+  setMetric(state.tools, 'recent', recent, { source, observedAtMs: atMs, evidence: 'current-run only' });
+}
+
+function trackToolEnd(state, event, atMs, source) {
+  if (!state.tools) return;
+  const current = state.tools.current?.value;
+  const matching = current && (!event.callId || !current.callId || current.callId === event.callId) ? current : null;
+  if (matching) {
+    const last = { ...matching, endedAtMs: atMs, ok: true };
+    setMetric(state.tools, 'last', last, { source, observedAtMs: atMs, evidence: 'tool-end' });
+    setMetric(state.tools, 'current', null, { source, observedAtMs: atMs, evidence: 'tool-end' });
+  }
+}
+
+function markToolError(state, detail, atMs, source) {
+  if (!state.tools) return;
+  const current = state.tools.current?.value;
+  if (current) {
+    setMetric(state.tools, 'last', { ...current, endedAtMs: atMs, ok: false, detail: detail ?? null }, { source, observedAtMs: atMs, evidence: 'tool/session error' });
+    setMetric(state.tools, 'current', null, { source, observedAtMs: atMs, evidence: 'tool/session error' });
+  }
+  const count = state.tools.errorCount?.value;
+  setMetric(state.tools, 'errorCount', Number.isFinite(count) ? count + 1 : 1, { source, observedAtMs: atMs, evidence: 'current-run error aggregate' });
 }
 
 export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIAL_CURRENT } = {}) {
@@ -99,6 +112,7 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
         const count = state.activity.errorCount.value;
         setMetric(state.activity, 'errorCount', Number.isFinite(count) ? count + 1 : 1, { source, observedAtMs: atMs });
         setMetric(state.activity, 'errorActive', true, { source, observedAtMs: atMs });
+        markToolError(state, event.error, atMs, source);
         updateActivity(state, atMs, event.error, source);
       } else {
         setMetric(state.activity, 'errorActive', false, { source, observedAtMs: atMs });
@@ -113,6 +127,7 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
       setMetric(state.activity, 'approvalPending', false, { source, observedAtMs: atMs });
       setMetric(state.activity, 'errorActive', false, { source, observedAtMs: atMs });
+      trackToolStart(state, event, atMs, source);
       updateActivity(state, atMs, `running ${event.tool ?? 'tool'}`, source);
       break;
     }
@@ -121,6 +136,7 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       if (event.callId) tools = tools.filter((id) => id !== event.callId);
       else if (tools.length === 1) tools = [];
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
+      trackToolEnd(state, event, atMs, source);
       updateActivity(state, atMs, null, source);
       break;
     }
@@ -139,6 +155,7 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       const count = state.activity.errorCount.value;
       setMetric(state.activity, 'errorCount', Number.isFinite(count) ? count + 1 : 1, { source, observedAtMs: atMs });
       setMetric(state.activity, 'errorActive', true, { source, observedAtMs: atMs });
+      markToolError(state, event.detail, atMs, source);
       updateActivity(state, atMs, event.detail ?? 'session error', source);
       break;
     }
@@ -150,14 +167,9 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       break;
     }
     case 'usage':
-      for (const [key, value] of Object.entries({
-        inputTokens: event.inputTokens,
-        cachedInputTokens: event.cachedInputTokens,
-        outputTokens: event.outputTokens,
-        reasoningTokens: event.reasoningTokens,
-        turnInputTokens: event.turnInputTokens,
-        turnOutputTokens: event.turnOutputTokens
-      })) if (value != null) setMetric(state.usage, key, value, { source, observedAtMs: atMs });
+      for (const [key, metricValue] of Object.entries({ inputTokens: event.inputTokens, cachedInputTokens: event.cachedInputTokens, outputTokens: event.outputTokens, reasoningTokens: event.reasoningTokens, turnInputTokens: event.turnInputTokens, turnOutputTokens: event.turnOutputTokens })) {
+        if (metricValue != null) setMetric(state.usage, key, metricValue, { source, observedAtMs: atMs });
+      }
       if (event.contextWindow != null) setMetric(state.context, 'windowTokens', event.contextWindow, { source, observedAtMs: atMs });
       if (event.contextUsed != null) setMetric(state.context, 'usedTokens', event.contextUsed, { source, observedAtMs: atMs });
       break;
