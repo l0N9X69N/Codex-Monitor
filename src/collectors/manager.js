@@ -37,6 +37,8 @@ export class CollectorManager {
     const collector = this.registry.get(id);
     if (!collector || !state.enabled || state.lastFinishedAtMs == null) {
       state.freshness = FRESHNESS.WAITING;
+    } else if (state.lastError || state.failureCount > 0) {
+      state.freshness = FRESHNESS.STALE;
     } else if (nowMs - state.lastFinishedAtMs > collector.ttlMs) {
       state.freshness = FRESHNESS.STALE;
     } else {
