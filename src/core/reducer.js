@@ -1,6 +1,7 @@
 import { resolveActivityState } from './activity.js';
 import { deriveCacheRatio, deriveContext, deriveTurnsSinceCompact } from './derived.js';
 import { PROVENANCE } from './provenance.js';
+import { classifyQuotaWindow, normalizeQuotaWindow } from './quota.js';
 import { setMetric } from './normalized-state.js';
 
 function activeTools(state) {
@@ -49,6 +50,19 @@ function writeDerived(state, atMs) {
   });
   if (compact.turnsSinceCompact != null) {
     setMetric(state.compaction, 'turnsSinceCompact', compact.turnsSinceCompact, { source: PROVENANCE.DERIVED, observedAtMs: atMs, evidence: compact.provenance.evidence });
+  }
+}
+
+function applyQuota(state, event, atMs, source) {
+  for (const [slot, raw] of [['primary', event.primary], ['secondary', event.secondary]]) {
+    const window = normalizeQuotaWindow(raw, slot);
+    const bucket = classifyQuotaWindow(window, slot);
+    if (!window || !bucket) continue;
+    setMetric(state.quota, bucket, window, {
+      source,
+      observedAtMs: atMs,
+      evidence: `rate-limit:${slot}`
+    });
   }
 }
 
@@ -146,6 +160,9 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       })) if (value != null) setMetric(state.usage, key, value, { source, observedAtMs: atMs });
       if (event.contextWindow != null) setMetric(state.context, 'windowTokens', event.contextWindow, { source, observedAtMs: atMs });
       if (event.contextUsed != null) setMetric(state.context, 'usedTokens', event.contextUsed, { source, observedAtMs: atMs });
+      break;
+    case 'quota':
+      applyQuota(state, event, atMs, source);
       break;
     case 'actual-model':
       if (event.model != null) setMetric(state.model, 'actual', event.model, { source, observedAtMs: atMs });
