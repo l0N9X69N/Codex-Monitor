@@ -34,7 +34,7 @@ test('malformed and partial rollout chunks never corrupt normalized state', () =
   assert.equal(state.session.turnCount.value, null);
 
   ingest.pushRolloutChunk('{"type":"turn_started","payload":{"turn_id":"x"}');
-  assert.equal(state.session.turnInProgress.value, false);
+  assert.equal(state.session.turnInProgress.value, null);
   ingest.pushRolloutChunk('}\n');
   assert.equal(state.session.turnInProgress.value, true);
 });
