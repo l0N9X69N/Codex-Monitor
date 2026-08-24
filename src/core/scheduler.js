@@ -3,6 +3,8 @@ export class CentralScheduler {
     manager,
     instrumentation = null,
     tickMs = 100,
+    maxCollectorRunsPerTick = 2,
+    yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
     setTimer = setTimeout,
     clearTimer = clearTimeout,
     now = () => Date.now()
@@ -11,6 +13,8 @@ export class CentralScheduler {
     this.manager = manager;
     this.instrumentation = instrumentation;
     this.tickMs = Math.max(10, Number(tickMs) || 100);
+    this.maxCollectorRunsPerTick = Math.max(1, Number(maxCollectorRunsPerTick) || 1);
+    this.yieldControl = yieldControl;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.now = now;
@@ -53,7 +57,10 @@ export class CentralScheduler {
     this.instrumentation?.recordPoll?.();
     let runs = 0;
     try {
-      runs = await this.manager.runDue(this.now());
+      runs = await this.manager.runDue(this.now(), {
+        limit: this.maxCollectorRunsPerTick,
+        yieldBetween: this.yieldControl
+      });
     } finally {
       this.tickInFlight = false;
       this.scheduleNext();
