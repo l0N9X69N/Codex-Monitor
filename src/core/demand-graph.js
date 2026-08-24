@@ -8,6 +8,7 @@ const DEFAULT_METRIC_DEFINITIONS = Object.freeze({
   session: { collectorId: 'session', cost: 'light' },
   tools: { collectorId: 'session', cost: 'light' },
   resources: { collectorId: 'resources', cost: 'medium', activeViewOnly: true },
+  disk: { collectorId: 'disk', cost: 'medium', activeViewOnly: true },
   system: { collectorId: 'system', cost: 'medium', activeViewOnly: true },
   performance: { collectorId: 'performance', cost: 'heavy', activeViewOnly: true, continuous: true },
   processes: { collectorId: 'processes', cost: 'heavy', activeViewOnly: true, continuous: true },
@@ -19,7 +20,7 @@ const DEFAULT_METRIC_DEFINITIONS = Object.freeze({
 const DEFAULT_VIEW_METRICS = Object.freeze({
   overview: ['activity', 'model', 'reasoning', 'context', 'usage', 'quota', 'session'],
   tools: ['tools'],
-  resources: ['resources'],
+  resources: ['resources', 'disk'],
   performance: ['performance'],
   processes: ['processes'],
   usage: ['usage', 'quota', 'context', 'model']
@@ -100,20 +101,10 @@ export function buildDemandGraph({
     if (git.aheadBehind) request('gitAheadBehind', 'header:git');
   }
 
-  const metrics = [...requested.values()].map((entry) => ({
-    ...entry,
-    consumers: unique(entry.consumers)
-  }));
-
+  const metrics = [...requested.values()].map((entry) => ({ ...entry, consumers: unique(entry.consumers) }));
   const collectors = new Map();
   for (const entry of metrics) {
-    const current = collectors.get(entry.collectorId) ?? {
-      collectorId: entry.collectorId,
-      metrics: [],
-      consumers: [],
-      continuous: false,
-      maxCost: 'light'
-    };
+    const current = collectors.get(entry.collectorId) ?? { collectorId: entry.collectorId, metrics: [], consumers: [], continuous: false, maxCost: 'light' };
     current.metrics.push(entry.metric);
     current.consumers.push(...entry.consumers);
     current.continuous ||= entry.continuous;
@@ -124,17 +115,9 @@ export function buildDemandGraph({
   return {
     activeTab: activeTabEnabled ? activeTab : null,
     metrics,
-    collectors: [...collectors.values()].map((entry) => ({
-      ...entry,
-      metrics: unique(entry.metrics),
-      consumers: unique(entry.consumers)
-    })),
-    hasMetric(metric) {
-      return requested.has(metric);
-    },
-    hasCollector(collectorId) {
-      return collectors.has(collectorId);
-    }
+    collectors: [...collectors.values()].map((entry) => ({ ...entry, metrics: unique(entry.metrics), consumers: unique(entry.consumers) })),
+    hasMetric(metric) { return requested.has(metric); },
+    hasCollector(collectorId) { return collectors.has(collectorId); }
   };
 }
 
