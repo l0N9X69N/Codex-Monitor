@@ -29,12 +29,12 @@ export class LivePaneController {
     this.state = state;
     this.config = config;
     this.cwd = cwd;
-    this.activeTab = activeTab;
+    this.activeTab = config?.tabs?.includes(activeTab) ? activeTab : (config?.tabs?.[0] ?? 'overview');
     this.debounceMs = debounceMs;
     this.resizeDebounceMs = resizeDebounceMs;
     this.hysteresisCells = hysteresisCells;
     this.setTimer = setTimer;
-    this.clearTimer = clearTimer;
+    this.clearTimer = clearTimeout;
     this.now = now;
     this.timer = null;
     this.resizeTimer = null;
@@ -46,6 +46,22 @@ export class LivePaneController {
       originRow: 1,
       now
     });
+  }
+
+  setActiveTab(tab) {
+    if (!this.config?.tabs?.includes(tab) || tab === this.activeTab) return false;
+    this.activeTab = tab;
+    this.render({ force: true });
+    return true;
+  }
+
+  shiftTab(delta = 1) {
+    const tabs = this.config?.tabs ?? ['overview'];
+    if (tabs.length < 2) return this.activeTab;
+    const current = Math.max(0, tabs.indexOf(this.activeTab));
+    const next = (current + delta + tabs.length) % tabs.length;
+    this.setActiveTab(tabs[next]);
+    return this.activeTab;
   }
 
   geometry() {
