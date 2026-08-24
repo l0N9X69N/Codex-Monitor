@@ -1,0 +1,64 @@
+import { spawn, execFileSync } from 'node:child_process';
+import os from 'node:os';
+import { spawnCodexPty } from './pty.js';
+import { commonPaths, memorySnapshot, normalizeProcessRecord } from './common.js';
+import { normalizeCapabilities, unsupportedResult } from './contract.js';
+
+function parsePs(text) {
+  const lines = String(text ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.map((line) => {
+    const match = line.match(/^(\d+)\s+(\d+)\s+(\S+)\s+([\d.]+)\s+(\d+)\s+(\d+)-(\d+):(\d+):(\d+)\s*(.*)$/);
+    if (!match) return null;
+    const [, pid, ppid, name, cpu, rssKb, days, hours, minutes, seconds, command] = match;
+    const ageMs = ((((Number(days) * 24) + Number(hours)) * 60 + Number(minutes)) * 60 + Number(seconds)) * 1000;
+    return normalizeProcessRecord({
+      pid: Number(pid), ppid: Number(ppid), name, cpuPercent: Number(cpu), memoryBytes: Number(rssKb) * 1024,
+      ageMs, command: command || name
+    });
+  }).filter(Boolean);
+}
+
+export function createPosixMethods({ platform, env = process.env, terminalLaunchers = [] } = {}) {
+  return {
+    async spawnPty(options) { return spawnCodexPty({ ...options, platform }); },
+    async getSystemUsage() {
+      const memory = memorySnapshot();
+      const cpus = Math.max(1, os.cpus()?.length ?? 1);
+      const load = Number(os.loadavg()?.[0]);
+      const cpuPercent = Number.isFinite(load) ? Math.max(0, Math.min(100, (load / cpus) * 100)) : null;
+      return { cpuPercent, memoryBytes: memory.usedBytes, totalMemoryBytes: memory.totalBytes, freeMemoryBytes: memory.freeBytes };
+    },
+    async getProcessTree() {
+      try {
+        const output = execFileSync('ps', ['-axo', 'pid=,ppid=,comm=,%cpu=,rss=,etime=,args='], {
+          encoding: 'utf8', timeout: 2500, stdio: ['ignore', 'pipe', 'ignore']
+        });
+        return parsePs(output);
+      } catch (error) { return unsupportedResult('processTree', error?.message ?? 'ps failed'); }
+    },
+    async getDiskInfo(cwd = process.cwd()) {
+      try {
+        const output = execFileSync('df', ['-kP', cwd], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
+        const line = output.trim().split(/\r?\n/).at(-1) ?? '';
+        const fields = line.trim().split(/\s+/);
+        const totalKb = Number(fields[1]);
+        const freeKb = Number(fields[3]);
+        return { path: cwd, totalBytes: Number.isFinite(totalKb) ? totalKb * 1024 : null, freeBytes: Number.isFinite(freeKb) ? freeKb * 1024 : null };
+      } catch (error) { return unsupportedResult('diskInfo', error?.message ?? 'df failed'); }
+    },
+    async openHistoryTerminal({ command = 'codexm', args = ['--history'], cwd = process.cwd() } = {}) {
+      for (const launcher of terminalLaunchers) {
+        try {
+          const spec = launcher({ command, args, cwd });
+          const child = spawn(spec.file, spec.args, { cwd, env, detached: true, stdio: 'ignore' });
+          child.unref();
+          return { ok: true, launcher: spec.file };
+        } catch {}
+      }
+      return { ok: false, error: 'could not open a supported terminal launcher' };
+    },
+    paths() { return commonPaths({ env }); },
+    capabilities() { return normalizeCapabilities({ pty: true, systemUsage: true, processTree: true, diskInfo: true, historyTerminal: terminalLaunchers.length > 0, mouse: true, truecolor: null }); },
+    async cleanup() { return true; }
+  };
+}
