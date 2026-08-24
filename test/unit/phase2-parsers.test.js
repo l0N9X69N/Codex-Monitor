@@ -89,6 +89,24 @@ test('incremental parser buffers partial appended line', () => {
   assert.equal(second[0].event.kind, 'turn-start');
 });
 
+test('Codex event_msg and response_item envelopes use payload.type', () => {
+  const turn = parse({
+    timestamp: '2026-08-24T10:00:00.000Z',
+    type: 'event_msg',
+    payload: { type: 'turn_started', turn_id: 't-envelope' }
+  });
+  assert.equal(turn.kind, 'turn-start');
+  assert.equal(turn.turnId, 't-envelope');
+
+  const tool = parse({
+    timestamp: '2026-08-24T10:00:01.000Z',
+    type: 'response_item',
+    payload: { type: 'function_call', call_id: 'c-envelope', name: 'shell' }
+  });
+  assert.equal(tool.kind, 'tool-start');
+  assert.equal(tool.callId, 'c-envelope');
+});
+
 test('ANSI/control injection is removed before normalized detail', () => {
   const dirty = '\u001b[31mERROR\u001b[0m\u0007\nnext';
   assert.equal(sanitizeText(dirty), 'ERROR next');
