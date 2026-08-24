@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**IMPLEMENTED — chờ automated verification và manual PTY responsiveness acceptance.**
+**CLOSED — automated verification và manual PTY responsiveness acceptance đều PASS.**
 
 ## Đã làm
 
@@ -17,6 +17,16 @@
 - Synthetic PTY load harness để kiểm tra scheduler không làm typing/output Codex bị lag.
 - Regression tests Phase 01/02 vẫn chạy trong full suite.
 
+## Acceptance đã xác nhận
+
+- Automated verification: PASS.
+- Full demand/scheduler/diff-renderer gate: PASS.
+- P1-01 PTY responsiveness với scheduler active: PASS.
+- Không thấy typing lag rõ do scheduler.
+- Không thấy output starvation bất thường do polling.
+- Resize không crash.
+- `/exit` và terminal lifecycle sạch.
+
 ## Chưa làm trong Phase 03
 
 - Full visual Live UI: Phase 04.
@@ -24,12 +34,16 @@
 - Decorative animation loop: không thuộc thiết kế v1.
 - Persist Performance history: không làm.
 
-## Exit gate còn lại
+## Exit gate
 
-Chạy:
-
-```powershell
-.\scripts\phase3-verify.ps1
+```text
+mandatory auto tests PASS
+BLOCKER = 0
+P0 = 0
+P1 manual acceptance PASS
+hidden/inactive heavy workloads = 0 in tests
+same state = 0 repaint
+timer leak = 0 in tests/manual acceptance
 ```
 
-Sau automated PASS, chạy manual PTY responsiveness test trong `MANUAL-TEST-REQUIRED.md`.
+**Phase 03 đã đóng. Có thể bắt đầu Phase 04.**
