@@ -56,9 +56,15 @@ export class CollectorManager {
     return due.sort((a, b) => b.collector.priority - a.collector.priority);
   }
 
-  async runDue(nowMs = this.now()) {
-    const due = this.dueCollectors(nowMs);
-    for (const item of due) await this.runCollector(item.collector.id, nowMs);
+  async runDue(nowMs = this.now(), {
+    limit = Number.POSITIVE_INFINITY,
+    yieldBetween = null
+  } = {}) {
+    const due = this.dueCollectors(nowMs).slice(0, Math.max(0, limit));
+    for (let index = 0; index < due.length; index += 1) {
+      await this.runCollector(due[index].collector.id, nowMs);
+      if (yieldBetween && index < due.length - 1) await yieldBetween();
+    }
     return due.length;
   }
 
