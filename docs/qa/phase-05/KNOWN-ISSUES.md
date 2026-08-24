@@ -2,17 +2,15 @@
 
 ## BLOCKER
 
-Chưa biết cho đến khi `phase5-verify.ps1` và manual UX gate được chạy trên working tree mới nhất.
+**0**
 
 ## P0
 
-Chưa có P0 đã biết trong implementation Phase 05.
+**0 open P0 issues.**
 
-## P1 cần nghiệm thu
+## P1
 
-- Canonical demo matrix cần user chốt visual hierarchy trên Windows Terminal thật.
-- Resize hysteresis cần kiểm tra bằng kéo terminal thật vì terminal/font/compositor khác nhau.
-- Custom nhiều/ít metric cần user đánh giá có còn gọn, không thành telemetry wall.
+**0 open Phase 05 P1 acceptance issues.**
 
 ## RESOLVED DURING PHASE 05
 
@@ -20,6 +18,8 @@ Chưa có P0 đã biết trong implementation Phase 05.
 - Fuzz failure có seed + iteration để reproduce.
 - Golden snapshots khóa các layout canonical thay vì update hàng loạt vô điều kiện.
 - Very-short terminal geometry không còn reserve HUD vượt quá terminal height; Monitor tự giảm/hide HUD rows để giữ tối thiểu 8 rows cho Codex child PTY.
+- Unknown numeric telemetry giữ `--` thay vì bị coercion thành `0`.
+- Manual test phát hiện HUD có thể đè prompt. Đã sửa bằng terminal scroll-region isolation: Codex child chỉ scroll/vẽ trong reserved viewport, HUD nằm ngoài vùng scroll; region được cập nhật khi resize và restore khi exit. User retest PASS.
 
 ## DEFERRED đúng roadmap
 
