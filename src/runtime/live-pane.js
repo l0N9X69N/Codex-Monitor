@@ -3,6 +3,7 @@ import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 
 const SAVE_CURSOR = '\x1b7';
 const RESTORE_CURSOR = '\x1b8';
+const MIN_CHILD_ROWS = 8;
 
 function clearRows(originRow, count) {
   let output = '';
@@ -50,7 +51,7 @@ export class LivePaneController {
   geometry() {
     const width = Math.max(20, this.stdout.columns || 80);
     const height = Math.max(8, this.stdout.rows || 24);
-    const frame = buildLiveFrame({
+    const rawFrame = buildLiveFrame({
       state: this.state,
       config: this.config,
       width,
@@ -61,13 +62,19 @@ export class LivePaneController {
       previousLaneCount: this.lastGeometry?.frame?.layout?.laneCount ?? null,
       hysteresisCells: this.hysteresisCells
     });
-    const monitorRows = Math.max(3, frame.rowCount);
-    const childRows = Math.max(8, height - monitorRows);
+
+    const availableMonitorRows = Math.max(0, height - MIN_CHILD_ROWS);
+    const monitorRows = Math.min(rawFrame.rowCount, availableMonitorRows);
+    const childRows = Math.max(MIN_CHILD_ROWS, height - monitorRows);
+    const frame = monitorRows === rawFrame.rowCount
+      ? rawFrame
+      : { ...rawFrame, lines: rawFrame.lines.slice(0, monitorRows), rowCount: monitorRows };
+
     return { width, height, monitorRows, childRows, originRow: childRows + 1, frame };
   }
 
   clear(geometry = this.lastGeometry) {
-    if (!geometry) return;
+    if (!geometry || geometry.monitorRows <= 0) return;
     const output = clearRows(geometry.originRow, geometry.monitorRows);
     if (output) this.stdout.write(`${SAVE_CURSOR}${output}${RESTORE_CURSOR}`);
   }
