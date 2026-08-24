@@ -69,7 +69,9 @@ export class CurrentSessionTailer {
         filePath,
         startedAtMs: meta?.atMs ?? null,
         lastEventAtMs: stat.mtimeMs,
-        appendedAfterRun: stat.mtimeMs >= runStartedAtMs,
+        // Initial binding never treats mtime as proof of a current run. The
+        // session_meta event timestamp is the required evidence here.
+        appendedAfterRun: false,
         cwd: meta?.cwd ?? null,
         currentProcessHint: false,
         sizeBytes: stat.size
@@ -80,8 +82,8 @@ export class CurrentSessionTailer {
     this.boundPath = selected.filePath;
     this.offset = 0;
     this.remainder = '';
-    setMetric(this.state.session, 'bound', true, { source: PROVENANCE.LOCAL, observedAtMs: this.now(), evidence: 'current-session-binding' });
-    setMetric(this.state.session, 'filePath', this.boundPath, { source: PROVENANCE.LOCAL, observedAtMs: this.now(), evidence: 'current-session-binding' });
+    setMetric(this.state.session, 'bound', true, { source: PROVENANCE.LOCAL, observedAtMs: this.now(), evidence: 'current-session-meta' });
+    setMetric(this.state.session, 'filePath', this.boundPath, { source: PROVENANCE.LOCAL, observedAtMs: this.now(), evidence: 'current-session-meta' });
     return this.boundPath;
   }
 
