@@ -43,27 +43,15 @@ async function main() {
 
   if (loaded.error) process.stderr.write(`codexm: config could not be read; using defaults (${loaded.error.message}).\n`);
 
-  if (parsed.action === 'help') {
-    printHelp();
-    return 0;
-  }
-  if (parsed.action === 'monitor-version') {
-    process.stdout.write(`${VERSION}\n`);
-    return 0;
-  }
+  if (parsed.action === 'help') { printHelp(); return 0; }
+  if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
     const report = doctorReport();
     printDoctor(report);
     return report.codexPath ? 0 : 2;
   }
-  if (parsed.action === 'config-path') {
-    process.stdout.write(`${configPath}\n`);
-    return 0;
-  }
-  if (parsed.action === 'config') {
-    process.stdout.write(`${JSON.stringify(config, null, 2)}\n`);
-    return 0;
-  }
+  if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
+  if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
   if (parsed.action === 'configure') {
     const result = await configureMonitor({ currentConfig: loaded.config, filePath: configPath });
     return result.saved ? 0 : 1;
@@ -78,9 +66,7 @@ async function main() {
     const height = Math.max(8, process.stdout.rows || 30);
     const frame = renderDemo({
       state: parsed.demo.state,
-      preset: config.preset,
-      theme: config.theme,
-      language: config.language,
+      config,
       width,
       height,
       authMode: parsed.auth === 'api' ? 'api' : 'login',
