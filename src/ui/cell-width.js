@@ -42,9 +42,10 @@ export function cellWidth(value = '') {
 }
 
 export function truncateCells(value, maxCells, suffix = '…') {
-  const text = String(value ?? '').replace(/[\r\n\t]+/g, ' ');
+  const original = String(value ?? '').replace(/[\r\n\t]+/g, ' ');
   if (!Number.isFinite(maxCells) || maxCells <= 0) return '';
-  if (cellWidth(text) <= maxCells) return text;
+  if (cellWidth(original) <= maxCells) return original;
+  const text = stripAnsi(original);
   const suffixWidth = cellWidth(suffix);
   const budget = Math.max(0, maxCells - suffixWidth);
   let out = '';
