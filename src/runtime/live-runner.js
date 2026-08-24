@@ -1,7 +1,11 @@
 import { TerminalGuard } from '../terminal/guard.js';
 import { installProcessSafety } from '../terminal/process-safety.js';
 import { childEnvironmentForAuth, codexArgsForAuth } from '../core/auth.js';
+import { applyNormalizedEvent } from '../core/reducer.js';
+import { PROVENANCE } from '../core/provenance.js';
+import { parsePtyTransient } from '../parsers/pty-transient.js';
 import { spawnCodexPty } from '../platform/pty.js';
+import { LivePaneController } from './live-pane.js';
 
 const SIGNAL_EXIT_CODE = Object.freeze({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 });
 
@@ -9,6 +13,8 @@ export async function runCodexLive({
   codexPath,
   codexArgs = [],
   auth,
+  monitorState = null,
+  monitorConfig = null,
   cwd = process.cwd(),
   env = process.env,
   stdin = process.stdin,
@@ -25,8 +31,12 @@ export async function runCodexLive({
   const guard = new TerminalGuard({ stdin, stdout });
   const childEnv = childEnvironmentForAuth(auth, env);
   const childArgs = codexArgsForAuth(auth, codexArgs);
+  const pane = monitorState && monitorConfig
+    ? new LivePaneController({ stdout, state: monitorState, config: monitorConfig, cwd })
+    : null;
+  const initialGeometry = pane?.geometry?.() ?? null;
   const cols = Math.max(20, stdout.columns || 80);
-  const rows = Math.max(8, stdout.rows || 24);
+  const rows = initialGeometry?.childRows ?? Math.max(8, stdout.rows || 24);
 
   let child = null;
   let exiting = false;
@@ -39,6 +49,7 @@ export async function runCodexLive({
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.off?.('data', onInput); } catch {}
     try { stdin.pause?.(); } catch {}
+    pane?.dispose?.();
     guard.restore();
     disposeSafety();
   };
@@ -50,11 +61,17 @@ export async function runCodexLive({
     cleanup();
   };
 
-  const onResize = () => {
+  const resizeChild = (geometry = null) => {
     if (!child || exiting) return;
     const nextCols = Math.max(20, stdout.columns || 80);
-    const nextRows = Math.max(8, stdout.rows || 24);
+    const nextRows = geometry?.childRows ?? Math.max(8, stdout.rows || 24);
     try { child.resize(nextCols, nextRows); } catch {}
+  };
+
+  const onResize = () => {
+    if (!child || exiting) return;
+    if (pane) pane.onResize((geometry) => resizeChild(geometry));
+    else resizeChild();
   };
 
   const onInput = (data) => {
@@ -76,6 +93,7 @@ export async function runCodexLive({
     stdin.resume?.();
     stdin.on?.('data', onInput);
     stdout.on?.('resize', onResize);
+    pane?.render?.({ force: true });
   } catch (error) {
     cleanup();
     throw error;
@@ -107,6 +125,14 @@ export async function runCodexLive({
     child.onData((data) => {
       if (exiting) return;
       try { stdout.write(data); } catch {}
+      if (pane && monitorState) {
+        for (const event of parsePtyTransient(data, Date.now())) {
+          applyNormalizedEvent(monitorState, event, { source: PROVENANCE.LOCAL });
+        }
+        // Codex may clear/repaint its viewport, so redraw the reserved HUD after
+        // PTY output. The controller coalesces bursts instead of running a FPS loop.
+        pane.invalidate({ force: true });
+      }
     });
 
     child.onExit(({ exitCode: childExitCode }) => {
