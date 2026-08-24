@@ -1,3 +1,5 @@
+import { FRESHNESS } from '../core/freshness.js';
+
 export class CollectorManager {
   constructor({ registry, instrumentation = null, now = () => Date.now() } = {}) {
     if (!registry) throw new Error('CollectorManager requires a registry');
@@ -14,6 +16,7 @@ export class CollectorManager {
       const current = this.runtime.get(collector.id) ?? {
         enabled: false,
         running: false,
+        freshness: FRESHNESS.WAITING,
         lastStartedAtMs: null,
         lastFinishedAtMs: null,
         nextRunAtMs: 0,
@@ -28,8 +31,18 @@ export class CollectorManager {
     }
   }
 
-  stateFor(id) {
-    return this.runtime.get(id) ?? null;
+  stateFor(id, nowMs = this.now()) {
+    const state = this.runtime.get(id) ?? null;
+    if (!state) return null;
+    const collector = this.registry.get(id);
+    if (!collector || !state.enabled || state.lastFinishedAtMs == null) {
+      state.freshness = FRESHNESS.WAITING;
+    } else if (nowMs - state.lastFinishedAtMs > collector.ttlMs) {
+      state.freshness = FRESHNESS.STALE;
+    } else {
+      state.freshness = FRESHNESS.CURRENT;
+    }
+    return state;
   }
 
   dueCollectors(nowMs = this.now()) {
@@ -73,6 +86,7 @@ export class CollectorManager {
     } finally {
       state.running = false;
       state.lastFinishedAtMs = this.now();
+      state.freshness = ok ? FRESHNESS.CURRENT : FRESHNESS.STALE;
       const durationMs = Math.max(0, state.lastFinishedAtMs - started);
       this.instrumentation?.recordCollectorRun?.(id, durationMs, { ok });
 
@@ -90,6 +104,7 @@ export class CollectorManager {
   stopAll() {
     for (const state of this.runtime.values()) {
       state.enabled = false;
+      state.freshness = FRESHNESS.WAITING;
       state.nextRunAtMs = 0;
       state.demand = null;
     }
