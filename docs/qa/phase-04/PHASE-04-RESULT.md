@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**IMPLEMENTED — chờ automated verification và manual visual/responsive acceptance.**
+**CLOSED — automated verification PASS + manual visual/responsive acceptance PASS.**
 
 ## Đã làm
 
@@ -21,6 +21,19 @@
 - Official Codex tiếp tục chạy trong PTY ở cùng terminal; Live pane nhận normalized state và transient PTY state.
 - `--demo` + `--demo-state idle|thinking|tool|approval|error` để nghiệm thu states/presets/themes/dimensions.
 - Full regression Phase 01–03 vẫn nằm trong verification Phase 04.
+- Unknown telemetry semantics được khóa lại sau manual review: unknown RAM hiển thị `--`, không masquerade thành `0`.
+
+## Acceptance
+
+- Automated verification: **PASS**.
+- Manual responsive/visual direction: **PASS**.
+- Login/API quota isolation UI: **PASS**.
+- Live thật + resize + clean exit: **PASS**.
+- Unicode/terminal-cell direction: **PASS**.
+- Custom/header/tabs direction: **PASS**.
+- BLOCKER: **0**.
+- P0: **0**.
+- Open Phase 04 P1: **0**.
 
 ## Chưa làm trong Phase 04
 
@@ -29,12 +42,6 @@
 - History UI: Phase 08+.
 - Full current-session collector wiring cho mọi Overview metric: collector phases sau; renderer giữ `--` cho dữ liệu chưa có evidence.
 
-## Exit gate còn lại
+## Exit gate
 
-Chạy:
-
-```powershell
-.\scripts\phase4-verify.ps1
-```
-
-Sau automated PASS, nghiệm thu checklist trong `MANUAL-TEST-REQUIRED.md` trên Windows Terminal ở nhiều kích thước, resize nhanh, theme/preset/custom và Live thật.
+**PASS. Phase 04 closed and ready for Phase 05.**
