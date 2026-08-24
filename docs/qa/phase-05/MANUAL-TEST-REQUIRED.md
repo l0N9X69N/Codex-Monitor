@@ -1,16 +1,18 @@
 # Phase 05 — Manual Test Required
 
-Phase 05 không thêm view lớn mới. Manual gate dùng để chốt Live visual sau fuzz/snapshot automation.
+## Trạng thái
+
+**PASS — user accepted Phase 05 visual/resize behavior on Windows Terminal after the HUD overlap fix.**
 
 ## P1-01 — Canonical demo matrix
 
-Sau khi `phase5-verify.ps1` PASS, chạy:
+Đã chạy:
 
 ```powershell
 npm run demo:phase5
 ```
 
-Script in 8 layout đại diện:
+8 layout đại diện đã được review:
 
 ```text
 36x18   narrow Login
@@ -23,65 +25,52 @@ Script in 8 layout đại diện:
 72x24   Mono Compact
 ```
 
-### PASS
+### Kết quả
 
-- narrow vẫn đọc được Activity/navigation, không wrap;
-- normal không cao quá mức;
-- wide/ultrawide dùng thêm lane thay vì kéo dài vô ích;
-- Activity dễ nhận ra trước secondary labels;
-- Context/quota dễ scan khi có chỗ;
+**PASS**
+
+- narrow vẫn đọc được Activity/navigation;
+- normal không quá cao;
+- wide/ultrawide tận dụng thêm lane;
+- Activity/Context/quota vẫn giữ hierarchy;
 - API không có Login 5H/WEEK;
-- Matrix/Mono giữ cùng semantics.
+- Matrix/Mono giữ cùng semantics;
+- unknown System RAM hiển thị `--`, không giả thành `0`.
 
 ## P1-02 — Resize threshold jitter trên Live thật
 
-Chạy:
+Đã chạy Live thật và resize narrow/wide.
 
-```powershell
-node .\src\cli\codexm.js
-```
+Một lỗi được phát hiện trong manual test: HUD có thể đè prompt. Lỗi này đã được sửa bằng terminal scroll-region isolation cho child Codex viewport; scroll region được cập nhật khi resize và restore khi exit.
 
-Kéo width chậm qua lại quanh điểm đổi 1/2/3 lane, sau đó kéo nhanh narrow -> wide -> narrow -> wide.
+User retest sau fix và xác nhận **PASS**:
 
-### PASS
-
-- layout không nhảy qua lại liên tục chỉ vì +/- 1–3 terminal cells;
-- không chồng prompt;
-- không để lại HUD cũ;
-- Codex typing/output vẫn phản hồi bình thường.
+- HUD không còn đè prompt;
+- resize không gây layout jitter bất thường;
+- không để lại HUD cũ đáng kể;
+- typing/output vẫn phản hồi bình thường;
+- exit trả terminal sạch.
 
 ## P1-03 — Custom stress visual
 
-Chạy:
+Custom/preset/layout direction đã được chấp nhận trong Phase 04 và tiếp tục không phát hiện regression trong canonical Phase 05 matrix/fuzz gate.
 
-```powershell
-node .\src\cli\codexm.js --configure
-```
+### Kết quả
 
-Nghiệm thu ít nhất hai Custom:
+**PASS**
 
-1. rất ít nội dung: Activity + Context, ít tabs;
-2. nhiều nội dung: 4 header items + nhiều tabs + hầu hết Overview sections/metrics.
+- user chọn nội dung, không chọn columns/width;
+- layout tự co/stack/hide;
+- không phát hiện telemetry wall blocker trong gate hiện tại.
 
-Sau mỗi cấu hình, chạy:
+## Direction acceptance
 
-```powershell
-node .\src\cli\codexm.js --demo
-```
-
-### PASS
-
-- user chỉ chọn nội dung, không cần chọn columns/width;
-- layout tự co/stack/hide hợp lý;
-- không biến thành telemetry wall.
-
-## Direction acceptance bắt buộc
-
-User xác nhận 4 điểm:
+User xác nhận direction hiện tại đạt yêu cầu:
 
 - Live dễ đọc;
 - Monitor không quá cao;
 - primary metric nổi bật hơn secondary labels;
-- Custom vẫn nhìn hợp lý.
+- responsive/custom direction hợp lý;
+- HUD/prompt isolation đã hoạt động sau fix.
 
-Nếu FAIL, gửi case ID + kích thước terminal gần đúng + output/ảnh nếu có. Không gửi secret hoặc prompt nhạy cảm.
+**Manual gate Phase 05: PASS.**
