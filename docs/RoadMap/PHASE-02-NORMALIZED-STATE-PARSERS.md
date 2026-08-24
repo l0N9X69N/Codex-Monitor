@@ -4,7 +4,6 @@
 
 > **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
 
-
 ## Spec liên quan
 
 Spec mục 3, 8–10, 18–23, 56, 58.
@@ -64,8 +63,16 @@ Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL
 
 Parser/state tests xanh và renderer không cần đọc raw rollout trực tiếp.
 
-## Trạng thái ban đầu
+## Trạng thái hiện tại
 
 ```text
-NOT STARTED
+IMPLEMENTED — WAITING AUTOMATED VERIFICATION
 ```
+
+Chạy:
+
+```powershell
+.\scripts\phase2-verify.ps1
+```
+
+Phase 02 chỉ chuyển sang `CLOSED` khi syntax + full cumulative regression + focused parser/ingest tests đều PASS.
