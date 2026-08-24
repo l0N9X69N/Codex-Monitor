@@ -24,11 +24,16 @@ function parseCsvLine(line) {
 
 function windowsProcessTree() {
   const script = [
-    '$p=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,WorkingSetSize,CreationDate;',
-    '$p | ConvertTo-Csv -NoTypeInformation'
+    '$cores=[Math]::Max(1,[Environment]::ProcessorCount);',
+    '$perf=@{}; Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { if($_.IDProcess -gt 0){$perf[[int]$_.IDProcess]=[double]$_.PercentProcessorTime/$cores} };',
+    '$now=Get-Date;',
+    'Get-CimInstance Win32_Process | ForEach-Object {',
+    '$age=$null; if($_.CreationDate){try{$age=[Math]::Max(0,($now-$_.CreationDate).TotalMilliseconds)}catch{}};',
+    '[pscustomobject]@{ProcessId=$_.ProcessId;ParentProcessId=$_.ParentProcessId;Name=$_.Name;CommandLine=$_.CommandLine;WorkingSetSize=$_.WorkingSetSize;AgeMs=$age;CpuPercent=$perf[[int]$_.ProcessId]}',
+    '} | ConvertTo-Csv -NoTypeInformation'
   ].join(' ');
   const text = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    encoding: 'utf8', windowsHide: true, timeout: 3500, stdio: ['ignore', 'pipe', 'ignore']
+    encoding: 'utf8', windowsHide: true, timeout: 4500, stdio: ['ignore', 'pipe', 'ignore']
   });
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
@@ -36,14 +41,14 @@ function windowsProcessTree() {
   return lines.slice(1).map((line) => {
     const row = parseCsvLine(line);
     const entry = Object.fromEntries(header.map((key, index) => [key, row[index]]));
-    const created = Date.parse(entry.CreationDate);
     return normalizeProcessRecord({
       pid: Number(entry.ProcessId),
       ppid: Number(entry.ParentProcessId),
       name: entry.Name,
       command: entry.CommandLine || entry.Name,
+      cpuPercent: entry.CpuPercent === '' ? null : Number(entry.CpuPercent),
       memoryBytes: Number(entry.WorkingSetSize),
-      ageMs: Number.isFinite(created) ? Math.max(0, Date.now() - created) : null
+      ageMs: entry.AgeMs === '' ? null : Number(entry.AgeMs)
     });
   });
 }
@@ -96,3 +101,5 @@ export function createWindowsPlatformAdapter({ env = process.env } = {}) {
   };
   return assertPlatformAdapter(adapter);
 }
+
+export { parseCsvLine, windowsProcessTree };
