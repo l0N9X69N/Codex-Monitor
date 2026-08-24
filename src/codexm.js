@@ -6,10 +6,27 @@ import path from 'node:path';
 import process from 'node:process';
 import ptyPkg from '@homebridge/node-pty-prebuilt-multiarch';
 import { QuotaTracker, getSessionsRoot } from './quota.js';
-import { monitorRowsForCols, renderMonitor, truncateAnsi } from './render.js';
+import {
+  monitorRowsForCols as liteRowsForCols,
+  renderMonitor as renderLite,
+  truncateAnsi
+} from './render.js';
+import {
+  FULL_MIN_COLS,
+  FULL_MIN_ROWS,
+  monitorRowsForCols as fullRowsForCols,
+  renderMonitor as renderFull
+} from './render-full.js';
 import { PtyTransientTracker } from './transient.js';
+import {
+  authSourceSummary,
+  childEnvironmentForProfile,
+  codexArgsForProfile,
+  resolveProfile
+} from './profile.js';
 
-const VERSION = '0.3.7';
+const VERSION = '1.0.0';
+const PROFILE = resolveProfile();
 const ESC = '\x1b';
 const WRAPPER_STARTED_AT = Date.now();
 
@@ -51,13 +68,13 @@ function quoteCmdArg(value) {
   return `"${s}"`;
 }
 
-function spawnCodex(codexPath, args, cols, rows) {
+function spawnCodex(codexPath, args, cols, rows, childEnv = process.env) {
   const options = {
     name: process.env.TERM || 'xterm-256color',
     cols,
     rows,
     cwd: process.cwd(),
-    env: { ...process.env, TERM: process.env.TERM || 'xterm-256color' }
+    env: { ...childEnv, TERM: childEnv.TERM || process.env.TERM || 'xterm-256color' }
   };
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(codexPath)) {
     const comspec = process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
@@ -92,7 +109,9 @@ const runtime = {
   branch: initialGit.branch,
   dirtyCount: initialGit.dirtyCount,
   observedModel: null,
-  observedReasoning: null
+  observedReasoning: null,
+  profile: PROFILE,
+  authSource: authSourceSummary(PROFILE)
 };
 
 const CHILD_ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
@@ -107,26 +126,45 @@ function observeChildOutput(data) {
   runtime.observedReasoning = match[2];
 }
 
+function fullRendererActive(cols, totalRows) {
+  return PROFILE.ui === 'full' && cols >= FULL_MIN_COLS && totalRows >= FULL_MIN_ROWS;
+}
+
+function monitorRowsForTerminal(cols, totalRows) {
+  return fullRendererActive(cols, totalRows) ? fullRowsForCols(cols) : liteRowsForCols(cols);
+}
+
+function renderDashboard(state, cols, totalRows, nowMs, run = runtime) {
+  return fullRendererActive(cols, totalRows)
+    ? renderFull(state, cols, nowMs, run)
+    : renderLite(state, cols, nowMs, run);
+}
+
 function terminalSize() {
   const cols = Math.max(20, process.stdout.columns || 80);
   const totalRows = Math.max(10, process.stdout.rows || 30);
-  const monitorRows = monitorRowsForCols(cols);
+  const monitorRows = monitorRowsForTerminal(cols, totalRows);
   return { cols, totalRows, monitorRows, childRows: Math.max(5, totalRows - monitorRows) };
 }
 
 function doctor() {
   const codex = resolveCodex();
   const sessions = getSessionsRoot();
-  const tracker = new QuotaTracker({ sessionsRoot: sessions });
+  const tracker = new QuotaTracker({
+    sessionsRoot: sessions,
+    includeAccountQuota: PROFILE.auth !== 'api'
+  });
   const state = tracker.refresh(true);
   const lines = [
     `Codex Monitor Wrapper ${VERSION}`,
+    `Profile: ${PROFILE.command} (${PROFILE.label})`,
+    `Auth source: ${authSourceSummary(PROFILE)}`,
     `Node: ${process.version} (${process.platform}/${process.arch})`,
     `Codex: ${codex ?? 'NOT FOUND'}`,
     `Sessions: ${sessions}${fs.existsSync(sessions) ? '' : ' (not found yet)'}`,
     `Active rollout: ${state?.filePath ?? 'not found yet'}`,
-    `5h quota: ${state?.fiveHour ? `${Math.round(state.fiveHour.remainingPercent)}% left` : 'not found yet'}`,
-    `Week quota: ${state?.weekly ? `${Math.round(state.weekly.remainingPercent)}% left` : 'not found yet'}`,
+    `5h quota: ${PROFILE.auth === 'api' ? 'n/a (API profile)' : state?.fiveHour ? `${Math.round(state.fiveHour.remainingPercent)}% left` : 'not found yet'}`,
+    `Week quota: ${PROFILE.auth === 'api' ? 'n/a (API profile)' : state?.weekly ? `${Math.round(state.weekly.remainingPercent)}% left` : 'not found yet'}`, 
     `Token usage: ${state?.usage?.total ? 'found' : 'not found yet'}`,
     `Activity: ${state?.meta?.activityState ?? 'IDLE'}`,
     `Compactions/retries/errors: ${state?.meta?.compactCount ?? 0}/${state?.meta?.retryCount ?? 0}/${state?.meta?.errorCount ?? 0}`,
@@ -142,7 +180,12 @@ function demoState(activityState, nowMs = Date.now()) {
   const weekResetSeconds = Math.floor(nowMs / 1000) + 6 * 86400 + 6 * 3600;
   return {
     filePath: null,
-    fiveHour: null,
+    fiveHour: {
+      remainingPercent: 64,
+      usedPercent: 36,
+      resetsAt: Math.floor(nowMs / 1000) + 3 * 3600 + 42 * 60,
+      windowMinutes: 300
+    },
     weekly: {
       remainingPercent: 82,
       usedPercent: 18,
@@ -181,7 +224,14 @@ function demoState(activityState, nowMs = Date.now()) {
       lastEventAtMs: nowMs,
       compactCount: 0,
       retryCount: activityState === 'ERROR' ? 1 : 0,
-      errorCount: activityState === 'ERROR' ? 1 : 0
+      errorCount: activityState === 'ERROR' ? 1 : 0,
+      activeToolIds: activityState === 'TOOL' ? ['demo-tool'] : [],
+      anonymousToolDepth: 0,
+      approvalPending: activityState === 'APPROVAL',
+      errorActive: activityState === 'ERROR',
+      activitySource: 'demo',
+      activityDetail: activityState === 'TOOL' ? 'running shell' : activityState.toLowerCase(),
+      lastToolName: 'shell'
     }
   };
 }
@@ -208,7 +258,9 @@ function runDemo(fixedState = null) {
     branch: 'demo/state-preview',
     dirtyCount: 2,
     observedModel: 'gpt-5.4-mini',
-    observedReasoning: 'medium'
+    observedReasoning: 'medium',
+    profile: PROFILE,
+    authSource: authSourceSummary(PROFILE)
   };
 
   let stateIndex = Math.max(0, fixedState ? DEMO_STATES.indexOf(fixedState) : 0);
@@ -220,9 +272,9 @@ function runDemo(fixedState = null) {
     const nowMs = Date.now();
     const activityState = fixedState ?? DEMO_STATES[stateIndex];
     const state = demoState(activityState, nowMs);
-    const cols = Math.max(72, process.stdout.columns || 120);
+    const cols = Math.max(20, process.stdout.columns || 160);
     const rows = Math.max(10, process.stdout.rows || 30);
-    const lines = renderMonitor(state, cols, nowMs, demoRuntime);
+    const lines = renderDashboard(state, cols, rows, nowMs, demoRuntime);
     const top = Math.max(3, rows - lines.length + 1);
 
     let out = `${ESC}7`;
@@ -242,8 +294,8 @@ function runDemo(fixedState = null) {
     process.stdout.off('resize', render);
     try {
       const rows = Math.max(10, process.stdout.rows || 30);
-      const cols = Math.max(72, process.stdout.columns || 120);
-      const count = monitorRowsForCols(cols);
+      const cols = Math.max(20, process.stdout.columns || 160);
+      const count = monitorRowsForTerminal(cols, rows);
       let out = `${ESC}7${ESC}[1;1H${ESC}[2K`;
       for (let i = 0; i < count; i += 1) {
         const row = Math.max(1, rows - count + 1 + i);
@@ -283,6 +335,10 @@ if (argv.includes('--codexm-version')) {
   process.stdout.write(`${VERSION}\n`);
   process.exit(0);
 }
+if (argv.includes('--codexm-profile')) {
+  process.stdout.write(`${PROFILE.command}\t${PROFILE.label}\n`);
+  process.exit(0);
+}
 if (argv.includes('--doctor')) doctor();
 
 const fixedDemoState = demoRequestedState(argv);
@@ -302,7 +358,8 @@ const tracker = new QuotaTracker({
   activeSinceMs: WRAPPER_STARTED_AT,
   cwd: process.cwd(),
   rescanMs: 400,
-  refreshMs: 100
+  refreshMs: 100,
+  includeAccountQuota: PROFILE.auth !== 'api'
 });
 tracker.refresh(true);
 const transient = new PtyTransientTracker();
@@ -335,7 +392,7 @@ function drawMonitor() {
   if (exiting) return;
   const nowMs = Date.now();
   const state = transient.overlayState(tracker.refresh(), nowMs);
-  const lines = renderMonitor(state, cols, nowMs, runtime);
+  const lines = renderDashboard(state, cols, totalRows, nowMs, runtime);
   // Re-assert the child scroll region on every HUD repaint. This also heals
   // terminals that reset margins after alternate-screen or full-screen ops.
   let out = `${ESC}7${childScrollRegionSequence()}`;
@@ -394,7 +451,9 @@ function onResize() {
   scheduleDraw();
 }
 
-try { child = spawnCodex(codexPath, argv, cols, childRows); }
+const childEnv = childEnvironmentForProfile(PROFILE);
+const codexArgs = codexArgsForProfile(PROFILE, argv);
+try { child = spawnCodex(codexPath, codexArgs, cols, childRows, childEnv); }
 catch (error) { fail(`failed to launch Codex: ${error?.message ?? error}`); }
 
 // Establish the reserved monitor area before Codex begins producing enough

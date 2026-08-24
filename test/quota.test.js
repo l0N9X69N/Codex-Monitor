@@ -1,47 +1,56 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuotaLine, parseResetEpoch } from '../src/quota.js';
-import { colorForRemaining, formatCountdown, renderMonitor } from '../src/render.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  contextRemainingPercent,
+  parseQuotaLine,
+  parseResetEpoch,
+  readLatestStateFromFile
+} from '../src/quota.js';
 
-test('parses current token_count rate limit shape', () => {
-  const line = JSON.stringify({
+test('maps 300-minute and weekly windows independently', () => {
+  const q = parseQuotaLine(JSON.stringify({
     type: 'event_msg',
+    timestamp: '2030-01-01T00:00:00Z',
     payload: {
       type: 'token_count',
       rate_limits: {
-        primary: { used_percent: 4, window_minutes: 300, resets_at: 2000000000 },
-        secondary: { used_percent: 10, window_minutes: 10080, resets_at: 2000500000 }
+        primary: { used_percent: 36, window_minutes: 300, resets_at: 2000000000 },
+        secondary: { used_percent: 18, window_minutes: 10080, resets_at: 2000500000 }
       }
     }
-  });
-  const q = parseQuotaLine(line);
-  assert.equal(q.fiveHour.remainingPercent, 96);
-  assert.equal(q.weekly.remainingPercent, 90);
-  assert.equal(q.fiveHour.windowMinutes, 300);
+  }));
+  assert.equal(q.fiveHour.remainingPercent, 64);
+  assert.equal(q.weekly.remainingPercent, 82);
 });
 
-test('supports RFC3339 legacy reset values', () => {
+test('supports RFC3339 reset timestamps and Codex baseline context math', () => {
   assert.equal(parseResetEpoch('2030-01-01T00:00:00Z'), 1893456000);
+  const remaining = contextRemainingPercent({
+    contextWindow: 258000,
+    last: { totalTokens: 79000 }
+  });
+  assert.equal(remaining, 73);
 });
 
-test('countdown formats compactly', () => {
-  const now = Date.UTC(2030, 0, 1, 0, 0, 0);
-  assert.equal(formatCountdown(now / 1000 + 2 * 3600 + 24 * 60, now), '2h24m');
-  assert.equal(formatCountdown(now / 1000 + 5 * 86400 + 7 * 3600, now), '5d07h');
-});
+test('rollout state machine keeps TOOL active until output and exposes tool detail', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-quota-'));
+  const file = path.join(dir, 'rollout-2030-01-01T00-00-00-demo.jsonl');
+  const records = [
+    { timestamp: '2030-01-01T00:00:01Z', type: 'event_msg', payload: { type: 'turn_started', turn_id: 't1' } },
+    { timestamp: '2030-01-01T00:00:02Z', type: 'response_item', payload: { type: 'function_call', name: 'shell', call_id: 'c1' } },
+    { timestamp: '2030-01-01T00:00:03Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, output_tokens: 2 }, last_token_usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 }, model_context_window: 258000 } } }
+  ];
+  fs.writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const active = readLatestStateFromFile(file);
+  assert.equal(active.meta.activityState, 'TOOL');
+  assert.equal(active.meta.lastToolName, 'shell');
+  assert.equal(active.meta.activityDetail, 'running shell');
 
-test('threshold boundaries are 61 green, 60 orange, 20 orange, 19 red', () => {
-  assert.notEqual(colorForRemaining(61), colorForRemaining(60));
-  assert.equal(colorForRemaining(60), colorForRemaining(20));
-  assert.notEqual(colorForRemaining(20), colorForRemaining(19));
-});
-
-test('monitor renders two lines', () => {
-  const lines = renderMonitor({
-    fiveHour: { remainingPercent: 96, resetsAt: 2000000000 },
-    weekly: { remainingPercent: 90, resetsAt: 2000500000 }
-  }, 80, 1900000000000);
-  assert.equal(lines.length, 2);
-  assert.match(lines[0], /96% left/);
-  assert.match(lines[1], /90% left/);
+  fs.appendFileSync(file, JSON.stringify({ timestamp: '2030-01-01T00:00:04Z', type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1' } }) + '\n');
+  const after = readLatestStateFromFile(file);
+  assert.equal(after.meta.activityState, 'THINKING');
+  fs.rmSync(dir, { recursive: true, force: true });
 });

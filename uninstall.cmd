@@ -1,10 +1,11 @@
 @echo off
 setlocal
-npm uninstall -g codex-monitor-wrapper
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0uninstall.ps1"
 if errorlevel 1 (
+  echo.
   echo Uninstall failed.
   pause
   exit /b 1
 )
-echo Codex Monitor Wrapper removed. Official Codex was not modified.
+echo.
 pause

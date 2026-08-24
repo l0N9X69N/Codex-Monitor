@@ -131,6 +131,14 @@ function separator() {
   return ` ${FRAME}·${RESET} `;
 }
 
+function authProfileBadge(runtime) {
+  const auth = runtime?.profile?.auth;
+  if (!auth) return null;
+  const text = auth === 'api' ? 'API' : 'LOGIN';
+  const color = auth === 'api' ? PURPLE : CYAN;
+  return `${LABEL}AUTH${RESET} ${color}${BOLD}${text}${RESET}`;
+}
+
 function contextPercent(state) {
   const contextWindow = state?.usage?.contextWindow;
   const lastTotal = state?.usage?.last?.totalTokens;
@@ -204,8 +212,8 @@ function composeLeftRight(left, right, width, minGap = 4) {
   return `${clippedLeft}${' '.repeat(gap)}${right}`;
 }
 
-function renderTopBorder(cols) {
-  const title = ' CODEX MONITOR ';
+function renderTopBorder(cols, runtime = {}) {
+  const title = runtime?.profile?.ui === 'lite' ? ' CODEX MONITOR · LITE ' : ' CODEX MONITOR ';
   const prefix = '╭─';
   const suffix = '╮';
   const fill = Math.max(0, cols - prefix.length - title.length - suffix.length);
@@ -235,6 +243,8 @@ function renderHeader(state, runtime, cols, nowMs) {
     items.push(`${GREEN}${runtime.branch}${RESET}${dirty}`);
   }
 
+  const authBadge = authProfileBadge(runtime);
+  if (authBadge) items.push(authBadge);
   items.push(activityBadge(state, cols >= 120));
   items.push(metric('SESSION', formatDuration(nowMs - (runtime?.startedAtMs ?? nowMs)), BRIGHT));
   const turn = state?.meta?.currentSession === false ? '--' : String(state?.meta?.turnCount ?? 0);
@@ -264,8 +274,11 @@ function renderQuotaBlock(label, window, width, nowMs) {
   return `${BOLD}${label}${RESET} ${quotaBar(remaining, segments)} ${color}${BOLD}${String(remaining).padStart(3)}%${RESET} ${MUTED}left${RESET} ${FRAME}↻${RESET} ${MUTED}${resetText}${RESET}`;
 }
 
-function renderQuotaRow(state, cols, nowMs) {
+function renderQuotaRow(state, runtime, cols, nowMs) {
   const inner = Math.max(20, cols - 4);
+  if (runtime?.profile?.auth === 'api') {
+    return truncateAnsi(`${PURPLE}${BOLD}API KEY${RESET} ${FRAME}·${RESET} ${MUTED}subscription quota not applicable${RESET}`, inner);
+  }
   const blockWidth = inner >= 150 ? 56 : inner >= 120 ? 48 : inner >= 90 ? 40 : 34;
   const five = renderQuotaBlock('5h', state?.fiveHour, blockWidth, nowMs);
   const week = renderQuotaBlock('Week', state?.weekly, blockWidth, nowMs);
@@ -317,13 +330,21 @@ export function monitorRowsForCols(cols) {
 }
 
 function renderNarrow(state, runtime, cols, nowMs) {
-  const meta = truncateAnsi([
+  const metaItems = [
     `${GOLD}${BOLD}${modelName(state, runtime)}${RESET}`,
-    `${PURPLE}${reasoningName(state, runtime)}${RESET}`,
-    activityBadge(state)
-  ].join(separator()), cols);
-  const five = renderQuotaBlock('5h', state?.fiveHour, cols, nowMs);
-  const week = renderQuotaBlock('Week', state?.weekly, cols, nowMs);
+    `${PURPLE}${reasoningName(state, runtime)}${RESET}`
+  ];
+  const authBadge = authProfileBadge(runtime);
+  if (authBadge) metaItems.push(authBadge);
+  metaItems.push(activityBadge(state));
+  const meta = truncateAnsi(metaItems.join(separator()), cols);
+  const apiMode = runtime?.profile?.auth === 'api';
+  const five = apiMode
+    ? `${PURPLE}${BOLD}API KEY${RESET} ${FRAME}·${RESET} ${MUTED}token/context usage from current session${RESET}`
+    : renderQuotaBlock('5h', state?.fiveHour, cols, nowMs);
+  const week = apiMode
+    ? `${LABEL}LIMITS${RESET} ${MUTED}provider-specific rate limits are not tracked${RESET}`
+    : renderQuotaBlock('Week', state?.weekly, cols, nowMs);
   const total = state?.usage?.total;
   const last = state?.usage?.last;
   const tokens = `${LABEL}IN${RESET} ${BRIGHT}${formatTokens(total?.inputTokens)}${RESET} ${FRAME}·${RESET} ${LABEL}OUT${RESET} ${BLUE}${formatTokens(total?.outputTokens)}${RESET} ${FRAME}·${RESET} ${LABEL}RSN${RESET} ${PURPLE}${formatTokens(total?.reasoningOutputTokens)}${RESET} ${FRAME}·${RESET} ${LABEL}TURN IO${RESET} ${GOLD}${formatTokens(last?.inputTokens)}${RESET} ${MUTED}in${RESET} ${FRAME}·${RESET} ${BLUE}${formatTokens(last?.outputTokens)}${RESET} ${MUTED}out${RESET}`;
@@ -334,7 +355,7 @@ export function renderMonitor(state, cols = 80, nowMs = Date.now(), runtime = {}
   if (cols < 72) return renderNarrow(state, runtime, cols, nowMs);
 
   const inner = Math.max(20, cols - 4);
-  let quotaRow = renderQuotaRow(state, cols, nowMs);
+  let quotaRow = renderQuotaRow(state, runtime, cols, nowMs);
   let tokenRow = renderTokenRow(state, cols);
 
   // On wide terminals, keep the state guide in a dedicated right-side corner.
@@ -349,7 +370,7 @@ export function renderMonitor(state, cols = 80, nowMs = Date.now(), runtime = {}
     // Require enough room for useful quota/token content before showing guide.
     if (leftInner >= 72) {
       quotaRow = composeLeftRight(
-        renderQuotaRow(state, leftInner + 4, nowMs),
+        renderQuotaRow(state, runtime, leftInner + 4, nowMs),
         guideTop,
         inner,
         gap
@@ -364,7 +385,7 @@ export function renderMonitor(state, cols = 80, nowMs = Date.now(), runtime = {}
   }
 
   return [
-    renderTopBorder(cols),
+    renderTopBorder(cols, runtime),
     boxed(renderHeader(state, runtime, cols, nowMs), cols),
     boxed(quotaRow, cols),
     boxed(tokenRow, cols),

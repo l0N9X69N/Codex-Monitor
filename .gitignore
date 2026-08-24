@@ -1,7 +1,7 @@
-@"
 node_modules/
-dist/
+*.tgz
 *.log
+dist/
+coverage/
 .DS_Store
 Thumbs.db
-"@ | Set-Content .gitignore -Encoding utf8

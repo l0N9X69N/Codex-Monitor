@@ -28,7 +28,7 @@ const EXECUTION_PATTERNS = [
 // We intentionally do not match generic words like "error" because command
 // output and user content can contain them legitimately.
 const ERROR_PATTERNS = [
-  /(?:^|\s)■\s+\S/,
+  /■\s+[^\n\r]+/,
   /\bCodex is currently experiencing high load\./i,
   /\bUsage limit reached\./i,
   /\bYou've reached your usage limit\b/i
@@ -66,7 +66,7 @@ function lastFreshPatternMatch(text, patterns, newChunkStartsAt) {
       // `>` deliberately allows a phrase to start in the old tail and finish
       // in the new chunk, which is why the tail exists in the first place.
       if (end > newChunkStartsAt && (!best || match.index >= best.index)) {
-        best = { index: match.index, end };
+        best = { index: match.index, end, text: match[0] };
       }
 
       if (match[0].length === 0) re.lastIndex += 1;
@@ -74,6 +74,24 @@ function lastFreshPatternMatch(text, patterns, newChunkStartsAt) {
   }
 
   return best;
+}
+
+function approvalDetail(text) {
+  const value = String(text || '');
+  if (/run the following command/i.test(value)) return 'command approval';
+  if (/grant these permissions/i.test(value)) return 'permission approval';
+  if (/make the following edits/i.test(value)) return 'file edit approval';
+  if (/network access/i.test(value)) return 'network approval';
+  if (/needs your approval/i.test(value)) return 'tool approval';
+  return 'approval prompt';
+}
+
+function errorDetail(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (/conversation interrupted/i.test(clean)) return 'conversation interrupted';
+  if (/usage limit reached/i.test(clean)) return 'usage limit reached';
+  if (/high load/i.test(clean)) return 'service high load';
+  return 'terminal error';
 }
 
 function isArrowOrNavigationSequence(text) {
@@ -120,8 +138,11 @@ export class PtyTransientTracker {
     this.tail = '';
     this.approvalActive = false;
     this.approvalAtMs = null;
+    this.approvalDetail = null;
     this.errorUntilMs = 0;
     this.errorAtMs = null;
+    this.errorDetail = null;
+    this.transientErrorCount = 0;
   }
 
   feedOutput(data, nowMs = Date.now()) {
@@ -141,10 +162,10 @@ export class PtyTransientTracker {
 
     // Process only fresh signals, in their visual order inside this PTY write.
     const signals = [
-      approval ? { type: 'approval', index: approval.index } : null,
-      resolved ? { type: 'resolved', index: resolved.index } : null,
-      execution ? { type: 'execution', index: execution.index } : null,
-      error ? { type: 'error', index: error.index } : null
+      approval ? { type: 'approval', index: approval.index, text: approval.text } : null,
+      resolved ? { type: 'resolved', index: resolved.index, text: resolved.text } : null,
+      execution ? { type: 'execution', index: execution.index, text: execution.text } : null,
+      error ? { type: 'error', index: error.index, text: error.text } : null
     ].filter(Boolean).sort((a, b) => a.index - b.index);
 
     for (const signal of signals) {
@@ -156,25 +177,34 @@ export class PtyTransientTracker {
         if (!this.approvalActive) changed = true;
         this.approvalActive = true;
         this.approvalAtMs = nowMs;
+        this.approvalDetail = approvalDetail(signal.text);
       } else if (signal.type === 'resolved') {
         if (this.approvalActive) changed = true;
         this.approvalActive = false;
+        this.approvalDetail = null;
       } else if (signal.type === 'execution') {
         // Execution means any approval prompt has been resolved.
         if (this.approvalActive) changed = true;
         if (this.errorUntilMs > nowMs) changed = true;
         this.approvalActive = false;
+        this.approvalDetail = null;
         this.errorUntilMs = 0;
+        this.errorDetail = null;
       } else if (signal.type === 'error') {
         // A terminal error ends the approval overlay. This is the key fix for
         // APPROVAL -> ERROR -> stale APPROVAL resurrection.
         if (this.approvalActive) changed = true;
         this.approvalActive = false;
+        this.approvalDetail = null;
 
         const wasActive = this.errorUntilMs > nowMs;
         this.errorUntilMs = Math.max(this.errorUntilMs, nowMs + this.errorHoldMs);
         this.errorAtMs = nowMs;
-        if (!wasActive) changed = true;
+        this.errorDetail = errorDetail(signal.text);
+        if (!wasActive) {
+          this.transientErrorCount += 1;
+          changed = true;
+        }
       }
     }
 
@@ -187,6 +217,7 @@ export class PtyTransientTracker {
 
     if (this.approvalActive && isApprovalDecisionInput(data)) {
       this.approvalActive = false;
+      this.approvalDetail = null;
       changed = true;
     }
 
@@ -194,6 +225,7 @@ export class PtyTransientTracker {
     // should release the temporary red state immediately.
     if (this.errorUntilMs > nowMs && isFreshUserPromptInput(data)) {
       this.errorUntilMs = 0;
+      this.errorDetail = null;
       changed = true;
     }
 
@@ -203,6 +235,7 @@ export class PtyTransientTracker {
   clearApproval() {
     const changed = this.approvalActive;
     this.approvalActive = false;
+    this.approvalDetail = null;
     return changed;
   }
 
@@ -222,18 +255,28 @@ export class PtyTransientTracker {
       && baseEventAtMs > this.approvalAtMs
     ) {
       this.approvalActive = false;
+      this.approvalDetail = null;
     }
 
     const errorActive = this.errorUntilMs > nowMs;
+    meta.errorCount = (base?.meta?.errorCount ?? 0) + this.transientErrorCount;
 
     // Priority:
     // ERROR > APPROVAL > TOOL > THINKING > IDLE.
     if (errorActive) {
       meta.activityState = 'ERROR';
       meta.activityAtMs = this.errorAtMs ?? nowMs;
+      meta.activitySource = 'pty';
+      meta.activityDetail = this.errorDetail || 'terminal error';
+      meta.errorActive = true;
+      meta.approvalPending = false;
     } else if (this.approvalActive) {
       meta.activityState = 'APPROVAL';
       meta.activityAtMs = this.approvalAtMs ?? nowMs;
+      meta.activitySource = 'pty';
+      meta.activityDetail = this.approvalDetail || 'approval prompt';
+      meta.approvalPending = true;
+      meta.errorActive = false;
     }
 
     return { ...base, meta };
@@ -242,8 +285,11 @@ export class PtyTransientTracker {
   snapshot(nowMs = Date.now()) {
     return {
       approvalActive: this.approvalActive,
+      approvalDetail: this.approvalDetail,
       errorActive: this.errorUntilMs > nowMs,
-      errorUntilMs: this.errorUntilMs
+      errorDetail: this.errorDetail,
+      errorUntilMs: this.errorUntilMs,
+      transientErrorCount: this.transientErrorCount
     };
   }
 }

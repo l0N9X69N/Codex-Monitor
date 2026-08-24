@@ -142,7 +142,11 @@ function blankState(filePath = null, mtimeMs = 0) {
       activeToolIds: [],
       anonymousToolDepth: 0,
       approvalPending: false,
-      errorActive: false
+      errorActive: false,
+      activitySource: null,
+      activityDetail: null,
+      lastToolName: null,
+      lastToolAtMs: null
     },
     filePath,
     fileMtimeMs: mtimeMs
@@ -179,6 +183,40 @@ function storeActiveToolSet(state, set) {
   state.meta.activeToolIds = [...set];
 }
 
+function summarizeTool(eventType, payload) {
+  const explicit = payload?.name ?? payload?.tool_name ?? payload?.toolName ?? payload?.server_name ?? payload?.serverName;
+  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
+  if (eventType?.includes('exec_command') || eventType === 'local_shell_call') return 'shell';
+  if (eventType?.includes('mcp_tool')) return 'mcp';
+  if (eventType?.includes('web_search')) return 'web search';
+  if (eventType?.includes('patch_apply')) return 'patch';
+  if (eventType?.includes('image_generation')) return 'image';
+  if (eventType === 'function_call') return 'function';
+  if (eventType === 'custom_tool_call') return 'custom tool';
+  if (eventType === 'computer_call') return 'computer';
+  return 'tool';
+}
+
+function summarizeError(payload) {
+  const candidate =
+    payload?.message ??
+    payload?.error?.message ??
+    payload?.error_message ??
+    payload?.errorMessage ??
+    null;
+  if (typeof candidate !== 'string' || !candidate.trim()) return 'session error';
+  const clean = candidate.replace(/\s+/g, ' ').trim();
+  return clean.length > 80 ? `${clean.slice(0, 77)}...` : clean;
+}
+
+function activityDefaultDetail(state, activity) {
+  if (activity === 'ERROR') return state.meta.activityDetail || 'session error';
+  if (activity === 'APPROVAL') return 'approval request';
+  if (activity === 'TOOL') return state.meta.lastToolName ? `running ${state.meta.lastToolName}` : 'running tool';
+  if (activity === 'THINKING') return 'reasoning';
+  return 'waiting for input';
+}
+
 function recomputeActivity(state, atMs = null) {
   let next = 'IDLE';
 
@@ -193,8 +231,13 @@ function recomputeActivity(state, atMs = null) {
   ) next = 'TOOL';
   else if (state.meta.turnInProgress) next = 'THINKING';
 
-  if (state.meta.activityState !== next) setActivity(state, next, atMs);
-  else if (Number.isFinite(atMs) && state.meta.activityAtMs == null) state.meta.activityAtMs = atMs;
+  if (state.meta.activityState !== next) {
+    setActivity(state, next, atMs);
+    state.meta.activitySource = 'rollout';
+    state.meta.activityDetail = activityDefaultDetail(state, next);
+  } else if (Number.isFinite(atMs) && state.meta.activityAtMs == null) {
+    state.meta.activityAtMs = atMs;
+  }
 }
 
 const TOOL_BEGIN_EVENTS = new Set([
@@ -238,11 +281,17 @@ const APPROVAL_EVENTS = new Set([
   'elicitation_request'
 ]);
 
-function beginTool(state, payload, eventAtMs) {
+function beginTool(state, eventType, payload, eventAtMs) {
   // If this execution follows a permission prompt, the prompt has now been
   // resolved and TOOL becomes the foreground state.
   state.meta.approvalPending = false;
   state.meta.errorActive = false;
+
+  const name = summarizeTool(eventType, payload);
+  state.meta.lastToolName = name;
+  state.meta.lastToolAtMs = eventAtMs;
+  state.meta.activitySource = 'rollout';
+  state.meta.activityDetail = `running ${name}`;
 
   const key = toolKey(payload);
   if (key) {
@@ -284,6 +333,8 @@ function applyLifecycleEvent(state, eventType, payload, eventAtMs) {
     state.meta.anonymousToolDepth = 0;
     state.meta.approvalPending = false;
     state.meta.errorActive = false;
+    state.meta.activitySource = 'rollout';
+    state.meta.activityDetail = 'reasoning';
     recomputeActivity(state, eventAtMs);
     return;
   }
@@ -304,8 +355,12 @@ function applyLifecycleEvent(state, eventType, payload, eventAtMs) {
     if (terminalError) {
       state.meta.errorCount += 1;
       state.meta.errorActive = true;
+      state.meta.activitySource = 'rollout';
+      state.meta.activityDetail = summarizeError({ error: terminalError });
     } else {
       state.meta.errorActive = false;
+      state.meta.activitySource = 'rollout';
+      state.meta.activityDetail = 'waiting for input';
     }
 
     recomputeActivity(state, eventAtMs);
@@ -313,7 +368,7 @@ function applyLifecycleEvent(state, eventType, payload, eventAtMs) {
   }
 
   if (TOOL_BEGIN_EVENTS.has(eventType) || TOOL_RESPONSE_BEGIN_EVENTS.has(eventType)) {
-    beginTool(state, payload, eventAtMs);
+    beginTool(state, eventType, payload, eventAtMs);
     return;
   }
 
@@ -325,6 +380,8 @@ function applyLifecycleEvent(state, eventType, payload, eventAtMs) {
   if (APPROVAL_EVENTS.has(eventType)) {
     state.meta.approvalPending = true;
     state.meta.errorActive = false;
+    state.meta.activitySource = 'rollout';
+    state.meta.activityDetail = 'approval request';
     recomputeActivity(state, eventAtMs);
     return;
   }
@@ -344,6 +401,8 @@ function applyLifecycleEvent(state, eventType, payload, eventAtMs) {
   if (eventType === 'error') {
     state.meta.errorCount += 1;
     state.meta.errorActive = true;
+    state.meta.activitySource = 'rollout';
+    state.meta.activityDetail = summarizeError(payload);
     recomputeActivity(state, eventAtMs);
   }
 }
@@ -514,17 +573,28 @@ function samePath(a, b) {
 
 function currentCandidateScore(item, state, activeSinceMs, cwd) {
   if (!Number.isFinite(activeSinceMs)) return null;
+
   const recentWrite = item.mtimeMs >= activeSinceMs - 2_000;
   const started = state?.meta?.startedAtMs;
+  const lastEvent = state?.meta?.lastEventAtMs;
   const recentStart = Number.isFinite(started) && started >= activeSinceMs - 15_000;
-  if (!recentWrite && !recentStart) return null;
+  const recentEvent = Number.isFinite(lastEvent) && lastEvent >= activeSinceMs - 2_000;
+  const hasTimeline = Number.isFinite(started) || Number.isFinite(lastEvent);
+
+  // A file mtime alone is not enough to bind an old rollout to a newly
+  // launched wrapper. Editors, sync tools, or Codex housekeeping can touch an
+  // old JSONL file without producing a new Codex event. Prefer a fresh session
+  // start or a fresh event. The mtime fallback is kept only for legacy files
+  // that contain no usable timestamps at all.
+  if (!recentStart && !recentEvent && !(recentWrite && !hasTimeline)) return null;
 
   const stateCwd = state?.meta?.cwd;
   if (cwd && stateCwd && !samePath(cwd, stateCwd)) return null;
 
   let score = 0;
-  if (recentWrite) score += 100;
-  if (recentStart) score += 80;
+  if (recentEvent) score += 140;
+  if (recentStart) score += 120;
+  if (recentWrite) score += 30;
   if (cwd && stateCwd && samePath(cwd, stateCwd)) score += 40;
   score += Math.max(0, Math.min(20, Math.floor((item.mtimeMs - activeSinceMs) / 1000)));
   return score;
@@ -532,7 +602,7 @@ function currentCandidateScore(item, state, activeSinceMs, cwd) {
 
 export function findLatestState(
   sessionsRoot = getSessionsRoot(),
-  { activeSinceMs = null, cwd = null } = {}
+  { activeSinceMs = null, cwd = null, includeAccountQuota = true } = {}
 ) {
   if (!fs.existsSync(sessionsRoot)) return { state: null, filePath: null };
   const files = collectRecentRollouts(sessionsRoot).sort((a, b) => b.mtimeMs - a.mtimeMs);
@@ -572,9 +642,16 @@ export function findLatestState(
     active.meta.currentSession = false;
   }
 
-  // Quotas are account-wide. Keep the freshest 5h/week windows independently,
-  // while model/token/session data stays bound to the selected current rollout.
-  for (const entry of parsed) mergeQuotaFrom(active, entry.state);
+  if (includeAccountQuota) {
+    // ChatGPT-login quotas are account-wide. Keep the freshest 5h/week windows
+    // independently, while model/token/session data stays bound to the selected
+    // current rollout. API-key profiles must not inherit these subscription
+    // windows from a previous ChatGPT-login session.
+    for (const entry of parsed) mergeQuotaFrom(active, entry.state);
+  } else {
+    active.fiveHour = null;
+    active.weekly = null;
+  }
 
   return { state: active, filePath: activeEntry?.item?.path ?? null };
 }
@@ -595,7 +672,11 @@ function mergeSessionMeta(next, previous) {
     'currentTurnId',
     'currentTurnStartedAtMs',
     'lastTurnDurationMs',
-    'lastTurnCompletedAtMs'
+    'lastTurnCompletedAtMs',
+    'activitySource',
+    'activityDetail',
+    'lastToolName',
+    'lastToolAtMs'
   ]) {
     if (next.meta[key] == null) next.meta[key] = previous.meta[key] ?? null;
   }
@@ -621,13 +702,15 @@ export class QuotaTracker {
     rescanMs = 500,
     refreshMs = 150,
     activeSinceMs = null,
-    cwd = null
+    cwd = null,
+    includeAccountQuota = true
   } = {}) {
     this.sessionsRoot = sessionsRoot;
     this.rescanMs = rescanMs;
     this.refreshMs = refreshMs;
     this.activeSinceMs = activeSinceMs;
     this.cwd = cwd;
+    this.includeAccountQuota = includeAccountQuota;
     this.filePath = null;
     this.state = null;
     this._lastScan = 0;
@@ -641,7 +724,8 @@ export class QuotaTracker {
     if (force || now - this._lastScan >= this.rescanMs) {
       const found = findLatestState(this.sessionsRoot, {
         activeSinceMs: this.activeSinceMs,
-        cwd: this.cwd
+        cwd: this.cwd,
+        includeAccountQuota: this.includeAccountQuota
       });
       this._lastScan = now;
       this._lastRefresh = now;
@@ -678,8 +762,13 @@ export class QuotaTracker {
         mergeSessionMeta(active, previous);
         // Preserve account-wide quota windows if the active tail does not carry
         // both windows on every token_count event.
-        active.fiveHour = newer(previous?.fiveHour, active.fiveHour);
-        active.weekly = newer(previous?.weekly, active.weekly);
+        if (this.includeAccountQuota) {
+          active.fiveHour = newer(previous?.fiveHour, active.fiveHour);
+          active.weekly = newer(previous?.weekly, active.weekly);
+        } else {
+          active.fiveHour = null;
+          active.weekly = null;
+        }
         this.state = active;
       }
       if (stat) {
