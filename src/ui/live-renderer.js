@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fitHeader, layoutSections, monitorRowBudget, REPRESENTATION, SECTION_TYPES } from './layout.js';
 import { cellWidth, padCells, truncateCells } from './cell-width.js';
 import { activityToken, paint } from './theme.js';
+import { renderLiveView } from './live-views.js';
 
 function value(metric, fallback = null) {
   if (metric && typeof metric === 'object' && Object.prototype.hasOwnProperty.call(metric, 'value')) return metric.value ?? fallback;
@@ -47,7 +48,15 @@ function headerItem(item, state, options) {
   if (item === 'session-age') return fmtDuration(Math.max(0, options.nowMs - (state?.run?.startedAtMs ?? options.nowMs)));
   if (item === 'health') return options.health ?? 'WAITING';
   if (item === 'fast') return options.fast ? 'FAST' : null;
-  if (item === 'git') return options.gitLabel ?? 'git';
+  if (item === 'git') {
+    const branch = value(state?.git?.branch, null);
+    const diff = value(state?.git?.diff, null);
+    const aheadBehind = value(state?.git?.aheadBehind, null);
+    if (!branch) return options.gitLabel ?? 'git --';
+    const dirty = diff?.changedFiles ? ` *${diff.changedFiles}` : '';
+    const ab = aheadBehind ? ` ↑${aheadBehind.ahead ?? '--'} ↓${aheadBehind.behind ?? '--'}` : '';
+    return truncateCells(`git:${branch}${dirty}${ab}`, 24);
+  }
   return null;
 }
 
@@ -169,8 +178,9 @@ export function buildLiveFrame({
   const layout = layoutSections(sections, { width, height, maxRows, previousLaneCount, hysteresisCells });
   const body = activeTab === 'overview'
     ? mergeLaneRows(layout, state, options)
-    : [truncateCells(`${String(activeTab).toUpperCase()} · Phase 04 foundation`, width, '')];
-  const footer = truncateCells('F4 History', width, '');
+    : renderLiveView(activeTab, state, { width, maxRows });
+  const footerText = (config?.tabs?.length ?? 0) > 1 ? 'Alt+←/→ View · F4 History' : 'F4 History';
+  const footer = truncateCells(footerText, width, '');
   const frame = [header, ...body, footer];
   return {
     lines: frame.slice(0, monitorRowBudget(height)),
