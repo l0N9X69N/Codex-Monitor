@@ -42,15 +42,19 @@ function windowsProcessTree() {
     const row = parseCsvLine(line);
     const entry = Object.fromEntries(header.map((key, index) => [key, row[index]]));
     return normalizeProcessRecord({
-      pid: Number(entry.ProcessId),
-      ppid: Number(entry.ParentProcessId),
-      name: entry.Name,
+      pid: Number(entry.ProcessId), ppid: Number(entry.ParentProcessId), name: entry.Name,
       command: entry.CommandLine || entry.Name,
       cpuPercent: entry.CpuPercent === '' ? null : Number(entry.CpuPercent),
-      memoryBytes: Number(entry.WorkingSetSize),
-      ageMs: entry.AgeMs === '' ? null : Number(entry.AgeMs)
+      memoryBytes: Number(entry.WorkingSetSize), ageMs: entry.AgeMs === '' ? null : Number(entry.AgeMs)
     });
   });
+}
+
+function spawnDetached(file, args, { cwd, env }) {
+  const child = spawn(file, args, { cwd, env, detached: true, windowsHide: true, stdio: 'ignore' });
+  child.on('error', () => {});
+  child.unref();
+  return { ok: true, launcher: file };
 }
 
 export function createWindowsPlatformAdapter({ env = process.env } = {}) {
@@ -85,15 +89,14 @@ export function createWindowsPlatformAdapter({ env = process.env } = {}) {
       } catch (error) { return unsupportedResult('diskInfo', error?.message ?? 'disk query failed'); }
     },
     async openHistoryTerminal({ command = 'codexm', args = ['--history'], cwd = process.cwd() } = {}) {
-      const launch = (file, launchArgs) => {
-        const child = spawn(file, launchArgs, { cwd, env, detached: true, windowsHide: true, stdio: 'ignore' });
-        child.unref();
-        return { ok: true, launcher: file };
-      };
-      try { return launch('wt.exe', ['new-tab', '--startingDirectory', cwd, command, ...args]); }
-      catch {}
-      try { return launch(env.ComSpec || 'cmd.exe', ['/d', '/c', 'start', '', command, ...args]); }
-      catch (error) { return { ok: false, error: error?.message ?? 'could not open terminal' }; }
+      try {
+        execFileSync('where.exe', ['wt.exe'], { windowsHide: true, timeout: 1200, stdio: 'ignore' });
+        return spawnDetached('wt.exe', ['new-tab', '--startingDirectory', cwd, command, ...args], { cwd, env });
+      } catch {}
+      try {
+        const comspec = env.ComSpec || env.COMSPEC || 'cmd.exe';
+        return spawnDetached(comspec, ['/d', '/c', 'start', '', command, ...args], { cwd, env });
+      } catch (error) { return { ok: false, error: error?.message ?? 'could not open terminal' }; }
     },
     paths() { return commonPaths({ env }); },
     capabilities() { return normalizeCapabilities({ pty: true, systemUsage: true, processTree: true, diskInfo: true, historyTerminal: true, mouse: true, truecolor: null }); },
