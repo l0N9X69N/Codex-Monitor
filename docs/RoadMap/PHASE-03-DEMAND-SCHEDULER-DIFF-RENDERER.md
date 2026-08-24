@@ -4,7 +4,6 @@
 
 > **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
 
-
 ## Spec liên quan
 
 Spec Phase B; mục 27–30, 58–59.
@@ -67,8 +66,16 @@ Nếu không thể auto test đáng tin, phase phải ghi rõ case trong `MANUAL
 
 Hidden/inactive heavy workloads bằng 0 trong test; same state bằng 0 repaint; không timer leak.
 
-## Trạng thái ban đầu
+## Trạng thái hiện tại
 
 ```text
-NOT STARTED
+IMPLEMENTED — WAITING AUTOMATED VERIFICATION + MANUAL PTY RESPONSIVENESS
 ```
+
+Chạy:
+
+```powershell
+.\scripts\phase3-verify.ps1
+```
+
+Sau automated PASS, chạy `node .\scripts\phase3-pty-load-harness.mjs` theo checklist trong `docs/qa/phase-03/MANUAL-TEST-REQUIRED.md`.
