@@ -69,13 +69,7 @@ Hidden/inactive heavy workloads bằng 0 trong test; same state bằng 0 repaint
 ## Trạng thái hiện tại
 
 ```text
-IMPLEMENTED — WAITING AUTOMATED VERIFICATION + MANUAL PTY RESPONSIVENESS
+CLOSED — automated verification PASS + manual PTY responsiveness PASS
 ```
 
-Chạy:
-
-```powershell
-.\scripts\phase3-verify.ps1
-```
-
-Sau automated PASS, chạy `node .\scripts\phase3-pty-load-harness.mjs` theo checklist trong `docs/qa/phase-03/MANUAL-TEST-REQUIRED.md`.
+Phase 03 đã đạt exit gate. Các hạng mục Live visual/layout tiếp tục ở Phase 04; real heavy collectors ở Phase 06/07.
