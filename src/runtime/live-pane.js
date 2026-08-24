@@ -4,6 +4,12 @@ import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 const SAVE_CURSOR = '\x1b7';
 const RESTORE_CURSOR = '\x1b8';
 
+function clearRows(originRow, count) {
+  let output = '';
+  for (let index = 0; index < count; index += 1) output += `\x1b[${originRow + index};1H\x1b[K`;
+  return output;
+}
+
 export class LivePaneController {
   constructor({
     stdout = process.stdout,
@@ -29,6 +35,7 @@ export class LivePaneController {
     this.now = now;
     this.timer = null;
     this.resizeTimer = null;
+    this.pendingForce = false;
     this.disposed = false;
     this.lastGeometry = null;
     this.renderer = new AnsiDiffRenderer({
@@ -55,13 +62,22 @@ export class LivePaneController {
     return { width, height, monitorRows, childRows, originRow: childRows + 1, frame };
   }
 
+  clear(geometry = this.lastGeometry) {
+    if (!geometry) return;
+    const output = clearRows(geometry.originRow, geometry.monitorRows);
+    if (output) this.stdout.write(`${SAVE_CURSOR}${output}${RESTORE_CURSOR}`);
+  }
+
   render({ force = false } = {}) {
     if (this.disposed) return null;
     const geometry = this.geometry();
     const changedGeometry = !this.lastGeometry
       || this.lastGeometry.width !== geometry.width
       || this.lastGeometry.height !== geometry.height
-      || this.lastGeometry.originRow !== geometry.originRow;
+      || this.lastGeometry.originRow !== geometry.originRow
+      || this.lastGeometry.monitorRows !== geometry.monitorRows;
+
+    if (changedGeometry && this.lastGeometry) this.clear(this.lastGeometry);
     if (force || changedGeometry) this.renderer.reset([]);
     this.renderer.originRow = geometry.originRow;
     const result = this.renderer.render(geometry.frame.lines);
@@ -70,10 +86,14 @@ export class LivePaneController {
   }
 
   invalidate({ force = false } = {}) {
-    if (this.disposed || this.timer) return;
+    if (this.disposed) return;
+    this.pendingForce ||= force;
+    if (this.timer) return;
     this.timer = this.setTimer(() => {
       this.timer = null;
-      this.render({ force });
+      const shouldForce = this.pendingForce;
+      this.pendingForce = false;
+      this.render({ force: shouldForce });
     }, this.debounceMs);
   }
 
@@ -87,11 +107,13 @@ export class LivePaneController {
     }, this.resizeDebounceMs);
   }
 
-  dispose() {
+  dispose({ clear = true } = {}) {
+    if (clear) this.clear();
     this.disposed = true;
     if (this.timer) this.clearTimer(this.timer);
     if (this.resizeTimer) this.clearTimer(this.resizeTimer);
     this.timer = null;
     this.resizeTimer = null;
+    this.pendingForce = false;
   }
 }
