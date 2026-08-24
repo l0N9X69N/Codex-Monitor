@@ -1,0 +1,27 @@
+{
+  "runStartedAtMs": 100000,
+  "staleMtimeOnly": {
+    "id": "stale-old",
+    "startedAtMs": 1000,
+    "lastEventAtMs": 50000,
+    "mtimeMs": 101000,
+    "appendedAfterRun": false,
+    "cwd": "C:/repo"
+  },
+  "newCurrentSession": {
+    "id": "new-current",
+    "startedAtMs": 100500,
+    "lastEventAtMs": 101000,
+    "mtimeMs": 101000,
+    "appendedAfterRun": true,
+    "cwd": "C:/repo"
+  },
+  "resumedCurrentSession": {
+    "id": "resumed-current",
+    "startedAtMs": 1000,
+    "lastEventAtMs": 101500,
+    "mtimeMs": 101500,
+    "appendedAfterRun": true,
+    "cwd": "C:/repo"
+  }
+}
