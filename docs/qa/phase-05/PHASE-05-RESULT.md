@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**IMPLEMENTED — chờ automated verification và manual UX visual acceptance.**
+**CLOSED — automated verification PASS, manual UX visual acceptance PASS, BLOCKER = 0, P0 = 0.**
 
 ## Đã làm
 
@@ -17,6 +17,8 @@
 - ANSI reset/no-wrap/row-budget/lane-bound invariants.
 - UX hierarchy tests cho Activity, Context và Login quota.
 - API quota isolation tiếp tục được khóa ở nhiều dimensions.
+- Unknown numeric telemetry giữ `--` thay vì bị format thành fake zero.
+- Live HUD/prompt overlap được phát hiện trong manual test và đã sửa bằng terminal scroll-region isolation; user retest PASS.
 - Full cumulative regression Phase 01–04 vẫn chạy trong Phase 05 verification.
 
 ## Không làm trong Phase 05
@@ -25,26 +27,15 @@
 - Không mở rộng deep content Tools/Resources/Performance/Processes.
 - Không update snapshots hàng loạt để né regression.
 
-## Exit gate còn lại
-
-Chạy:
-
-```powershell
-.\scripts\phase5-verify.ps1
-```
-
-Sau automated PASS, chạy:
-
-```powershell
-npm run demo:phase5
-```
-
-và nghiệm thu checklist trong `MANUAL-TEST-REQUIRED.md`.
-
-Phase chỉ CLOSED khi:
+## Exit gate
 
 ```text
-layout invariant failures = 0
-P0 UI bug = 0
-manual Live visual acceptance = PASS
+Automated verification       PASS
+Layout invariant failures    0
+P0 UI bugs                    0
+Open Phase 05 P1             0
+Manual Live visual acceptance PASS
+HUD/prompt isolation         PASS
 ```
+
+**Phase 05 CLOSED.**
