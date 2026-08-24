@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**WAITING USER RUN**
+**PASS — user confirmed on latest Windows working tree.**
 
 ## Lệnh chuẩn
 
@@ -18,7 +18,13 @@ Full cumulative regression: node --test
 Focused Phase 04 UI/live-pane tests
 ```
 
-## Coverage Phase 04
+## Kết quả
+
+User xác nhận automated verification PASS sau patch sửa semantics unknown telemetry (`RAM --`, không biến unknown thành `0`).
+
+Không ghi số lượng test cụ thể vì output count cuối không được lưu trong handoff này.
+
+## Coverage Phase 04 đã PASS
 
 - config schema v1 / preset / runtime override semantics;
 - header max 4;
@@ -35,6 +41,7 @@ Focused Phase 04 UI/live-pane tests
 - same frame -> 0 write;
 - resize debounce + new geometry;
 - dispose clears HUD/timers;
+- unknown telemetry giữ `--`, actual zero vẫn là `0`;
 - Phase 01–03 regression vẫn chạy trong full suite.
 
 ## PASS condition
@@ -45,4 +52,4 @@ Full regression FAIL = 0
 Focused Phase 04 FAIL = 0
 ```
 
-Automated PASS chưa tự đóng phase vì Phase 04 cần manual visual/responsive acceptance.
+**Automated gate Phase 04: PASS.**
