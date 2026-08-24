@@ -65,6 +65,7 @@ export async function runCodexLive({
     if (!child || exiting) return;
     const nextCols = Math.max(20, stdout.columns || 80);
     const nextRows = geometry?.childRows ?? Math.max(8, stdout.rows || 24);
+    if (pane) guard.setScrollRegion(1, nextRows);
     try { child.resize(nextCols, nextRows); } catch {}
   };
 
@@ -89,6 +90,7 @@ export async function runCodexLive({
       env: childEnv
     });
 
+    if (pane) guard.setScrollRegion(1, rows);
     guard.enterRawMode();
     stdin.resume?.();
     stdin.on?.('data', onInput);
