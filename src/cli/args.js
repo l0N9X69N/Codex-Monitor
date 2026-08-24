@@ -30,6 +30,7 @@ export function parseMonitorArgs(argv = []) {
     }
 
     if (parsingMonitor && arg === '--help') { action = 'help'; continue; }
+    if (parsingMonitor && arg === '--history') { action = 'history'; continue; }
     if (parsingMonitor && arg === '--doctor') { action = 'doctor'; continue; }
     if (parsingMonitor && arg === '--monitor-version') { action = 'monitor-version'; continue; }
     if (parsingMonitor && arg === '--configure') { action = 'configure'; continue; }
