@@ -37,7 +37,9 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: true, gitDiff: true, gitAheadBehind: true
     }),
-    header: Object.freeze(['activity', 'model', 'reasoning', 'project'])
+    // Four header items remain the recommended default density. Full deliberately
+    // adds Git as a fifth item; the responsive renderer decides what fits.
+    header: Object.freeze(['activity', 'model', 'reasoning', 'project', 'git'])
   })
 });
 
@@ -98,7 +100,9 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     layout: 'auto',
     sections: booleanMap(input?.sections, [...VALID.sections], presetBase.sections),
     metrics: booleanMap(input?.metrics, [...VALID.metrics], presetBase.metrics),
-    header: uniqueValid(input?.header, VALID.header, presetBase.header).slice(0, 4),
+    // PROJECT-SPEC recommends at most four important items; it does not make four
+    // a persistence limit. Preserve all valid user choices and let layout fit them.
+    header: uniqueValid(input?.header, VALID.header, presetBase.header),
     updateCheck: typeof input?.updateCheck === 'boolean' ? input.updateCheck : Boolean(presetBase.updateCheck)
   };
   return config;
