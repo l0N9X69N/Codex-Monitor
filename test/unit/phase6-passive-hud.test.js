@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeConfig, configForPreset } from '../../src/config/schema.js';
 import { createDemoState } from '../../src/ui/demo.js';
 import { buildLiveFrame, assertNoWrap } from '../../src/ui/live-renderer.js';
+import { buildLiveFrame as buildResponsiveLiveFrame, MIN_SPARKLINE_SAMPLES, progressBar, sparkline } from '../../src/ui/live-renderer-responsive.js';
 import { stripAnsi, cellWidth } from '../../src/ui/cell-width.js';
 import { monitorRowBudget } from '../../src/ui/layout.js';
 import { LiveDataRuntime } from '../../src/runtime/live-data.js';
@@ -162,4 +163,37 @@ test('health header is derived from current run state rather than a dead placeho
   const state = createDemoState('error', { authMode: 'login', nowMs: NOW });
   const text = stripAnsi(buildLiveFrame({ state, config, width: 80, height: 24, nowMs: NOW }).lines.join('\n'));
   assert.match(text, /HEALTH ERROR/);
+});
+
+test('ultrawide graphs progressively appear only when useful data exists', () => {
+  const config = normalizeConfig(configForPreset('full'));
+  const state = createDemoState('idle', { authMode: 'login', nowMs: NOW });
+  setLocal(state.system, 'cpuPercent', 30);
+  setLocal(state.system, 'memoryBytes', 12_000_000_000);
+  setLocal(state.system, 'totalMemoryBytes', 16_000_000_000);
+  setLocal(state.system, 'freeMemoryBytes', 4_000_000_000);
+  setLocal(state.system, 'samples', [
+    { cpuPercent: 10, memoryBytes: 10_000_000_000, totalMemoryBytes: 16_000_000_000 },
+    { cpuPercent: 20, memoryBytes: 11_000_000_000, totalMemoryBytes: 16_000_000_000 },
+    { cpuPercent: 15, memoryBytes: 11_500_000_000, totalMemoryBytes: 16_000_000_000 }
+  ]);
+  const waiting = stripAnsi(buildResponsiveLiveFrame({ state, config, width: 220, height: 40, nowMs: NOW }).lines.join('\n'));
+  assert.doesNotMatch(waiting, /[▁▂▃▄▅▆▇█]{4,}/);
+
+  setLocal(state.system, 'samples', [
+    { cpuPercent: 10, memoryBytes: 10_000_000_000, totalMemoryBytes: 16_000_000_000 },
+    { cpuPercent: 20, memoryBytes: 11_000_000_000, totalMemoryBytes: 16_000_000_000 },
+    { cpuPercent: 15, memoryBytes: 11_500_000_000, totalMemoryBytes: 16_000_000_000 },
+    { cpuPercent: 30, memoryBytes: 12_000_000_000, totalMemoryBytes: 16_000_000_000 }
+  ]);
+  const readyFrame = buildResponsiveLiveFrame({ state, config, width: 220, height: 40, nowMs: NOW });
+  const ready = stripAnsi(readyFrame.lines.join('\n'));
+  assert.equal(readyFrame.semantic.progressiveGraphs, true);
+  assert.match(ready, /[▁▂▃▄▅▆▇█]{4,}/);
+  assert.match(ready, /█+░+/);
+  assert.equal(readyFrame.lines.every((line) => cellWidth(line) <= 220), true);
+  assert.equal(MIN_SPARKLINE_SAMPLES, 4);
+  assert.equal(sparkline([10, 20, 15], 12), null);
+  assert.ok(sparkline([10, 20, 15, 30], 12));
+  assert.ok(progressBar(25, 8));
 });
