@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { CollectorRegistry } from './registry.js';
 import { RingBuffer } from '../core/ring-buffer.js';
 import { setMetric } from '../core/normalized-state.js';
@@ -71,8 +71,25 @@ function sanitizedProcesses(tree) {
   }));
 }
 
-function git(cwd, args) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 1800, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+function execFileText(file, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, {
+      encoding: 'utf8',
+      maxBuffer: 8 * 1024 * 1024,
+      ...options
+    }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(String(stdout ?? ''));
+    });
+  });
+}
+
+async function git(cwd, args) {
+  return (await execFileText('git', args, {
+    cwd,
+    timeout: 1800,
+    windowsHide: true
+  })).trim();
 }
 
 export function createLiveCollectorRegistry({ state, adapter, cwd = process.cwd(), sessionTailer = null, now = () => Date.now(), processRef = process } = {}) {
@@ -136,9 +153,13 @@ export function createLiveCollectorRegistry({ state, adapter, cwd = process.cwd(
     id: 'performance', ttlMs: 1000, minIntervalMs: 1000, priority: 35,
     async run() {
       const atMs = now();
-      const system = await adapter.getSystemUsage();
       const rootPid = state.processes.rootPid.value;
-      const rawTree = await adapter.getProcessTree(rootPid);
+      // Both platform calls are asynchronous. Running them together keeps the UI
+      // responsive and avoids serial PowerShell latency on Windows.
+      const [system, rawTree] = await Promise.all([
+        adapter.getSystemUsage(),
+        adapter.getProcessTree(rootPid)
+      ]);
       const scoped = Array.isArray(rawTree) ? descendants(rawTree, rootPid) : [];
       const codexRoot = scoped.find((item) => item.pid === rootPid) ?? null;
       const currentCpu = processRef.cpuUsage?.() ?? null;
@@ -167,9 +188,9 @@ export function createLiveCollectorRegistry({ state, adapter, cwd = process.cwd(
     }
   });
 
-  registry.register({ id: 'git-branch', ttlMs: 4000, minIntervalMs: 4000, priority: 60, async run() { let branch = null; try { branch = git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']); } catch {} setMetric(state.git, 'branch', branch, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git local branch' }); return branch; } });
-  registry.register({ id: 'git-diff', ttlMs: 5000, minIntervalMs: 5000, priority: 30, async run() { let diff = null; try { const lines = git(cwd, ['status', '--porcelain']).split(/\r?\n/).filter(Boolean); diff = { changedFiles: lines.length }; } catch {} setMetric(state.git, 'diff', diff, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git status --porcelain' }); return diff; } });
-  registry.register({ id: 'git-ahead-behind', ttlMs: 10_000, minIntervalMs: 10_000, priority: 25, async run() { let result = null; try { const raw = git(cwd, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']); const [ahead, behind] = raw.split(/\s+/).map(Number); result = { ahead: Number.isFinite(ahead) ? ahead : null, behind: Number.isFinite(behind) ? behind : null }; } catch {} setMetric(state.git, 'aheadBehind', result, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git local upstream compare; no fetch' }); return result; } });
+  registry.register({ id: 'git-branch', ttlMs: 4000, minIntervalMs: 4000, priority: 60, async run() { let branch = null; try { branch = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']); } catch {} setMetric(state.git, 'branch', branch, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git local branch' }); return branch; } });
+  registry.register({ id: 'git-diff', ttlMs: 5000, minIntervalMs: 5000, priority: 30, async run() { let diff = null; try { const lines = (await git(cwd, ['status', '--porcelain'])).split(/\r?\n/).filter(Boolean); diff = { changedFiles: lines.length }; } catch {} setMetric(state.git, 'diff', diff, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git status --porcelain' }); return diff; } });
+  registry.register({ id: 'git-ahead-behind', ttlMs: 10_000, minIntervalMs: 10_000, priority: 25, async run() { let result = null; try { const raw = await git(cwd, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']); const [ahead, behind] = raw.split(/\s+/).map(Number); result = { ahead: Number.isFinite(ahead) ? ahead : null, behind: Number.isFinite(behind) ? behind : null }; } catch {} setMetric(state.git, 'aheadBehind', result, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git local upstream compare; no fetch' }); return result; } });
 
   return registry;
 }

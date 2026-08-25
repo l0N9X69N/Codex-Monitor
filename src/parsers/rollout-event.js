@@ -24,6 +24,15 @@ function payloadOf(obj) {
   return obj?.payload && typeof obj.payload === 'object' ? obj.payload : obj;
 }
 
+function rateLimitsOf(payload, info = null) {
+  const raw = payload?.rate_limits
+    ?? payload?.rateLimits
+    ?? info?.rate_limits
+    ?? info?.rateLimits
+    ?? null;
+  return raw && typeof raw === 'object' ? raw : null;
+}
+
 export function parseRolloutObject(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const type = eventType(obj);
@@ -66,6 +75,7 @@ export function parseRolloutObject(obj) {
     const info = payload?.info ?? payload;
     const total = info?.total_token_usage ?? info?.totalTokenUsage ?? info?.total ?? {};
     const last = info?.last_token_usage ?? info?.lastTokenUsage ?? info?.last ?? {};
+    const rateLimits = rateLimitsOf(payload, info);
     return {
       ...common,
       kind: 'usage',
@@ -76,12 +86,17 @@ export function parseRolloutObject(obj) {
       turnInputTokens: numberOrNull(last?.input_tokens ?? last?.inputTokens),
       turnOutputTokens: numberOrNull(last?.output_tokens ?? last?.outputTokens),
       contextWindow: numberOrNull(info?.model_context_window ?? info?.modelContextWindow),
-      contextUsed: numberOrNull(last?.total_tokens ?? last?.totalTokens)
+      contextUsed: numberOrNull(last?.total_tokens ?? last?.totalTokens),
+      // Current Codex persists RateLimitSnapshot on TokenCountEvent itself.
+      // Keep it attached to the usage event; the ingest pipeline fans it out to
+      // the existing quota reducer without inventing a second JSONL record.
+      rateLimits
     };
   }
 
   if (type === 'rate_limits' || type === 'rate_limit') {
-    return { ...common, kind: 'quota', primary: payload?.primary ?? null, secondary: payload?.secondary ?? null };
+    const limits = payload?.rate_limits ?? payload?.rateLimits ?? payload;
+    return { ...common, kind: 'quota', primary: limits?.primary ?? null, secondary: limits?.secondary ?? null };
   }
 
   if (type === 'model_reroute') {

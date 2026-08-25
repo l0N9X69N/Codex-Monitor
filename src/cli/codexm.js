@@ -36,7 +36,7 @@ function printHelp() {
   process.stdout.write('  --demo                        Render Live Monitor demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n');
   process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
-  process.stdout.write('Live: Alt+Left/Right changes configured view; F4 opens History in another terminal.\n');
+  process.stdout.write('Live: Monitor HUD is read-only; all keyboard input belongs to Codex. Use `codexm --history` for History.\n');
   process.stdout.write('Example: codexm -- --help   # official Codex help\n');
 }
 

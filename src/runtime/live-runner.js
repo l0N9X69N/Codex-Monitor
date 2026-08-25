@@ -1,3 +1,4 @@
+import { StringDecoder } from 'node:string_decoder';
 import { TerminalGuard } from '../terminal/guard.js';
 import { installProcessSafety } from '../terminal/process-safety.js';
 import { childEnvironmentForAuth, codexArgsForAuth } from '../core/auth.js';
@@ -10,28 +11,13 @@ import { LivePaneController } from './live-pane.js';
 import { LiveDataRuntime } from './live-data.js';
 
 const SIGNAL_EXIT_CODE = Object.freeze({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 });
-const MONITOR_HOTKEYS = Object.freeze([
-  { sequence: '\x1bOS', action: 'history' },
-  { sequence: '\x1b[14~', action: 'history' },
-  { sequence: '\x1b[1;3D', action: 'previous-view' },
-  { sequence: '\x1b[1;9D', action: 'previous-view' },
-  { sequence: '\x1b[1;3C', action: 'next-view' },
-  { sequence: '\x1b[1;9C', action: 'next-view' }
-]);
-
-export function splitMonitorHotkeys(input) {
-  let remaining = String(input ?? '');
-  const actions = [];
-  for (const hotkey of MONITOR_HOTKEYS) {
-    let index = remaining.indexOf(hotkey.sequence);
-    while (index !== -1) {
-      actions.push({ action: hotkey.action, index });
-      remaining = `${remaining.slice(0, index)}${remaining.slice(index + hotkey.sequence.length)}`;
-      index = remaining.indexOf(hotkey.sequence);
-    }
-  }
-  actions.sort((a, b) => a.index - b.index);
-  return { actions: actions.map((entry) => entry.action), forwarded: remaining };
+const HUD_REPAIR_INTERVAL_MS = 16;
+export function childOutputMayClobberHud(input) {
+  const text = String(input ?? '');
+  return /\x1b\[[0-3]?J/.test(text)
+    || /\x1b\[[0-9;]*r/.test(text)
+    || /\x1b\[\?(?:47|1047|1049)[hl]/.test(text)
+    || text.includes('\x1bc');
 }
 
 export async function runCodexLive({
@@ -48,7 +34,8 @@ export async function runCodexLive({
   stderr = process.stderr,
   processRef = process,
   spawnPty = null,
-  faultAfterStartMs = null
+  faultAfterStartMs = null,
+  hudRepairIntervalMs = HUD_REPAIR_INTERVAL_MS
 } = {}) {
   if (!stdin?.isTTY || !stdout?.isTTY) {
     throw new Error('interactive terminal required; use official `codex` for redirected/piped I/O');
@@ -80,10 +67,32 @@ export async function runCodexLive({
   let exiting = false;
   let exitCode = 0;
   let faultTimer = null;
+  let hudRepairTimer = null;
   let disposeSafety = () => {};
+  const inputDecoder = new StringDecoder('utf8');
+
+  const clearHudRepairTimer = () => {
+    if (!hudRepairTimer) return;
+    clearTimeout(hudRepairTimer);
+    hudRepairTimer = null;
+  };
+
+  const repairHud = () => {
+    hudRepairTimer = null;
+    if (!pane || exiting) return;
+    const geometry = pane.geometry();
+    guard.setScrollRegion(1, geometry.childRows);
+    pane.render({ force: true });
+  };
+
+  const scheduleHudRepair = () => {
+    if (!pane || exiting || hudRepairTimer) return;
+    hudRepairTimer = setTimeout(repairHud, Math.max(0, hudRepairIntervalMs));
+  };
 
   const cleanup = () => {
     if (faultTimer) clearTimeout(faultTimer);
+    clearHudRepairTimer();
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.off?.('data', onInput); } catch {}
     try { stdin.pause?.(); } catch {}
@@ -115,36 +124,18 @@ export async function runCodexLive({
     else resizeChild();
   };
 
-  const requestHistory = async () => {
-    if (!platformAdapter?.openHistoryTerminal) return false;
-    try {
-      const result = await platformAdapter.openHistoryTerminal({ command: 'codexm', args: ['--history'], cwd });
-      if (result?.ok) return true;
-    } catch {}
-    try { stderr.write('\nCould not open a new terminal.\nRun: codexm --history\n'); } catch {}
-    return false;
-  };
-
-  const shiftView = (delta) => {
-    if (!pane) return false;
-    const before = pane.activeTab;
-    const next = pane.shiftTab(delta);
-    if (next === before) return false;
-    dataRuntime?.setActiveTab?.(next);
-    return true;
+  const writeChildInput = (value) => {
+    if (!child || exiting || !value) return;
+    try { child.write(value); } catch {}
   };
 
   const onInput = (data) => {
     if (!child || exiting) return;
-    const parsed = splitMonitorHotkeys(data.toString('utf8'));
-    for (const action of parsed.actions) {
-      if (action === 'history') void requestHistory();
-      else if (action === 'previous-view') shiftView(-1);
-      else if (action === 'next-view') shiftView(1);
-    }
-    if (parsed.forwarded) {
-      try { child.write(parsed.forwarded); } catch {}
-    }
+    // Live Monitor is deliberately non-interactive. The child Codex TUI owns
+    // every key. Do not parse, buffer, debounce, or reserve any stdin byte.
+    writeChildInput(Buffer.isBuffer(data) || ArrayBuffer.isView(data)
+      ? inputDecoder.write(data)
+      : String(data ?? ''));
   };
 
   try {
@@ -199,10 +190,17 @@ export async function runCodexLive({
       if (exiting) return;
       try { stdout.write(data); } catch {}
       if (pane && monitorState) {
-        for (const event of parsePtyTransient(data, Date.now())) {
-          applyNormalizedEvent(monitorState, event, { source: PROVENANCE.LOCAL });
+        const events = parsePtyTransient(data, Date.now());
+        if (events.length > 0) {
+          for (const event of events) {
+            applyNormalizedEvent(monitorState, event, { source: PROVENANCE.LOCAL });
+          }
+          pane.invalidate();
         }
-        pane.invalidate({ force: true });
+
+        // Normal Codex output must stay on the zero-extra-repaint fast path.
+        // Only terminal-wide control sequences can clobber the reserved HUD rows.
+        if (childOutputMayClobberHud(data)) scheduleHudRepair();
       }
     });
 

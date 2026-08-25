@@ -1,12 +1,17 @@
 {
   "name": "codex-monitor",
   "version": "1.0.0-alpha.1",
-  "private": true,
   "description": "Local-first monitor wrapper for the official OpenAI Codex CLI.",
   "type": "module",
   "bin": {
     "codexm": "./src/cli/codexm.js"
   },
+  "files": [
+    "src/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=20 <27"
   },
@@ -35,6 +40,9 @@
     "demo:phase5": "node ./scripts/phase5-demo-matrix.mjs",
     "demo:history": "node ./scripts/history-demo-gallery.mjs",
     "dev": "node ./src/cli/codexm.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT"
 }

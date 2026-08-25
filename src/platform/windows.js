@@ -1,8 +1,45 @@
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import { spawnCodexPty } from './pty.js';
 import { assertPlatformAdapter, normalizeCapabilities, unsupportedResult } from './contract.js';
 import { commonPaths, memorySnapshot, normalizeProcessRecord } from './common.js';
+
+function execFileText(file, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, {
+      encoding: 'utf8',
+      windowsHide: true,
+      maxBuffer: 16 * 1024 * 1024,
+      ...options
+    }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(String(stdout ?? ''));
+    });
+  });
+}
+
+function createAsyncCache(loader, ttlMs) {
+  let value = null;
+  let valueAt = 0;
+  let inFlight = null;
+
+  return async (...args) => {
+    const now = Date.now();
+    if (value !== null && now - valueAt < ttlMs) return value;
+    if (inFlight) return inFlight;
+
+    inFlight = Promise.resolve()
+      .then(() => loader(...args))
+      .then((next) => {
+        value = next;
+        valueAt = Date.now();
+        return next;
+      })
+      .finally(() => { inFlight = null; });
+
+    return inFlight;
+  };
+}
 
 function parseCsvLine(line) {
   const values = [];
@@ -22,7 +59,7 @@ function parseCsvLine(line) {
   return values;
 }
 
-function windowsProcessTree() {
+async function windowsProcessTree() {
   const script = [
     '$cores=[Math]::Max(1,[Environment]::ProcessorCount);',
     '$perf=@{}; Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { if($_.IDProcess -gt 0){$perf[[int]$_.IDProcess]=[double]$_.PercentProcessorTime/$cores} };',
@@ -32,8 +69,10 @@ function windowsProcessTree() {
     '[pscustomobject]@{ProcessId=$_.ProcessId;ParentProcessId=$_.ParentProcessId;Name=$_.Name;CommandLine=$_.CommandLine;WorkingSetSize=$_.WorkingSetSize;AgeMs=$age;CpuPercent=$perf[[int]$_.ProcessId]}',
     '} | ConvertTo-Csv -NoTypeInformation'
   ].join(' ');
-  const text = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    encoding: 'utf8', windowsHide: true, timeout: 4500, stdio: ['ignore', 'pipe', 'ignore']
+
+  const text = await execFileText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    timeout: 4500,
+    windowsHide: true
   });
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
@@ -50,6 +89,25 @@ function windowsProcessTree() {
   });
 }
 
+async function windowsSystemUsage() {
+  const memory = memorySnapshot();
+  let cpuPercent = null;
+  try {
+    const raw = (await execFileText('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      '(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average'
+    ], { timeout: 2000 })).trim();
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) cpuPercent = parsed;
+  } catch {}
+  return {
+    cpuPercent,
+    memoryBytes: memory.usedBytes,
+    totalMemoryBytes: memory.totalBytes,
+    freeMemoryBytes: memory.freeBytes
+  };
+}
+
 function spawnDetached(file, args, { cwd, env }) {
   const child = spawn(file, args, { cwd, env, detached: true, windowsHide: true, stdio: 'ignore' });
   child.on('error', () => {});
@@ -58,39 +116,35 @@ function spawnDetached(file, args, { cwd, env }) {
 }
 
 export function createWindowsPlatformAdapter({ env = process.env } = {}) {
+  // CIM/PowerShell queries are expensive on Windows. Keep them asynchronous and
+  // deduplicate closely spaced requests so collectors never block stdin/PTY I/O.
+  const getCachedProcessTree = createAsyncCache(windowsProcessTree, 1200);
+  const getCachedSystemUsage = createAsyncCache(windowsSystemUsage, 1500);
+
   const adapter = {
     id: 'win32',
     async spawnPty(options) { return spawnCodexPty({ ...options, platform: 'win32' }); },
     async getSystemUsage() {
-      const memory = memorySnapshot();
-      let cpuPercent = null;
-      try {
-        const raw = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average'], {
-          encoding: 'utf8', windowsHide: true, timeout: 2000, stdio: ['ignore', 'pipe', 'ignore']
-        }).trim();
-        const parsed = Number(raw);
-        if (Number.isFinite(parsed)) cpuPercent = parsed;
-      } catch {}
-      return { cpuPercent, memoryBytes: memory.usedBytes, totalMemoryBytes: memory.totalBytes, freeMemoryBytes: memory.freeBytes };
+      return getCachedSystemUsage();
     },
     async getProcessTree() {
-      try { return windowsProcessTree(); }
+      try { return await getCachedProcessTree(); }
       catch (error) { return unsupportedResult('processTree', error?.message ?? 'PowerShell process query failed'); }
     },
     async getDiskInfo(cwd = process.cwd()) {
       try {
         const root = path.parse(path.resolve(cwd)).root.replace(/\\$/, '');
         const script = `$d=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='${root.replace(/'/g, "''")}'\"; if($d){$d.Size.ToString()+'|'+$d.FreeSpace.ToString()}`;
-        const raw = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-          encoding: 'utf8', windowsHide: true, timeout: 2000, stdio: ['ignore', 'pipe', 'ignore']
-        }).trim();
+        const raw = (await execFileText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+          timeout: 2000
+        })).trim();
         const [total, free] = raw.split('|').map(Number);
         return { path: root, totalBytes: Number.isFinite(total) ? total : null, freeBytes: Number.isFinite(free) ? free : null };
       } catch (error) { return unsupportedResult('diskInfo', error?.message ?? 'disk query failed'); }
     },
     async openHistoryTerminal({ command = 'codexm', args = ['--history'], cwd = process.cwd() } = {}) {
       try {
-        execFileSync('where.exe', ['wt.exe'], { windowsHide: true, timeout: 1200, stdio: 'ignore' });
+        await execFileText('where.exe', ['wt.exe'], { timeout: 1200 });
         return spawnDetached('wt.exe', ['new-tab', '--startingDirectory', cwd, command, ...args], { cwd, env });
       } catch {}
       try {
@@ -105,4 +159,4 @@ export function createWindowsPlatformAdapter({ env = process.env } = {}) {
   return assertPlatformAdapter(adapter);
 }
 
-export { parseCsvLine, windowsProcessTree };
+export { parseCsvLine, windowsProcessTree, execFileText };

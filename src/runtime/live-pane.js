@@ -17,27 +17,33 @@ export class LivePaneController {
     state,
     config,
     cwd = process.cwd(),
-    activeTab = 'overview',
     debounceMs = 30,
     resizeDebounceMs = 75,
+    clockTickMs = 1000,
     hysteresisCells = 4,
     setTimer = setTimeout,
     clearTimer = clearTimeout,
+    setIntervalFn = setInterval,
+    clearIntervalFn = clearInterval,
     now = () => Date.now()
   } = {}) {
     this.stdout = stdout;
     this.state = state;
     this.config = config;
     this.cwd = cwd;
-    this.activeTab = config?.tabs?.includes(activeTab) ? activeTab : (config?.tabs?.[0] ?? 'overview');
+    this.activeTab = 'overview';
     this.debounceMs = debounceMs;
     this.resizeDebounceMs = resizeDebounceMs;
+    this.clockTickMs = Math.max(250, Number(clockTickMs) || 1000);
     this.hysteresisCells = hysteresisCells;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
+    this.setIntervalFn = setIntervalFn;
+    this.clearIntervalFn = clearIntervalFn;
     this.now = now;
     this.timer = null;
     this.resizeTimer = null;
+    this.clockTimer = null;
     this.pendingForce = false;
     this.disposed = false;
     this.lastGeometry = null;
@@ -46,22 +52,16 @@ export class LivePaneController {
       originRow: 1,
       now
     });
-  }
 
-  setActiveTab(tab) {
-    if (!this.config?.tabs?.includes(tab) || tab === this.activeTab) return false;
-    this.activeTab = tab;
-    this.render({ force: true });
-    return true;
-  }
-
-  shiftTab(delta = 1) {
-    const tabs = this.config?.tabs ?? ['overview'];
-    if (tabs.length < 2) return this.activeTab;
-    const current = Math.max(0, tabs.indexOf(this.activeTab));
-    const next = (current + delta + tabs.length) % tabs.length;
-    this.setActiveTab(tabs[next]);
-    return this.activeTab;
+    // Time-derived labels need a UI clock even when no collector state changes.
+    // This uses the diff renderer, so an unchanged frame writes zero bytes.
+    const needsClock = config?.sections?.session === true || config?.header?.includes?.('session-age');
+    if (needsClock && typeof this.setIntervalFn === 'function') {
+      this.clockTimer = this.setIntervalFn(() => {
+        if (!this.disposed) this.render();
+      }, this.clockTickMs);
+      this.clockTimer?.unref?.();
+    }
   }
 
   geometry() {
@@ -72,7 +72,7 @@ export class LivePaneController {
       config: this.config,
       width,
       height,
-      activeTab: this.activeTab,
+      activeTab: 'overview',
       cwd: this.cwd,
       nowMs: this.now(),
       previousLaneCount: this.lastGeometry?.frame?.layout?.laneCount ?? null,
@@ -139,8 +139,10 @@ export class LivePaneController {
     this.disposed = true;
     if (this.timer) this.clearTimer(this.timer);
     if (this.resizeTimer) this.clearTimer(this.resizeTimer);
+    if (this.clockTimer && typeof this.clearIntervalFn === 'function') this.clearIntervalFn(this.clockTimer);
     this.timer = null;
     this.resizeTimer = null;
+    this.clockTimer = null;
     this.pendingForce = false;
   }
 }
