@@ -8,7 +8,7 @@ import { bootstrapAccountQuota } from '../../src/collectors/quota-bootstrap.js';
 import { CurrentSessionTailer, firstSessionMeta } from '../../src/collectors/current-session.js';
 import { PROVENANCE } from '../../src/core/provenance.js';
 import { isResumeIntent } from '../../src/runtime/live-data.js';
-import { codexArgsForLocalResume, listLocalResumeSessions, localResumePickerIntent } from '../../src/runtime/local-resume-picker.js';
+import { codexArgsForLocalResume, decodePickerInput, listLocalResumeSessions, localResumePickerIntent } from '../../src/runtime/local-resume-picker.js';
 
 function tempSessions() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-phase6-'));
@@ -61,6 +61,14 @@ function userMessage(timestamp, text) {
     timestamp,
     type: 'response_item',
     payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] }
+  };
+}
+
+function explicitUserMessage(timestamp, text) {
+  return {
+    timestamp,
+    type: 'event_msg',
+    payload: { type: 'user_message', message: text, kind: 'plain' }
   };
 }
 
@@ -157,18 +165,20 @@ test('modern nested session_meta exposes thread id and cwd to local resume disco
   }
 });
 
-test('local resume picker lists chat previews and maps selection to official resume thread id', () => {
+test('local resume picker lists human chat previews and maps selection to official resume thread id', () => {
   const { root, sessions } = tempSessions();
   try {
     const filePath = path.join(sessions, 'picked.jsonl');
     fs.writeFileSync(filePath, jsonl([
       nestedSessionMeta('2026-08-20T10:00:00.000Z', { id: 'thread-picked', cwd: root }),
-      userMessage('2026-08-20T10:00:01.000Z', 'Continue the monitor architecture work')
+      userMessage('2026-08-20T10:00:00.500Z', '# AGENTS.md instructions <INSTRUCTIONS> injected context'),
+      explicitUserMessage('2026-08-20T10:00:01.000Z', 'Continue the monitor architecture work')
     ]));
     const listed = listLocalResumeSessions(sessions, { cwd: root });
     assert.equal(listed.length, 1);
     assert.equal(listed[0].threadId, 'thread-picked');
     assert.match(listed[0].preview, /monitor architecture/);
+    assert.doesNotMatch(listed[0].preview, /AGENTS\.md/);
     assert.deepEqual(localResumePickerIntent(['resume']), { showAll: false });
     assert.deepEqual(localResumePickerIntent(['resume', '--all']), { showAll: true });
     assert.equal(localResumePickerIntent(['resume', '--last']), null);
@@ -177,6 +187,16 @@ test('local resume picker lists chat previews and maps selection to official res
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('local resume picker decodes raw Windows terminal keys without readline state', () => {
+  assert.equal(decodePickerInput(Buffer.from('\x1b[A')), 'up');
+  assert.equal(decodePickerInput(Buffer.from('\x1b[B')), 'down');
+  assert.equal(decodePickerInput(Buffer.from('\r')), 'select');
+  assert.equal(decodePickerInput(Buffer.from('\n')), 'select');
+  assert.equal(decodePickerInput(Buffer.from('\x1b')), 'cancel');
+  assert.equal(decodePickerInput(Buffer.from('\x03')), 'cancel');
+  assert.equal(decodePickerInput(Buffer.from('x')), null);
 });
 
 test('exact local resume target hydrates before any new Codex turn is appended', () => {
