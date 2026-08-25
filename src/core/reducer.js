@@ -136,6 +136,7 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       if (event.callId) tools = tools.filter((id) => id !== event.callId);
       else if (tools.length === 1) tools = [];
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
+      setMetric(state.activity, 'approvalPending', false, { source, observedAtMs: atMs });
       trackToolEnd(state, event, atMs, source);
       updateActivity(state, atMs, null, source);
       break;
@@ -144,6 +145,10 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       setMetric(state.activity, 'approvalPending', true, { source, observedAtMs: atMs });
       setMetric(state.activity, 'errorActive', false, { source, observedAtMs: atMs });
       updateActivity(state, atMs, event.detail ?? 'approval request', source);
+      break;
+    case 'approval-resolved':
+      setMetric(state.activity, 'approvalPending', false, { source, observedAtMs: atMs });
+      updateActivity(state, atMs, null, source);
       break;
     case 'retry': {
       const count = state.activity.retryCount.value;
