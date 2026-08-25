@@ -1,7 +1,7 @@
 import { createNormalizedMonitorState, setMetric } from '../core/normalized-state.js';
 import { PROVENANCE } from '../core/provenance.js';
 import { normalizeConfig, configForPreset } from '../config/schema.js';
-import { buildLiveFrame } from './live-renderer.js';
+import { buildLiveFrame } from './live-renderer-responsive.js';
 
 function current(target, key, value, nowMs) {
   setMetric(target, key, value, { source: PROVENANCE.OFFICIAL_CURRENT, observedAtMs: nowMs, evidence: 'demo' });
@@ -46,6 +46,8 @@ export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Dat
 
   setMetric(state.system, 'cpuPercent', 24, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
   setMetric(state.system, 'memoryBytes', 13_678_000_000, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
+  setMetric(state.system, 'totalMemoryBytes', 31_900_000_000, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
+  setMetric(state.system, 'freeMemoryBytes', 18_222_000_000, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
 
   const normalized = String(kind ?? 'idle').toLowerCase();
   const mapping = {
