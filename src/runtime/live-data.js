@@ -5,7 +5,7 @@ import { CurrentSessionTailer } from '../collectors/current-session.js';
 import { createLiveCollectorRegistry } from '../collectors/live.js';
 
 const PASSIVE_LIVE_METRICS = Object.freeze({
-  overview: ['activity', 'model', 'reasoning', 'context', 'usage', 'quota', 'session', 'tools', 'system']
+  overview: ['activity', 'model', 'reasoning', 'context', 'usage', 'quota', 'session']
 });
 
 export class LiveDataRuntime {
