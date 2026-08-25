@@ -3,7 +3,7 @@ const VALID = Object.freeze({
   presets: new Set(['recommended', 'compact', 'full', 'custom']),
   themes: new Set(['color', 'mono', 'matrix']),
   backgrounds: new Set(['terminal', 'black', 'dark']),
-  header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age', 'fast']),
+  header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']),
   sections: new Set(['context', 'usage', 'session', 'activity', 'system']),
   metrics: new Set([
     'activity', 'model', 'reasoning', 'project', 'context', 'usage', 'quota', 'session',
@@ -37,8 +37,6 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: true, gitDiff: true, gitAheadBehind: true
     }),
-    // Four header items remain the recommended default density. Full deliberately
-    // adds Git as a fifth item; the responsive renderer decides what fits.
     header: Object.freeze(['activity', 'model', 'reasoning', 'project', 'git'])
   })
 });
@@ -100,8 +98,6 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     layout: 'auto',
     sections: booleanMap(input?.sections, [...VALID.sections], presetBase.sections),
     metrics: booleanMap(input?.metrics, [...VALID.metrics], presetBase.metrics),
-    // PROJECT-SPEC recommends at most four important items; it does not make four
-    // a persistence limit. Preserve all valid user choices and let layout fit them.
     header: uniqueValid(input?.header, VALID.header, presetBase.header),
     updateCheck: typeof input?.updateCheck === 'boolean' ? input.updateCheck : Boolean(presetBase.updateCheck)
   };
