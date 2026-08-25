@@ -3,10 +3,13 @@ import { cellWidth, truncateCells } from './cell-width.js';
 export const SECTION_TYPES = Object.freeze({ REGULAR: 'REGULAR', SMALL: 'SMALL', INLINE: 'INLINE' });
 export const REPRESENTATION = Object.freeze({ FULL: 'FULL', COMPACT: 'COMPACT', MICRO: 'MICRO', HIDDEN: 'HIDDEN' });
 
+// Full wide mode intentionally reserves the same nine-row visual envelope as
+// feat/full-monitor-v2 when the terminal is tall enough. Short terminals still
+// collapse aggressively so Codex keeps priority over telemetry.
 const HEIGHT_BUDGETS = Object.freeze([
-  { min: 35, rows: 7 },
-  { min: 24, rows: 5 },
-  { min: 18, rows: 4 },
+  { min: 35, rows: 9 },
+  { min: 24, rows: 7 },
+  { min: 18, rows: 5 },
   { min: 0, rows: 3 }
 ]);
 
