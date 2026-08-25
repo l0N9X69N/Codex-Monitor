@@ -29,12 +29,13 @@ function fakeChild() {
   return {
     pid: 4242,
     writes: [],
+    resizes: [],
     dataHandler: null,
     exitHandler: null,
     onData(fn) { this.dataHandler = fn; },
     onExit(fn) { this.exitHandler = fn; },
     write(value) { this.writes.push(value); },
-    resize() {},
+    resize(cols, rows) { this.resizes.push({ cols, rows }); },
     kill() {},
     exit(code = 0) { this.exitHandler?.({ exitCode: code }); }
   };
@@ -87,6 +88,34 @@ test('normal output is not repainted while terminal-wide controls trigger bounde
   child.dataHandler('\x1b[2J');
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.match(io.stdout.output, /\x1b7/);
+  child.exit(0);
+  assert.equal(await running, 0);
+});
+
+test('first Windows resize event immediately updates the Codex PTY geometry', async () => {
+  const io = fakeIo();
+  const child = fakeChild();
+  const running = runCodexLive({
+    codexPath: 'codex',
+    auth: { mode: 'login', forced: false },
+    monitorState: createCurrentRunState({ startedAtMs: Date.now() }),
+    monitorConfig: normalizeConfig(configForPreset('full')),
+    ...io,
+    spawnPty: async () => child,
+    hudRepairIntervalMs: 5
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  io.stdout.columns = 220;
+  io.stdout.rows = 50;
+  io.stdout.emit('resize');
+
+  assert.ok(child.resizes.length >= 1);
+  assert.equal(child.resizes[0].cols, 220);
+  assert.ok(child.resizes[0].rows >= 8);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(child.resizes.at(-1).cols, 220);
   child.exit(0);
   assert.equal(await running, 0);
 });
