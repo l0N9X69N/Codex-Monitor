@@ -103,7 +103,9 @@ async function main() {
       cwd: process.cwd(),
       showAll: localResume.showAll
     });
-    if (picked.reason === 'cancelled') return 0;
+
+    if (!picked.selected && picked.reason !== 'no-local-sessions') return 0;
+
     if (picked.selected) {
       codexArgs = codexArgsForLocalResume(codexArgs, picked.selected.threadId);
       resumeTargetPath = picked.selected.filePath;
