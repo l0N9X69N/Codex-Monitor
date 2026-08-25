@@ -125,7 +125,8 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       const id = event.callId ?? `anonymous:${tools.length + 1}`;
       if (!tools.includes(id)) tools.push(id);
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
-      setMetric(state.activity, 'approvalPending', false, { source, observedAtMs: atMs });
+      // Do not clear approval here. Codex can announce/start the tool call before
+      // the visible permission prompt is resolved; APPROVAL must keep priority.
       setMetric(state.activity, 'errorActive', false, { source, observedAtMs: atMs });
       trackToolStart(state, event, atMs, source);
       updateActivity(state, atMs, `running ${event.tool ?? 'tool'}`, source);
@@ -136,7 +137,8 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       if (event.callId) tools = tools.filter((id) => id !== event.callId);
       else if (tools.length === 1) tools = [];
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
-      setMetric(state.activity, 'approvalPending', false, { source, observedAtMs: atMs });
+      // Approval is cleared by approval-resolved/turn-complete, not by tool
+      // lifecycle events that can race with the TUI prompt.
       trackToolEnd(state, event, atMs, source);
       updateActivity(state, atMs, null, source);
       break;
