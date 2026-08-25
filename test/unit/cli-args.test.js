@@ -14,9 +14,7 @@ function base(expected = {}) {
 }
 
 test('monitor auth option is consumed while Codex args remain intact', () => {
-  assert.deepEqual(parseMonitorArgs(['--auth', 'api', 'resume', '-m', 'x']), base({
-    auth: 'api', codexArgs: ['resume', '-m', 'x']
-  }));
+  assert.deepEqual(parseMonitorArgs(['--auth', 'api', 'resume', '-m', 'x']), base({ auth: 'api', codexArgs: ['resume', '-m', 'x'] }));
 });
 
 test('-- escape hatch passes monitor-looking flags to Codex', () => {
@@ -27,16 +25,20 @@ test('--version remains a Codex argument', () => {
   assert.deepEqual(parseMonitorArgs(['--version']), base({ codexArgs: ['--version'] }));
 });
 
-test('Phase 04 runtime overrides are consumed by Monitor', () => {
+test('runtime overrides are consumed by Monitor', () => {
   assert.deepEqual(parseMonitorArgs(['--preset', 'compact', '--theme=matrix', '--lang', 'en', 'resume']), base({
-    codexArgs: ['resume'],
-    overrides: { preset: 'compact', theme: 'matrix', language: 'en' }
+    codexArgs: ['resume'], overrides: { preset: 'compact', theme: 'matrix', language: 'en' }
   }));
 });
 
 test('demo state implies demo action', () => {
-  assert.deepEqual(parseMonitorArgs(['--demo-state', 'approval']), base({
-    action: 'demo',
-    demo: { state: 'approval' }
-  }));
+  assert.deepEqual(parseMonitorArgs(['--demo-state', 'approval']), base({ action: 'demo', demo: { state: 'approval' } }));
+});
+
+test('--manager is Monitor-owned', () => {
+  assert.deepEqual(parseMonitorArgs(['--manager']), base({ action: 'manager' }));
+});
+
+test('--history is no longer Monitor-owned and is forwarded to official Codex', () => {
+  assert.deepEqual(parseMonitorArgs(['--history']), base({ codexArgs: ['--history'] }));
 });
