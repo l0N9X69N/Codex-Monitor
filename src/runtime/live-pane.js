@@ -1,4 +1,4 @@
-import { buildLiveFrame } from '../ui/live-renderer.js';
+import { buildLiveFrame } from '../ui/live-renderer-responsive.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 
 const SAVE_CURSOR = '\x1b7';
@@ -53,8 +53,6 @@ export class LivePaneController {
       now
     });
 
-    // Time-derived labels need a UI clock even when no collector state changes.
-    // This uses the diff renderer, so an unchanged frame writes zero bytes.
     const needsClock = config?.sections?.session === true || config?.header?.includes?.('session-age');
     if (needsClock && typeof this.setIntervalFn === 'function') {
       this.clockTimer = this.setIntervalFn(() => {
