@@ -33,6 +33,24 @@ function rateLimitsOf(payload, info = null) {
   return raw && typeof raw === 'object' ? raw : null;
 }
 
+function modelSettingsFrom(payload) {
+  const settings = payload?.thread_settings
+    ?? payload?.threadSettings
+    ?? payload?.settings
+    ?? payload;
+  return {
+    model: sanitizeText(settings?.model ?? payload?.model),
+    reasoning: sanitizeText(
+      settings?.reasoning_effort
+      ?? settings?.reasoningEffort
+      ?? settings?.effort
+      ?? payload?.reasoning_effort
+      ?? payload?.reasoningEffort
+      ?? payload?.effort
+    )
+  };
+}
+
 export function parseRolloutObject(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const type = eventType(obj);
@@ -47,9 +65,30 @@ export function parseRolloutObject(obj) {
       kind: 'session-meta',
       threadId: sanitizeText(payload?.id ?? payload?.thread_id ?? payload?.threadId),
       model: sanitizeText(payload?.model),
-      reasoning: sanitizeText(payload?.reasoning_effort ?? payload?.reasoningEffort),
+      reasoning: sanitizeText(payload?.reasoning_effort ?? payload?.reasoningEffort ?? payload?.effort),
       cwd: sanitizeText(payload?.cwd)
     };
+  }
+
+  // Modern Codex persists the effective model and reasoning effort in a
+  // turn_context item once per real user turn. This is the durable source used
+  // by Codex itself when reconstructing thread metadata on resume.
+  if (type === 'turn_context' || type === 'turn_context_item') {
+    const settings = modelSettingsFrom(payload);
+    return {
+      ...common,
+      kind: 'model-settings',
+      model: settings.model,
+      reasoning: settings.reasoning,
+      turnId: sanitizeText(payload?.turn_id ?? payload?.turnId)
+    };
+  }
+
+  // Codex can also persist/apply settings changes independently of the next
+  // turn_context (for example after /model). Accept both snake/camel payloads.
+  if (type === 'thread_settings_applied' || type === 'thread_settings_changed') {
+    const settings = modelSettingsFrom(payload);
+    return { ...common, kind: 'model-settings', model: settings.model, reasoning: settings.reasoning };
   }
 
   if (type === 'turn_started' || type === 'task_started') {
@@ -87,9 +126,6 @@ export function parseRolloutObject(obj) {
       turnOutputTokens: numberOrNull(last?.output_tokens ?? last?.outputTokens),
       contextWindow: numberOrNull(info?.model_context_window ?? info?.modelContextWindow),
       contextUsed: numberOrNull(last?.total_tokens ?? last?.totalTokens),
-      // Current Codex persists RateLimitSnapshot on TokenCountEvent itself.
-      // Keep it attached to the usage event; the ingest pipeline fans it out to
-      // the existing quota reducer without inventing a second JSONL record.
       rateLimits
     };
   }
