@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeConfig, configForPreset, applyRuntimeOverrides } from '../../src/config/schema.js';
 import { cellWidth, stripAnsi, truncateCells } from '../../src/ui/cell-width.js';
-import { fitHeader, layoutSections, monitorRowBudget } from '../../src/ui/layout.js';
+import { layoutSections, monitorRowBudget } from '../../src/ui/layout.js';
 import { assertNoWrap, buildLiveFrame } from '../../src/ui/live-renderer.js';
 import { createDemoState } from '../../src/ui/demo.js';
 
@@ -14,15 +14,15 @@ function frame({ width = 100, height = 30, authMode = 'login', preset = 'recomme
   return buildLiveFrame({ state, config, width, height, nowMs: NOW, cwd: 'C:/repo/Codex-Monitor', health: 'OK' });
 }
 
-test('config schema caps header at four and keeps at least one tab', () => {
+test('config schema preserves valid header choices and removes legacy Live tabs', () => {
   const config = normalizeConfig({
     preset: 'custom',
     header: ['activity', 'model', 'reasoning', 'project', 'git', 'auth'],
     tabs: []
   });
-  assert.equal(config.header.length, 4);
-  assert.deepEqual(config.tabs, ['overview']);
-  assert.equal(config.configVersion, 1);
+  assert.deepEqual(config.header, ['activity', 'model', 'reasoning', 'project', 'git', 'auth']);
+  assert.equal(Object.prototype.hasOwnProperty.call(config, 'tabs'), false);
+  assert.equal(config.configVersion, 2);
 });
 
 test('runtime preset/theme/lang overrides are invocation-local transformations', () => {
@@ -63,15 +63,17 @@ test('responsive lane engine increases lanes with width but honors row budget', 
   assert.ok(wide.lanes.every((lane) => lane.rows <= 3));
 });
 
-test('header navigation survives before optional status text', () => {
-  const header = fitHeader({
-    left: ['● TOOL', 'gpt-5.6-luna', 'high', 'Very-Long-Project-Name'],
-    tabs: ['overview', 'performance', 'processes', 'tools', 'resources', 'usage'],
-    activeTab: 'tools',
-    width: 34
+test('responsive header stays bounded without mutating configured header choices', () => {
+  const config = normalizeConfig({
+    ...configForPreset('custom'),
+    header: ['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']
   });
-  assert.ok(cellWidth(header) <= 34);
-  assert.match(stripAnsi(header), /Tools|tools/i);
+  const state = createDemoState('tool', { authMode: 'login', nowMs: NOW });
+  for (const width of [34, 60, 100, 180]) {
+    const result = buildLiveFrame({ state, config, width, height: 30, nowMs: NOW, cwd: 'C:/repo/Codex-Monitor' });
+    assert.ok(result.lines.every((line) => cellWidth(line) <= width));
+  }
+  assert.equal(config.header.length, 8);
 });
 
 test('width/height matrix never wraps or exceeds monitor row budget', () => {
@@ -94,8 +96,12 @@ test('Login shows quota while API does not show Login quota', () => {
 });
 
 test('unknown system telemetry renders as -- rather than zero', () => {
-  const text = stripAnsi(frame({ preset: 'full', theme: 'mono', width: 120, height: 35 }).lines.join('\n'));
-  assert.match(text, /SYSTEM CPU -- · RAM --/);
+  const config = normalizeConfig(configForPreset('full'));
+  const state = createDemoState('idle', { authMode: 'login', nowMs: NOW });
+  state.system.cpuPercent.value = null;
+  state.system.memoryBytes.value = null;
+  const text = stripAnsi(buildLiveFrame({ state, config, width: 120, height: 35, nowMs: NOW }).lines.join('\n'));
+  assert.match(text, /SYS\s+--\/--|SYSTEM CPU -- · RAM --/);
   assert.doesNotMatch(text, /RAM 0(?:\s|$)/);
 });
 
