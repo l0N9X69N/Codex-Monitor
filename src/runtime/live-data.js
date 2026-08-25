@@ -1,7 +1,8 @@
 import { buildDemandGraph } from '../core/demand-graph.js';
 import { CollectorManager } from '../collectors/manager.js';
 import { CentralScheduler } from '../core/scheduler.js';
-import { CurrentSessionTailer, bootstrapLatestAccountQuota } from '../collectors/current-session.js';
+import { CurrentSessionTailer } from '../collectors/current-session.js';
+import { bootstrapAccountQuota } from '../collectors/quota-bootstrap.js';
 import { createLiveCollectorRegistry } from '../collectors/live.js';
 
 const PASSIVE_LIVE_METRICS = Object.freeze({
@@ -24,9 +25,9 @@ export class LiveDataRuntime {
     this.resumeMode = isResumeIntent(codexArgs);
 
     // Account quota is account-scoped, not session-scoped. Bootstrap once from
-    // the newest local Codex evidence so Login users do not start from a blank
-    // quota panel. A new current-session snapshot will supersede it naturally.
-    this.quotaBootstrap = bootstrapLatestAccountQuota(state, sessionsPath);
+    // local Codex evidence without touching Session freshness/usage. A newer
+    // quota snapshot from the attached run naturally supersedes these values.
+    this.quotaBootstrap = bootstrapAccountQuota(state, sessionsPath);
 
     this.sessionTailer = new CurrentSessionTailer({
       state,
