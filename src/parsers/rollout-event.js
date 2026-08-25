@@ -6,7 +6,7 @@ function numberOrNull(value) {
 }
 
 function eventTimeMs(obj) {
-  const raw = obj?.timestamp ?? obj?.time ?? obj?.created_at ?? obj?.createdAt ?? obj?.payload?.timestamp ?? null;
+  const raw = obj?.timestamp ?? obj?.time ?? obj?.created_at ?? obj?.createdAt ?? obj?.payload?.timestamp ?? obj?.payload?.meta?.timestamp ?? null;
   if (raw == null) return null;
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw > 1e12 ? raw : raw * 1000;
   const parsed = Date.parse(String(raw));
@@ -60,13 +60,17 @@ export function parseRolloutObject(obj) {
   const common = { type, atMs, rawType: type };
 
   if (type === 'session_meta' || type === 'session_metadata') {
+    // Current Codex persists SessionMetaLine as { payload: { meta, git } }.
+    // Older rollouts used a flatter payload. Accept both so local resume can
+    // resolve the selected thread without requiring a new turn to be appended.
+    const meta = payload?.meta && typeof payload.meta === 'object' ? payload.meta : payload;
     return {
       ...common,
       kind: 'session-meta',
-      threadId: sanitizeText(payload?.id ?? payload?.thread_id ?? payload?.threadId),
-      model: sanitizeText(payload?.model),
-      reasoning: sanitizeText(payload?.reasoning_effort ?? payload?.reasoningEffort ?? payload?.effort),
-      cwd: sanitizeText(payload?.cwd)
+      threadId: sanitizeText(meta?.id ?? meta?.thread_id ?? meta?.threadId),
+      model: sanitizeText(meta?.model ?? payload?.model),
+      reasoning: sanitizeText(meta?.reasoning_effort ?? meta?.reasoningEffort ?? meta?.effort ?? payload?.reasoning_effort ?? payload?.reasoningEffort ?? payload?.effort),
+      cwd: sanitizeText(meta?.cwd ?? payload?.cwd)
     };
   }
 
