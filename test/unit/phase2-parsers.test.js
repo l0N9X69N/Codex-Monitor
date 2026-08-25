@@ -5,7 +5,7 @@ import { applyNormalizedEvent } from '../../src/core/reducer.js';
 import { PROVENANCE } from '../../src/core/provenance.js';
 import { parseRolloutLine } from '../../src/parsers/rollout-event.js';
 import { IncrementalJsonlParser } from '../../src/parsers/jsonl-incremental.js';
-import { parsePtyTransient } from '../../src/parsers/pty-transient.js';
+import { parsePtyTransient, PtyTransientStreamParser } from '../../src/parsers/pty-transient.js';
 import { sanitizeText } from '../../src/core/sanitize.js';
 import { event, usageEvent } from '../helpers/synthetic-session.js';
 
@@ -38,6 +38,20 @@ test('concurrent tools remain TOOL until all calls end', () => {
   assert.equal(state.activity.state.value, 'TOOL');
   applyNormalizedEvent(state, parse(event('mcp_tool_call_end', { call_id: 'b' })));
   assert.equal(state.activity.state.value, 'THINKING');
+});
+
+test('approval priority survives tool lifecycle until explicit resolution', () => {
+  const state = createNormalizedMonitorState();
+  applyNormalizedEvent(state, { kind: 'turn-start', atMs: 1, turnId: 't1' });
+  applyNormalizedEvent(state, { kind: 'tool-start', atMs: 2, callId: 'c1', tool: 'exec' });
+  applyNormalizedEvent(state, { kind: 'approval', atMs: 3, detail: 'approval prompt' });
+  assert.equal(state.activity.state.value, 'APPROVAL');
+  assert.equal(state.activity.approvalPending.value, true);
+  applyNormalizedEvent(state, { kind: 'tool-start', atMs: 4, callId: 'c1', tool: 'exec' });
+  assert.equal(state.activity.state.value, 'APPROVAL');
+  applyNormalizedEvent(state, { kind: 'approval-resolved', atMs: 5 });
+  assert.equal(state.activity.approvalPending.value, false);
+  assert.equal(state.activity.state.value, 'TOOL');
 });
 
 test('retry error compaction and turn lifecycle are normalized', () => {
@@ -127,10 +141,24 @@ test('PTY transient parser recognizes the real Codex command approval prompt', (
   assert.equal(events[0].kind, 'approval');
 });
 
-test('PTY transient parser does not treat static permissions/status/history text as a live approval prompt', () => {
+test('streaming PTY parser recognizes approval split across child output chunks and its resolution', () => {
+  const parser = new PtyTransientStreamParser();
+  assert.deepEqual(parser.push('Would you like to run the following ', 100), []);
+  const prompt = parser.push('command? Environment: local', 101);
+  assert.equal(prompt.length, 1);
+  assert.equal(prompt[0].kind, 'approval');
+  const duplicate = parser.push(' 1. Yes, proceed', 102);
+  assert.equal(duplicate.filter((item) => item.kind === 'approval').length, 0);
+  const resolved = parser.push(' You approved Codex to run Remove-Item this time', 103);
+  assert.equal(resolved.some((item) => item.kind === 'approval-resolved'), true);
+});
+
+test('PTY transient parser does not treat static permissions/status text as a live approval prompt', () => {
   assert.deepEqual(parsePtyTransient('Permissions: Workspace (Ask for approval when needed)', 123), []);
   assert.deepEqual(parsePtyTransient('Tip: Use /status to see the current model, approvals, and token usage.', 123), []);
-  assert.deepEqual(parsePtyTransient('You approved Codex to run Remove-Item this time', 123), []);
+  const resolved = parsePtyTransient('You approved Codex to run Remove-Item this time', 123);
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].kind, 'approval-resolved');
 });
 
 test('actual model only changes on explicit actual-model evidence', () => {
