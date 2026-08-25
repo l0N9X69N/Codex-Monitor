@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { layoutSections, monitorRowBudget, REPRESENTATION, SECTION_TYPES } from './layout.js';
 import { cellWidth, padCells, truncateCells } from './cell-width.js';
-import { activityToken, paint } from './theme.js';
+import { activityToken, paint, styleText } from './theme.js';
 
 function value(metric, fallback = null) {
   if (metric && typeof metric === 'object' && Object.prototype.hasOwnProperty.call(metric, 'value')) return metric.value ?? fallback;
@@ -17,8 +17,8 @@ function finite(raw) {
 function fmtNumber(raw) {
   const n = finite(raw);
   if (n == null) return '--';
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}m`;
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`;
+  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, '')}K`;
   return String(Math.round(n * 10) / 10);
 }
 
@@ -39,11 +39,16 @@ function fmtDuration(raw) {
   const seconds = Math.floor(n / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m${seconds % 60 ? `${seconds % 60}s` : ''}`;
+  if (minutes < 60) return `${minutes}m${seconds % 60 ? String(seconds % 60).padStart(2, '0') + 's' : ''}`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h${minutes % 60 ? `${minutes % 60}m` : ''}`;
-  const days = Math.floor(hours / 24);
-  return `${days}d${hours % 24 ? `${hours % 24}h` : ''}`;
+  if (hours < 24) return `${hours}h${String(minutes % 60).padStart(2, '0')}m`;
+  return `${Math.floor(hours / 24)}d${String(hours % 24).padStart(2, '0')}h`;
+}
+
+function fmtAge(raw, nowMs) {
+  const timestamp = finite(raw);
+  if (timestamp == null) return '--';
+  return fmtDuration(Math.max(0, nowMs - timestamp));
 }
 
 function epochLikeToMs(raw) {
@@ -68,9 +73,8 @@ function fmtReset(raw, nowMs) {
   const minutes = Math.max(1, Math.ceil(delta / 60_000));
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours}h${minutes % 60 ? `${minutes % 60}m` : ''}`;
-  const days = Math.floor(hours / 24);
-  return `${days}d${hours % 24 ? `${hours % 24}h` : ''}`;
+  if (hours < 48) return `${hours}h${String(minutes % 60).padStart(2, '0')}m`;
+  return `${Math.floor(hours / 24)}d${String(hours % 24).padStart(2, '0')}h`;
 }
 
 function pct(raw) {
@@ -78,61 +82,70 @@ function pct(raw) {
   return n == null ? '--' : `${Math.round(n)}%`;
 }
 
-function activityLabel(state) {
+function activityInfo(state) {
   const activity = String(value(state?.activity?.state, 'IDLE')).toUpperCase();
-  const symbol = activity === 'ERROR' ? '×' : activity === 'APPROVAL' ? '!' : activity === 'TOOL' ? '◆' : '●';
-  return { activity, text: `${symbol} ${activity}` };
+  if (activity === 'ERROR') return { activity, symbol: '×', description: 'failed', token: 'error' };
+  if (activity === 'APPROVAL') return { activity, symbol: '!', description: 'waiting approval', token: 'approval' };
+  if (activity === 'TOOL') return { activity, symbol: '◆', description: 'running tool', token: 'tool' };
+  if (activity === 'THINKING') return { activity, symbol: '●', description: 'reasoning', token: 'thinking' };
+  return { activity: 'IDLE', symbol: '●', description: 'waiting input', token: 'healthy' };
 }
 
 function headerItem(item, state, options) {
-  const { activity, text } = activityLabel(state);
-  if (item === 'activity') return paint(text, activityToken(activity), options.theme);
+  const info = activityInfo(state);
+  if (item === 'activity') return `${styleText(`${info.symbol} ${info.activity}`, info.token, options.theme, { bold: true })} ${styleText(info.description, 'muted', options.theme)}`;
   if (item === 'model') {
     const model = value(state?.model?.requested);
-    return model ? paint(truncateCells(model, 18), 'thinking', options.theme) : null;
+    return model ? styleText(truncateCells(model, 20), 'thinking', options.theme, { bold: true }) : null;
   }
   if (item === 'reasoning') {
     const reasoning = value(state?.model?.reasoning);
-    return reasoning ? paint(truncateCells(reasoning, 10), 'reasoning', options.theme) : null;
+    return reasoning ? styleText(truncateCells(reasoning, 12), 'reasoning', options.theme) : null;
   }
-  if (item === 'project') return paint(truncateCells(options.projectName ?? path.basename(options.cwd ?? process.cwd()), 22), 'info', options.theme);
+  if (item === 'project') return styleText(truncateCells(options.projectName ?? path.basename(options.cwd ?? process.cwd()), 26), 'info', options.theme);
   if (item === 'auth') {
     const auth = value(state?.auth?.mode);
-    return auth ? `AUTH ${paint(String(auth).toUpperCase(), 'info', options.theme)}` : null;
+    return auth ? `${styleText('AUTH', 'label', options.theme)} ${styleText(String(auth).toUpperCase(), auth === 'api' ? 'reasoning' : 'info', options.theme, { bold: true })}` : null;
   }
   if (item === 'session-age') return fmtDuration(Math.max(0, options.nowMs - (state?.run?.startedAtMs ?? options.nowMs)));
   if (item === 'health') return options.health ?? null;
-  if (item === 'fast') return options.fast ? 'FAST' : null;
+  if (item === 'fast') return options.fast ? styleText('FAST', 'thinking', options.theme, { bold: true }) : null;
   if (item === 'git') {
     const branch = value(state?.git?.branch);
     if (!branch) return options.gitLabel ?? null;
     const diff = value(state?.git?.diff);
     const ab = value(state?.git?.aheadBehind);
-    const dirty = diff?.changedFiles ? ` *${diff.changedFiles}` : '';
+    const dirtyCount = finite(diff?.changedFiles);
+    const dirty = dirtyCount && dirtyCount > 0 ? ` +${dirtyCount}` : '';
     const remote = ab ? ` ↑${ab.ahead ?? '--'} ↓${ab.behind ?? '--'}` : '';
-    return paint(truncateCells(`git:${branch}${dirty}${remote}`, 28), 'healthy', options.theme);
+    return styleText(truncateCells(`git:${branch}${dirty}${remote}`, 34), 'healthy', options.theme);
   }
   return null;
 }
 
-function bar(percent, cells = 10) {
+function barToken(percent, { pressure = false } = {}) {
   const n = finite(percent);
-  if (n == null) return '─'.repeat(cells);
-  const bounded = Math.max(0, Math.min(100, n));
-  const filled = Math.round((bounded / 100) * cells);
-  return `${'━'.repeat(filled)}${'─'.repeat(Math.max(0, cells - filled))}`;
+  if (n == null) return 'frame';
+  if (pressure) return n >= 80 ? 'error' : n >= 60 ? 'approval' : 'thinking';
+  return n > 60 ? 'healthy' : n >= 20 ? 'approval' : 'error';
 }
 
-function quotaLine(window, label, rep, width, nowMs) {
+function bar(percent, cells = 10, theme = 'color', options = {}) {
+  const n = finite(percent);
+  const bounded = n == null ? 0 : Math.max(0, Math.min(100, n));
+  const filled = n == null ? 0 : Math.round((bounded / 100) * cells);
+  return `${paint('━'.repeat(filled), barToken(n, options), theme)}${paint('─'.repeat(Math.max(0, cells - filled)), 'frame', theme)}`;
+}
+
+function quotaLine(window, label, rep, width, nowMs, theme) {
   const q = value(window);
   const remaining = finite(q?.remainingPercent);
-  if (remaining == null) return `${label} waiting…`;
+  if (remaining == null) return `${styleText(label, 'text', theme, { bold: true })} ${styleText('waiting…', 'muted', theme)}`;
   const reset = fmtReset(q?.resetsAtMs ?? q?.resetsAt, nowMs);
-  const suffix = reset ? ` ↻ ${reset}` : '';
+  const suffix = reset ? ` ${paint('↻', 'frame', theme)} ${styleText(reset, 'muted', theme)}` : '';
   if (rep === REPRESENTATION.MICRO) return `${label} ${Math.round(remaining)}%`;
-  if (rep === REPRESENTATION.COMPACT) return `${label} ${Math.round(remaining)}% left${suffix}`;
-  const cells = Math.max(6, Math.min(18, width - 24));
-  return `${label.padEnd(4)} ${bar(remaining, cells)} ${Math.round(remaining)}% left${suffix}`;
+  const cells = Math.max(6, Math.min(12, width - 25));
+  return `${styleText(label, 'text', theme, { bold: true })} ${bar(remaining, cells, theme)} ${styleText(`${Math.round(remaining)}% left`, barToken(remaining), theme, { bold: true })}${suffix}`;
 }
 
 function sectionsFor(config, state) {
@@ -157,29 +170,26 @@ function compactLines(item, state, options) {
     return ['CONTEXT', `${used} used · ${left} left · ${window} window`];
   }
   if (item.id === 'quota') {
-    if (rep === REPRESENTATION.MICRO) return [`${quotaLine(state?.quota?.fiveHour, '5H', rep, item.width, options.nowMs)} · ${quotaLine(state?.quota?.weekly, 'W', rep, item.width, options.nowMs)}`];
-    if (rep === REPRESENTATION.COMPACT) return [`${quotaLine(state?.quota?.fiveHour, '5H', rep, item.width, options.nowMs)} · ${quotaLine(state?.quota?.weekly, 'WEEK', rep, item.width, options.nowMs)}`];
-    return [quotaLine(state?.quota?.fiveHour, '5H', rep, item.width, options.nowMs), quotaLine(state?.quota?.weekly, 'WEEK', rep, item.width, options.nowMs)];
+    if (rep === REPRESENTATION.MICRO) return [`${quotaLine(state?.quota?.fiveHour, '5H', rep, item.width, options.nowMs, options.theme)} · ${quotaLine(state?.quota?.weekly, 'W', rep, item.width, options.nowMs, options.theme)}`];
+    return [quotaLine(state?.quota?.fiveHour, '5H', rep, item.width, options.nowMs, options.theme), quotaLine(state?.quota?.weekly, 'WEEK', rep, item.width, options.nowMs, options.theme)];
   }
   if (item.id === 'activity') {
-    const { activity, text } = activityLabel(state);
+    const info = activityInfo(state);
     const detail = truncateCells(value(state?.activity?.detail, ''), Math.max(8, item.width - 14));
-    return [`${paint(text, activityToken(activity), options.theme)}${detail ? ` · ${detail}` : ''}`];
+    return [`${styleText(`${info.symbol} ${info.activity}`, info.token, options.theme, { bold: true })}${detail ? ` · ${detail}` : ''}`];
   }
   if (item.id === 'usage') {
     const input = fmtNumber(value(state?.usage?.inputTokens));
     const cached = fmtNumber(value(state?.usage?.cachedInputTokens));
     const output = fmtNumber(value(state?.usage?.outputTokens));
-    const reasoning = fmtNumber(value(state?.usage?.reasoningTokens));
     if (rep === REPRESENTATION.MICRO) return [`TOK ${input}↑ ${output}↓`];
     if (rep === REPRESENTATION.COMPACT) return [`USAGE in ${input} · cache ${cached} · out ${output}`];
-    return ['USAGE', `in ${input} · cached ${cached} · out ${output} · reasoning ${reasoning}`];
+    return ['USAGE', `in ${input} · cached ${cached} · out ${output}`];
   }
   if (item.id === 'session') {
     const turns = fmtNumber(value(state?.session?.turnCount));
     const last = fmtDuration(value(state?.session?.lastTurnDurationMs));
-    const lastEvent = finite(value(state?.session?.lastEventAtMs));
-    const idle = lastEvent == null ? '--' : fmtDuration(Math.max(0, options.nowMs - lastEvent));
+    const idle = fmtAge(value(state?.session?.lastEventAtMs), options.nowMs);
     if (rep === REPRESENTATION.MICRO) return [`SESSION ${turns}t · idle ${idle}`];
     if (rep === REPRESENTATION.COMPACT) return [`SESSION ${turns} turns · last ${last} · idle ${idle}`];
     return ['SESSION', `${turns} turns · last ${last} · idle ${idle} · compact ${fmtNumber(value(state?.compaction?.count))}`];
@@ -208,104 +218,148 @@ function distribute(total, count) {
   return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
 }
 
-function panelRow(cells, widths, theme) {
+function tableRow(cells, widths, theme) {
   const edge = paint('│', 'frame', theme);
-  return `${edge}${cells.map((cell, i) => padCells(truncateCells(cell ?? '', widths[i], ''), widths[i])).join(edge)}${edge}`;
+  const body = cells.map((cell, i) => {
+    const inner = Math.max(0, widths[i] - 2);
+    return ` ${padCells(truncateCells(cell ?? '', inner, ''), inner)} `;
+  }).join(edge);
+  return `${edge}${body}${edge}`;
 }
 
-function separator(widths, theme, bottom = false) {
-  const left = bottom ? '╰' : '├';
-  const mid = bottom ? '┴' : '┼';
-  const right = bottom ? '╯' : '┤';
-  return paint(`${left}${widths.map((w) => '─'.repeat(w)).join(mid)}${right}`, 'frame', theme);
+function horizontalBorder(left, mid, right, widths, theme) {
+  return paint(`${left}${widths.map((width) => '─'.repeat(width)).join(mid)}${right}`, 'frame', theme);
 }
 
-function titleBorder(width, label, theme) {
-  const text = truncateCells(` ${label} `, width - 4, '');
-  const dashes = Math.max(0, width - 3 - cellWidth(text));
-  return `${paint('╭─', 'frame', theme)}${paint(text, 'info', theme)}${paint(`${'─'.repeat(dashes)}╮`, 'frame', theme)}`;
+function topBorder(width, preset, theme) {
+  const prefix = '╭─';
+  const suffix = '╮';
+  const title = ` CODEX MONITOR · ${String(preset ?? 'recommended').toUpperCase()} `;
+  const fill = Math.max(0, width - cellWidth(prefix) - cellWidth(title) - cellWidth(suffix));
+  return `${paint(prefix, 'frame', theme)}${styleText(title, 'tool', theme, { bold: true })}${paint(`${'─'.repeat(fill)}${suffix}`, 'frame', theme)}`;
 }
 
-function contextPanel(state, width, theme) {
+function summaryRow(state, config, width, options) {
+  const items = (config.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4);
+  const separator = ` ${paint('·', 'frame', options.theme)} `;
+  const inner = Math.max(0, width - 4);
+  const text = truncateCells(items.join(separator), inner, '');
+  return `${paint('│', 'frame', options.theme)} ${padCells(text, inner)} ${paint('│', 'frame', options.theme)}`;
+}
+
+function contextColumn(state, width, theme) {
   const used = finite(value(state?.context?.usedTokens));
   const window = finite(value(state?.context?.windowTokens));
-  const usedPercentMetric = finite(value(state?.context?.usedPercent));
-  const usedPercent = usedPercentMetric ?? (used != null && window != null && window > 0 ? (used / window) * 100 : null);
+  const usedPercent = finite(value(state?.context?.usedPercent)) ?? (used != null && window != null && window > 0 ? (used / window) * 100 : null);
+  const leftPercent = finite(value(state?.context?.leftPercent)) ?? (usedPercent == null ? null : 100 - usedPercent);
   const cached = finite(value(state?.usage?.cachedInputTokens));
   const input = finite(value(state?.usage?.inputTokens));
   const cacheRatio = finite(value(state?.usage?.cacheRatio));
   const cachePercent = cacheRatio != null ? cacheRatio * 100 : (cached != null && input != null && input > 0 ? (cached / input) * 100 : null);
-  const barCells = Math.max(6, Math.min(16, width - 20));
+  const barWidth = Math.max(6, Math.min(28, width - 4));
   return [
-    `${paint(pct(usedPercent), 'thinking', theme)} used · ${fmtNumber(used)}/${fmtNumber(window)} · ${bar(usedPercent, barCells)}`,
-    `CACHE ${paint(fmtNumber(cached), 'info', theme)} ${pct(cachePercent)} · LEFT ${pct(value(state?.context?.leftPercent))} · CMP ${paint(fmtNumber(value(state?.compaction?.count)), 'reasoning', theme)}`
+    `${styleText(`${pct(usedPercent)} used`, barToken(usedPercent, { pressure: true }), theme, { bold: true })} ${paint('·', 'frame', theme)} ${styleText(`${fmtNumber(used)}/${fmtNumber(window)}`, 'bright', theme)}`,
+    bar(usedPercent, barWidth, theme, { pressure: true }),
+    `${styleText('CACHE', 'label', theme)} ${styleText(fmtNumber(cached), 'info', theme)}${cachePercent == null ? '' : ` ${styleText(pct(cachePercent), 'info', theme)}`}`,
+    `${styleText('LEFT', 'label', theme)} ${styleText(pct(leftPercent), 'bright', theme)} ${paint('·', 'frame', theme)} ${styleText('CMP', 'label', theme)} ${styleText(fmtNumber(value(state?.compaction?.count)), 'reasoning', theme)}`
   ];
 }
 
-function usagePanel(state, width, theme, nowMs) {
+function usageColumn(state, width, theme, nowMs) {
   const auth = value(state?.auth?.mode, 'unknown');
   const input = fmtNumber(value(state?.usage?.inputTokens));
+  const cached = fmtNumber(value(state?.usage?.cachedInputTokens));
   const output = fmtNumber(value(state?.usage?.outputTokens));
   const reasoning = fmtNumber(value(state?.usage?.reasoningTokens));
-  const turnIn = fmtNumber(value(state?.usage?.turnInputTokens));
-  const turnOut = fmtNumber(value(state?.usage?.turnOutputTokens));
+  const turnInput = fmtNumber(value(state?.usage?.turnInputTokens));
+  const turnOutput = fmtNumber(value(state?.usage?.turnOutputTokens));
+  const sep = ` ${paint('·', 'frame', theme)} `;
+
   if (auth === 'login') return [
-    quotaLine(state?.quota?.fiveHour, '5H', REPRESENTATION.COMPACT, width, nowMs),
-    `${quotaLine(state?.quota?.weekly, 'WEEK', REPRESENTATION.MICRO, width, nowMs)} · IN ${input} · OUT ${output} · RSN ${paint(reasoning, 'reasoning', theme)} · TURN ${turnIn}/${turnOut}`
+    quotaLine(state?.quota?.fiveHour, '5H', REPRESENTATION.FULL, width, nowMs, theme),
+    quotaLine(state?.quota?.weekly, 'WEEK', REPRESENTATION.FULL, width, nowMs, theme),
+    `${styleText('IN', 'label', theme)} ${styleText(input, 'bright', theme)}${sep}${styleText('CACHE', 'label', theme)} ${styleText(cached, 'info', theme)}${sep}${styleText('OUT', 'label', theme)} ${styleText(output, 'tool', theme)}`,
+    `${styleText('RSN', 'label', theme)} ${styleText(reasoning, 'reasoning', theme)}${sep}${styleText('TURN', 'label', theme)} ${styleText(`${turnInput} in / ${turnOutput} out`, 'thinking', theme)}`
   ];
-  return [`IN ${input} · OUT ${output} · RSN ${paint(reasoning, 'reasoning', theme)}`, `TURN ${turnIn}/${turnOut} · ACTUAL ${value(state?.model?.actual, '--')}`];
-}
 
-function sessionPanel(state, theme, nowMs, includeSystem) {
-  const elapsed = fmtDuration(Math.max(0, nowMs - (state?.run?.startedAtMs ?? nowMs)));
-  const last = fmtDuration(value(state?.session?.lastTurnDurationMs));
-  const lastEvent = finite(value(state?.session?.lastEventAtMs));
-  const update = lastEvent == null ? '--' : fmtDuration(Math.max(0, nowMs - lastEvent));
-  const freshness = state?.session?.lastEventAtMs?.freshness ?? 'waiting';
-  const second = includeSystem
-    ? `last ${last} · update ${update} · CPU ${pct(value(state?.system?.cpuPercent))} · RAM ${fmtBytes(value(state?.system?.memoryBytes))}`
-    : `last ${last} · update ${update} · data ${paint(freshness, 'healthy', theme)}`;
-  return [`elapsed ${elapsed} · turns ${fmtNumber(value(state?.session?.turnCount))}`, second];
-}
-
-function activityPanel(state, theme) {
-  const { activity, text } = activityLabel(state);
-  const activeTools = value(state?.activity?.activeTools, []) ?? [];
-  const detail = value(state?.activity?.detail, '');
+  const requested = value(state?.model?.requested, '--');
+  const actual = value(state?.model?.actual, null);
   return [
-    `${paint(text, activityToken(activity), theme)}${detail ? ` · ${detail}` : ''}`,
-    `tools ${Array.isArray(activeTools) ? activeTools.length : '--'} · approval ${String(Boolean(value(state?.activity?.approvalPending, false)))} · retry ${fmtNumber(value(state?.activity?.retryCount))} · err ${fmtNumber(value(state?.activity?.errorCount))}`
+    `${styleText('MODEL', 'label', theme)} ${styleText(requested, 'thinking', theme, { bold: true })}`,
+    `${styleText('ACTUAL', 'label', theme)} ${styleText(actual ?? 'waiting…', actual ? 'healthy' : 'muted', theme, { bold: Boolean(actual) })}`,
+    `${styleText('IN', 'label', theme)} ${styleText(input, 'bright', theme)}${sep}${styleText('CACHE', 'label', theme)} ${styleText(cached, 'info', theme)}${sep}${styleText('OUT', 'label', theme)} ${styleText(output, 'tool', theme)}`,
+    `${styleText('RSN', 'label', theme)} ${styleText(reasoning, 'reasoning', theme)}${sep}${styleText('TURN', 'label', theme)} ${styleText(`${turnInput} in / ${turnOutput} out`, 'thinking', theme)}`
   ];
 }
 
-function framedDashboard(state, config, width, options) {
+function sessionColumn(state, config, theme, nowMs) {
+  const sep = ` ${paint('·', 'frame', theme)} `;
+  const elapsed = fmtDuration(Math.max(0, nowMs - (state?.run?.startedAtMs ?? nowMs)));
+  const turns = fmtNumber(value(state?.session?.turnCount));
+  const last = fmtDuration(value(state?.session?.lastTurnDurationMs));
+  const update = fmtAge(value(state?.session?.lastEventAtMs), nowMs);
+  const thread = String(value(state?.session?.threadId, '--') ?? '--').slice(0, 12);
+  const bound = Boolean(value(state?.session?.bound, false));
+  const freshness = state?.session?.lastEventAtMs?.freshness ?? 'waiting';
+  const systemEnabled = config.sections.system && config.metrics.system !== false;
+  const system = systemEnabled
+    ? `${sep}${styleText('SYS', 'label', theme)} ${styleText(`${pct(value(state?.system?.cpuPercent))} / ${fmtBytes(value(state?.system?.memoryBytes))}`, 'info', theme)}`
+    : '';
+  return [
+    `${styleText('elapsed', 'label', theme)} ${styleText(elapsed, 'bright', theme)}${sep}${styleText('turns', 'label', theme)} ${styleText(turns, 'bright', theme)}`,
+    `${styleText('last', 'label', theme)} ${styleText(last, 'thinking', theme)}${sep}${styleText('update', 'label', theme)} ${styleText(update, 'muted', theme)}`,
+    `${styleText('thread', 'label', theme)} ${styleText(thread, 'info', theme)}${sep}${styleText('fresh', 'label', theme)} ${styleText(String(freshness), freshness === 'current' ? 'healthy' : 'muted', theme)}`,
+    `${styleText('data', 'label', theme)} ${styleText(bound ? 'current rollout' : 'waiting current rollout', bound ? 'healthy' : 'approval', theme)}${system}`
+  ];
+}
+
+function activityColumn(state, theme) {
+  const info = activityInfo(state);
+  const sep = ` ${paint('·', 'frame', theme)} `;
+  const detail = value(state?.activity?.detail, info.description) || info.description;
+  const source = value(state?.activity?.source, 'runtime') || 'runtime';
+  const activeTools = value(state?.activity?.activeTools, null);
+  const activeToolCount = Array.isArray(activeTools) ? activeTools.length : finite(activeTools);
+  const currentTool = value(state?.tools?.current, null);
+  const lastTool = value(state?.tools?.last, null);
+  const toolName = currentTool?.name ?? currentTool?.tool ?? lastTool?.name ?? lastTool?.tool ?? '--';
+  const approval = Boolean(value(state?.activity?.approvalPending, false));
+  const retry = fmtNumber(value(state?.activity?.retryCount));
+  const errors = fmtNumber(value(state?.activity?.errorCount));
+  return [
+    `${styleText(`${info.symbol} ${info.activity}`, info.token, theme, { bold: true })} ${styleText(info.description, 'muted', theme)}`,
+    `${styleText('source', 'label', theme)} ${styleText(String(source), 'bright', theme)}${sep}${styleText('detail', 'label', theme)} ${styleText(String(detail), 'muted', theme)}`,
+    `${styleText('tools', 'label', theme)} ${styleText(activeToolCount == null ? '--' : String(activeToolCount), 'tool', theme)}${sep}${styleText('last', 'label', theme)} ${styleText(String(toolName), 'info', theme)}`,
+    `${styleText('approval', 'label', theme)} ${styleText(String(approval), approval ? 'approval' : 'muted', theme)}${sep}${styleText('retry', 'label', theme)} ${styleText(retry, 'approval', theme)}${sep}${styleText('err', 'label', theme)} ${styleText(errors, finite(value(state?.activity?.errorCount)) > 0 ? 'error' : 'muted', theme)}`
+  ];
+}
+
+function fullDashboard(state, config, width, options) {
   const theme = options.theme;
-  const inner = width - 2;
-  const widths = distribute(inner - 3, 4);
+  const available = width - 5;
+  const widths = distribute(available, 4);
   const auth = value(state?.auth?.mode, 'unknown');
-  const status = (config.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4).join(' · ');
-  const headers = [
-    paint('CONTEXT', 'info', theme),
-    paint(`USAGE${auth === 'login' ? ' · LOGIN' : auth === 'api' ? ' · API' : ''}`, 'reasoning', theme),
-    paint('SESSION', 'healthy', theme),
-    paint('CURRENT ACTIVITY', 'thinking', theme)
+  const titles = [
+    styleText('CONTEXT', 'info', theme, { bold: true }),
+    styleText(`USAGE${auth === 'login' ? ' · LOGIN' : auth === 'api' ? ' · API' : ''}`, 'reasoning', theme, { bold: true }),
+    styleText('SESSION', 'healthy', theme, { bold: true }),
+    styleText('CURRENT ACTIVITY', 'thinking', theme, { bold: true })
   ];
   const columns = [
-    contextPanel(state, widths[0], theme),
-    usagePanel(state, widths[1], theme, options.nowMs),
-    sessionPanel(state, theme, options.nowMs, config.sections.system && config.metrics.system !== false),
-    activityPanel(state, theme)
+    contextColumn(state, widths[0], theme),
+    usageColumn(state, widths[1], theme, options.nowMs),
+    sessionColumn(state, config, theme, options.nowMs),
+    activityColumn(state, theme)
   ];
-  const edge = paint('│', 'frame', theme);
-  return [
-    titleBorder(width, `CODEX MONITOR · ${String(config.preset ?? 'recommended').toUpperCase()}`, theme),
-    `${edge}${padCells(truncateCells(` ${status}`, inner, ''), inner)}${edge}`,
-    separator(widths, theme),
-    panelRow(headers, widths, theme),
-    panelRow(columns.map((column) => column[0]), widths, theme),
-    panelRow(columns.map((column) => column[1]), widths, theme),
-    separator(widths, theme, true)
+  const lines = [
+    topBorder(width, config.preset, theme),
+    summaryRow(state, config, width, options),
+    horizontalBorder('├', '┬', '┤', widths, theme),
+    tableRow(titles, widths, theme)
   ];
+  for (let row = 0; row < 4; row += 1) lines.push(tableRow(columns.map((column) => column[row] ?? ''), widths, theme));
+  lines.push(horizontalBorder('╰', '┴', '╯', widths, theme));
+  return lines;
 }
 
 export function buildLiveFrame({
@@ -334,16 +388,22 @@ export function buildLiveFrame({
     hysteresisCells
   });
 
-  const framed = safeWidth >= 104 && monitorRowBudget(height) >= 7 && config?.preset === 'full';
-  const frame = framed
-    ? framedDashboard(state, config, safeWidth, options)
-    : [truncateCells((config?.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4).join('  '), safeWidth, ''), ...mergeLanes(layout, state, options)];
+  // The Full wide representation deliberately mirrors the visual language of
+  // feat/full-monitor-v2. Only the renderer is borrowed; state, collectors,
+  // provenance, passive keyboard ownership and demand rules remain v1-rearchitecture.
+  const useFullVisual = safeWidth >= 120 && height >= 18 && config?.preset === 'full';
+  const frame = useFullVisual
+    ? fullDashboard(state, config, safeWidth, options)
+    : [
+      truncateCells((config?.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4).join(` ${paint('·', 'frame', theme)} `), safeWidth, ''),
+      ...mergeLanes(layout, state, options)
+    ];
   const budget = monitorRowBudget(height);
   return {
     lines: frame.slice(0, budget).map((line) => truncateCells(line, safeWidth, '')),
     rowCount: Math.min(frame.length, budget),
     layout,
-    semantic: { activeTab: 'overview', authMode: value(state?.auth?.mode, 'unknown'), theme, interactive: false }
+    semantic: { activeTab: 'overview', authMode: value(state?.auth?.mode, 'unknown'), theme, interactive: false, visual: useFullVisual ? 'full-monitor-v2' : 'responsive-compact' }
   };
 }
 
