@@ -136,6 +136,11 @@ export class CurrentSessionTailer {
     this.offset = 0;
     this.remainder = '';
     this.lastBindAttemptAtMs = 0;
+    setMetric(this.state.session, 'resumeMode', this.resumeMode, {
+      source: PROVENANCE.LOCAL,
+      observedAtMs: this.now(),
+      evidence: 'codex-args'
+    });
   }
 
   hydrateResume(filePath, initialSize) {
@@ -148,15 +153,22 @@ export class CurrentSessionTailer {
     const parts = text.split(/\r?\n/);
     const remainder = parts.pop() ?? '';
     const chunk = parts.length ? `${parts.join('\n')}\n` : '';
-    if (chunk) this.pipeline.pushRolloutChunk(chunk);
-    if (remainder.trim()) this.pipeline.pushRolloutChunk(`${remainder}\n`);
+    if (chunk) this.pipeline.pushRolloutChunk(chunk, { source: PROVENANCE.OFFICIAL_HISTORY });
+    if (remainder.trim()) this.pipeline.pushRolloutChunk(`${remainder}\n`, { source: PROVENANCE.OFFICIAL_HISTORY });
 
     for (const key of ['fiveHour', 'weekly']) {
       const saved = preservedQuota[key];
       const current = this.state.quota[key];
       if (saved?.value != null && (saved.updatedAtMs ?? 0) >= (current?.updatedAtMs ?? 0)) this.state.quota[key] = saved;
     }
-    resetResumeTransientState(this.state, this.now());
+
+    const atMs = this.now();
+    setMetric(this.state.session, 'resumedHistoryTurns', this.state.session.turnCount.value, {
+      source: PROVENANCE.DERIVED,
+      observedAtMs: atMs,
+      evidence: 'turn count after resume history replay'
+    });
+    resetResumeTransientState(this.state, atMs);
     this.offset = initialSize;
     this.remainder = '';
   }
@@ -207,9 +219,9 @@ export class CurrentSessionTailer {
 
   poll() {
     const filePath = this.bind();
-    if (!filePath) return { bound: false, bytes: 0, events: 0 };
+    if (!filePath) return { bound: false, bytes: 0, events: 0, resumed: this.resumeMode };
     let stat;
-    try { stat = this.fs.statSync(filePath); } catch { return { bound: true, bytes: 0, events: 0, error: 'stat failed' }; }
+    try { stat = this.fs.statSync(filePath); } catch { return { bound: true, bytes: 0, events: 0, error: 'stat failed', resumed: this.resumeMode }; }
     if (stat.size < this.offset) {
       this.offset = 0;
       this.remainder = '';
@@ -227,7 +239,7 @@ export class CurrentSessionTailer {
       this.remainder = parts.pop() ?? '';
       const chunk = parts.length ? `${parts.join('\n')}\n` : '';
       const before = this.pipeline.stats.rolloutAccepted;
-      if (chunk) this.pipeline.pushRolloutChunk(chunk);
+      if (chunk) this.pipeline.pushRolloutChunk(chunk, { source: PROVENANCE.OFFICIAL_CURRENT });
       return { bound: true, bytes: length, events: this.pipeline.stats.rolloutAccepted - before, resumed: this.resumeMode };
     } finally { this.fs.closeSync(fd); }
   }
