@@ -27,6 +27,7 @@ function printHelp() {
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
   process.stdout.write('  --preset recommended|compact|full|custom\n');
   process.stdout.write('  --theme color|mono|matrix\n');
+  process.stdout.write('  --background terminal|black|dark\n');
   process.stdout.write('  --lang vi|en\n');
   process.stdout.write('  --configure                   Interactive Monitor setup\n');
   process.stdout.write('  --reset                       Reset Monitor config and rerun setup\n');
