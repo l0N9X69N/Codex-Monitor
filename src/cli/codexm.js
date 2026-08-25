@@ -10,6 +10,7 @@ import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
+import { codexArgsForLocalResume, localResumePickerIntent, pickLocalResumeSession } from '../runtime/local-resume-picker.js';
 import { renderDemo } from '../ui/demo.js';
 import { parseMonitorArgs } from './args.js';
 
@@ -34,7 +35,8 @@ function printHelp() {
   process.stdout.write('  --demo                        Render passive Live HUD demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n');
   process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
-  process.stdout.write('Live Monitor is display-only: every keyboard byte belongs to official Codex.\n');
+  process.stdout.write('Live Monitor is display-only after Codex starts: every keyboard byte belongs to official Codex.\n');
+  process.stdout.write('Plain `codexm resume` uses a local pre-launch session picker so history can hydrate immediately.\n');
   process.stdout.write('There is no public --history mode in the current v1 contract.\n');
   process.stdout.write('Example: codexm -- --help   # official Codex help\n');
 }
@@ -91,13 +93,33 @@ async function main() {
     return 2;
   }
 
+  let codexArgs = parsed.codexArgs;
+  let resumeTargetPath = null;
+  const localResume = localResumePickerIntent(codexArgs);
+  if (localResume) {
+    const sessionsPath = platformAdapter.paths()?.sessions ?? null;
+    const picked = await pickLocalResumeSession({
+      sessionsPath,
+      cwd: process.cwd(),
+      showAll: localResume.showAll
+    });
+    if (picked.reason === 'cancelled') return 0;
+    if (picked.selected) {
+      codexArgs = codexArgsForLocalResume(codexArgs, picked.selected.threadId);
+      resumeTargetPath = picked.selected.filePath;
+    } else {
+      process.stderr.write('codexm: no matching local sessions found; falling back to official Codex resume picker.\n');
+    }
+  }
+
   let state = createCurrentRunState({ startedAtMs: Date.now() });
   const auth = detectAuth({ override: parsed.auth, codexPath });
   state = withDetectedAuth(state, auth);
 
   return await runCodexLive({
     codexPath,
-    codexArgs: parsed.codexArgs,
+    codexArgs,
+    resumeTargetPath,
     auth,
     monitorState: state,
     monitorConfig: config,
