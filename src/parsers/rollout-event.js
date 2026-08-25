@@ -64,13 +64,18 @@ export function parseRolloutObject(obj) {
     // Older rollouts used a flatter payload. Accept both so local resume can
     // resolve the selected thread without requiring a new turn to be appended.
     const meta = payload?.meta && typeof payload.meta === 'object' ? payload.meta : payload;
+    const git = payload?.git && typeof payload.git === 'object'
+      ? payload.git
+      : (meta?.git && typeof meta.git === 'object' ? meta.git : null);
     return {
       ...common,
       kind: 'session-meta',
       threadId: sanitizeText(meta?.id ?? meta?.thread_id ?? meta?.threadId),
       model: sanitizeText(meta?.model ?? payload?.model),
       reasoning: sanitizeText(meta?.reasoning_effort ?? meta?.reasoningEffort ?? meta?.effort ?? payload?.reasoning_effort ?? payload?.reasoningEffort ?? payload?.effort),
-      cwd: sanitizeText(meta?.cwd ?? payload?.cwd)
+      cwd: sanitizeText(meta?.cwd ?? payload?.cwd),
+      gitBranch: sanitizeText(git?.branch ?? git?.branch_name ?? git?.branchName),
+      gitCommit: sanitizeText(git?.commit_hash ?? git?.commitHash)
     };
   }
 
