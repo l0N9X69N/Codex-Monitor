@@ -90,6 +90,7 @@ export function createNormalizedMonitorState({ runId = null, startedAtMs = Date.
       memoryBytes: metric(null),
       totalMemoryBytes: metric(null),
       freeMemoryBytes: metric(null),
+      samples: metric([]),
       disk: metric(null)
     },
     performance: {
