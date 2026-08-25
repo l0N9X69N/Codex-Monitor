@@ -4,6 +4,10 @@ import { CentralScheduler } from '../core/scheduler.js';
 import { CurrentSessionTailer } from '../collectors/current-session.js';
 import { createLiveCollectorRegistry } from '../collectors/live.js';
 
+const PASSIVE_LIVE_METRICS = Object.freeze({
+  overview: ['activity', 'model', 'reasoning', 'context', 'usage', 'quota', 'session', 'tools', 'system']
+});
+
 export class LiveDataRuntime {
   constructor({ state, config, adapter, cwd = process.cwd(), now = () => Date.now(), processRef = process, onUpdate = null } = {}) {
     if (!state || !config || !adapter) throw new Error('LiveDataRuntime requires state, config and adapter');
@@ -11,7 +15,6 @@ export class LiveDataRuntime {
     this.config = config;
     this.adapter = adapter;
     this.cwd = cwd;
-    this.activeTab = config.tabs?.[0] ?? 'overview';
     this.onUpdate = onUpdate;
     const sessionsPath = adapter.paths()?.sessions ?? null;
     this.sessionTailer = new CurrentSessionTailer({ state, sessionsPath, cwd, now });
@@ -31,10 +34,11 @@ export class LiveDataRuntime {
   graph() {
     return buildDemandGraph({
       header: this.config.header,
-      enabledTabs: this.config.tabs,
-      activeTab: this.activeTab,
+      enabledTabs: ['overview'],
+      activeTab: 'overview',
       sections: this.config.sections,
       enabledMetrics: this.config.metrics,
+      viewMetrics: PASSIVE_LIVE_METRICS,
       git: {
         diffStats: this.config.metrics?.gitDiff === true,
         aheadBehind: this.config.metrics?.gitAheadBehind === true
@@ -49,14 +53,5 @@ export class LiveDataRuntime {
   }
 
   start() { this.sync(); return this.scheduler.start(); }
-
-  setActiveTab(tab) {
-    if (!this.config.tabs?.includes(tab)) return false;
-    if (this.activeTab === tab) return false;
-    this.activeTab = tab;
-    this.sync();
-    return true;
-  }
-
   stop() { return this.scheduler.stop(); }
 }
