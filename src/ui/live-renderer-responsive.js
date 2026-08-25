@@ -3,6 +3,8 @@ import { cellWidth, padCells, truncateCells } from './cell-width.js';
 import { paint, styleText } from './theme.js';
 
 const ULTRAWIDE_SYSTEM_CARD_MIN_CELLS = 200;
+const MIN_SPARKLINE_SAMPLES = 4;
+const SPARK_BLOCKS = '▁▂▃▄▅▆▇█';
 
 function value(metric, fallback = null) {
   if (metric && typeof metric === 'object' && Object.prototype.hasOwnProperty.call(metric, 'value')) return metric.value ?? fallback;
@@ -68,27 +70,67 @@ function title(text, token, theme) {
   return styleText(text, token, theme, { bold: true });
 }
 
-function systemRows(state, theme) {
+function progressBar(percent, width) {
+  const p = finite(percent);
+  const cells = Math.max(6, Math.floor(width));
+  if (p == null || cells <= 0) return null;
+  const filled = Math.max(0, Math.min(cells, Math.round((Math.max(0, Math.min(100, p)) / 100) * cells)));
+  return `${'█'.repeat(filled)}${'░'.repeat(cells - filled)}`;
+}
+
+function sparkline(values, width) {
+  const clean = values.map(finite).filter((item) => item != null);
+  if (clean.length < MIN_SPARKLINE_SAMPLES || width < 6) return null;
+  const source = clean.slice(-Math.max(6, width));
+  const min = Math.min(...source);
+  const max = Math.max(...source);
+  const range = max - min;
+  return source.map((item) => {
+    if (range <= 0.0001) return SPARK_BLOCKS[3];
+    const index = Math.max(0, Math.min(SPARK_BLOCKS.length - 1, Math.round(((item - min) / range) * (SPARK_BLOCKS.length - 1))));
+    return SPARK_BLOCKS[index];
+  }).join('');
+}
+
+function systemRows(state, theme, width) {
+  const cpu = finite(value(state?.system?.cpuPercent));
   const used = finite(value(state?.system?.memoryBytes));
   const total = finite(value(state?.system?.totalMemoryBytes));
   const free = finite(value(state?.system?.freeMemoryBytes));
   const memoryPercent = used != null && total != null && total > 0 ? (used / total) * 100 : null;
+  const samples = Array.isArray(value(state?.system?.samples, [])) ? value(state?.system?.samples, []) : [];
+  const graphWidth = Math.max(6, width - 11);
+  const cpuGraph = sparkline(samples.map((sample) => sample?.cpuPercent), graphWidth);
+  const ramGraph = sparkline(samples.map((sample) => {
+    const sampleUsed = finite(sample?.memoryBytes);
+    const sampleTotal = finite(sample?.totalMemoryBytes);
+    return sampleUsed != null && sampleTotal != null && sampleTotal > 0 ? (sampleUsed / sampleTotal) * 100 : null;
+  }), graphWidth);
+  const canGraph = width >= 24 && samples.length >= MIN_SPARKLINE_SAMPLES;
   return [
-    `${styleText('CPU', 'label', theme)} ${styleText(pct(value(state?.system?.cpuPercent)), 'info', theme, { bold: true })}`,
-    `${styleText('RAM', 'label', theme)} ${styleText(formatBytes(used), 'bright', theme)}${memoryPercent == null ? '' : ` ${paint('·', 'frame', theme)} ${styleText(pct(memoryPercent), 'info', theme)}`}`,
+    canGraph && cpuGraph
+      ? `${styleText('CPU', 'label', theme)} ${styleText(pct(cpu), 'info', theme, { bold: true })} ${styleText(cpuGraph, 'info', theme)}`
+      : `${styleText('CPU', 'label', theme)} ${styleText(pct(cpu), 'info', theme, { bold: true })}`,
+    canGraph && ramGraph
+      ? `${styleText('RAM', 'label', theme)} ${styleText(pct(memoryPercent), 'info', theme, { bold: true })} ${styleText(ramGraph, 'healthy', theme)}`
+      : `${styleText('RAM', 'label', theme)} ${styleText(formatBytes(used), 'bright', theme)}${memoryPercent == null ? '' : ` ${paint('·', 'frame', theme)} ${styleText(pct(memoryPercent), 'info', theme)}`}`,
     `${styleText('TOTAL', 'label', theme)} ${styleText(formatBytes(total), 'bright', theme)}`,
     `${styleText('FREE', 'label', theme)} ${styleText(formatBytes(free), 'healthy', theme)}`
   ];
 }
 
-function contextRows(state, theme) {
+function contextRows(state, theme, width) {
   const used = finite(value(state?.context?.usedTokens));
   const window = finite(value(state?.context?.windowTokens));
   const usedPercent = finite(value(state?.context?.usedPercent)) ?? (used != null && window > 0 ? (used / window) * 100 : null);
+  const leftPercent = finite(value(state?.context?.leftPercent)) ?? (usedPercent == null ? null : 100 - usedPercent);
+  const bar = width >= 24 ? progressBar(usedPercent, Math.min(28, width - 1)) : null;
   return [
     `${styleText(`${pct(usedPercent)} used`, 'thinking', theme, { bold: true })} ${paint('·', 'frame', theme)} ${fmtNumber(used)}/${fmtNumber(window)}`,
-    `${styleText('CACHE', 'label', theme)} ${styleText(fmtNumber(value(state?.usage?.cachedInputTokens)), 'info', theme)}`,
-    `${styleText('LEFT', 'label', theme)} ${pct(value(state?.context?.leftPercent))}`,
+    bar ? styleText(bar, usedPercent != null && usedPercent >= 80 ? 'approval' : 'thinking', theme) : `${styleText('CACHE', 'label', theme)} ${styleText(fmtNumber(value(state?.usage?.cachedInputTokens)), 'info', theme)}`,
+    bar
+      ? `${styleText('CACHE', 'label', theme)} ${styleText(fmtNumber(value(state?.usage?.cachedInputTokens)), 'info', theme)} ${paint('·', 'frame', theme)} ${styleText('LEFT', 'label', theme)} ${pct(leftPercent)}`
+      : `${styleText('LEFT', 'label', theme)} ${pct(leftPercent)}`,
     `${styleText('CMP', 'label', theme)} ${styleText(fmtNumber(value(state?.compaction?.count)), 'reasoning', theme)}`
   ];
 }
@@ -159,11 +201,11 @@ function ultrawideFiveCardFrame({ state, config, width, height, cwd, nowMs, proj
     title('SYSTEM', 'info', theme)
   ];
   const columns = [
-    contextRows(state, theme),
+    contextRows(state, theme, innerWidths[0]),
     usageRows(state, theme, nowMs),
     sessionRows(state, theme, nowMs),
     activityRows(state, theme),
-    systemRows(state, theme)
+    systemRows(state, theme, innerWidths[4])
   ];
 
   const lines = [
@@ -179,7 +221,7 @@ function ultrawideFiveCardFrame({ state, config, width, height, cwd, nowMs, proj
     ...base,
     lines,
     rowCount: lines.length,
-    semantic: { ...base.semantic, visual: 'full-monitor-v2-grid-5', systemCard: true }
+    semantic: { ...base.semantic, visual: 'full-monitor-v2-grid-5', systemCard: true, progressiveGraphs: true }
   };
 }
 
@@ -187,4 +229,4 @@ export function buildLiveFrame(options = {}) {
   return ultrawideFiveCardFrame(options);
 }
 
-export { assertNoWrap, formatBytes, formatQuotaReset, ULTRAWIDE_SYSTEM_CARD_MIN_CELLS };
+export { assertNoWrap, formatBytes, formatQuotaReset, ULTRAWIDE_SYSTEM_CARD_MIN_CELLS, MIN_SPARKLINE_SAMPLES, sparkline, progressBar };
