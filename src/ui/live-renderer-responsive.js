@@ -526,7 +526,6 @@ function systemContent(state, rep, width, theme) {
   const cpu = finite(value(state?.system?.cpuPercent));
   const used = finite(value(state?.system?.memoryBytes));
   const total = finite(value(state?.system?.totalMemoryBytes));
-  const free = finite(value(state?.system?.freeMemoryBytes));
   const memoryPercent = used != null && total != null && total > 0 ? (used / total) * 100 : null;
   const graphWidth = Math.max(4, Math.min(20, width - 11));
   const cpuGraph = width >= 24 ? systemGraph(state, 'cpu', graphWidth) : null;
@@ -535,11 +534,11 @@ function systemContent(state, rep, width, theme) {
   const ramLine = pressureText('RAM', memoryPercent, ramGraph, theme);
   const cpuToken = severityToken(systemPressureSeverity(cpu));
   const ramToken = severityToken(systemPressureSeverity(memoryPercent));
+  const capacityLine = `USED ${formatBytes(used)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`;
 
   if (rep === CARD_REPRESENTATION.MINIMAL) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`];
-  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, `FREE ${formatBytes(free)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`];
-  if (rep === CARD_REPRESENTATION.NORMAL) return [cpuLine, ramLine, `FREE ${styleText(formatBytes(free), 'healthy', theme)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`];
-  return [cpuLine, ramLine, `TOTAL ${formatBytes(total)}`, `FREE ${styleText(formatBytes(free), 'healthy', theme)}`];
+  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, capacityLine];
+  return [cpuLine, ramLine, capacityLine];
 }
 
 function enabledCards(config, state) {
