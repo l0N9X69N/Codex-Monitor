@@ -49,9 +49,9 @@ export async function configureMonitor({
       }
     }
 
-    output.write('\nHeader — select up to 4 status items\n');
+    output.write('\nHeader — 4 items is the recommended density; extra items are preserved and shown when space allows\n');
     const header = await rl.question(`Header comma-separated (${config.header.join(',')}): `);
-    config.header = parseList(header, CONFIG_VALUES.header, config.header).slice(0, 4);
+    config.header = parseList(header, CONFIG_VALUES.header, config.header);
 
     const theme = (await rl.question(`Theme [color/mono/matrix] (${config.theme}): `)).trim().toLowerCase();
     if (CONFIG_VALUES.themes.has(theme)) config.theme = theme;
