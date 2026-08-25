@@ -5,7 +5,7 @@ import { childEnvironmentForAuth, codexArgsForAuth } from '../core/auth.js';
 import { applyNormalizedEvent } from '../core/reducer.js';
 import { PROVENANCE } from '../core/provenance.js';
 import { setMetric } from '../core/normalized-state.js';
-import { parsePtyTransient } from '../parsers/pty-transient.js';
+import { PtyTransientStreamParser } from '../parsers/pty-transient.js';
 import { spawnCodexPty } from '../platform/pty.js';
 import { LivePaneController } from './live-pane.js';
 import { LiveDataRuntime } from './live-data.js';
@@ -53,6 +53,7 @@ export async function runCodexLive({
       config: monitorConfig,
       adapter: platformAdapter,
       cwd,
+      codexArgs,
       processRef,
       onUpdate() { pane?.invalidate?.(); }
     })
@@ -70,6 +71,7 @@ export async function runCodexLive({
   let hudRepairTimer = null;
   let disposeSafety = () => {};
   const inputDecoder = new StringDecoder('utf8');
+  const ptyTransient = new PtyTransientStreamParser();
 
   const clearHudRepairTimer = () => {
     if (!hudRepairTimer) return;
@@ -190,7 +192,7 @@ export async function runCodexLive({
       if (exiting) return;
       try { stdout.write(data); } catch {}
       if (pane && monitorState) {
-        const events = parsePtyTransient(data, Date.now());
+        const events = ptyTransient.push(data, Date.now());
         if (events.length > 0) {
           for (const event of events) {
             applyNormalizedEvent(monitorState, event, { source: PROVENANCE.LOCAL });
