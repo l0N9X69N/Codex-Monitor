@@ -39,7 +39,7 @@ function fmtDuration(raw) {
   const seconds = Math.floor(n / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m${seconds % 60 ? String(seconds % 60).padStart(2, '0') + 's' : ''}`;
+  if (minutes < 60) return `${minutes}m${seconds % 60 ? `${String(seconds % 60).padStart(2, '0')}s` : ''}`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h${String(minutes % 60).padStart(2, '0')}m`;
   return `${Math.floor(hours / 24)}d${String(hours % 24).padStart(2, '0')}h`;
@@ -137,15 +137,49 @@ function bar(percent, cells = 10, theme = 'color', options = {}) {
   return `${paint('━'.repeat(filled), barToken(n, options), theme)}${paint('─'.repeat(Math.max(0, cells - filled)), 'frame', theme)}`;
 }
 
+function styledLabel(label, width, theme, { token = 'label', bold = false } = {}) {
+  return styleText(padCells(truncateCells(String(label ?? ''), width, ''), width), token, theme, { bold });
+}
+
+function field(label, rawValue, labelWidth, theme, {
+  labelToken = 'label',
+  valueToken = 'bright',
+  boldLabel = false,
+  boldValue = false
+} = {}) {
+  return `${styledLabel(label, labelWidth, theme, { token: labelToken, bold: boldLabel })} ${styleText(String(rawValue ?? '--'), valueToken, theme, { bold: boldValue })}`;
+}
+
+function splitRow(left, right, width, theme, ratio = 0.5) {
+  const separator = ` ${paint('·', 'frame', theme)} `;
+  const separatorWidth = 3;
+  const usable = Math.max(2, width - separatorWidth);
+  const leftWidth = Math.max(1, Math.min(usable - 1, Math.floor(usable * ratio)));
+  const rightWidth = Math.max(1, usable - leftWidth);
+  return `${padCells(truncateCells(left, leftWidth, ''), leftWidth)}${separator}${padCells(truncateCells(right, rightWidth, ''), rightWidth)}`;
+}
+
+function tripleRow(cells, width, theme) {
+  const separator = ` ${paint('·', 'frame', theme)} `;
+  const separatorWidth = 6;
+  const usable = Math.max(3, width - separatorWidth);
+  const base = Math.floor(usable / 3);
+  const remainder = usable - base * 3;
+  const widths = [base + (remainder > 0 ? 1 : 0), base + (remainder > 1 ? 1 : 0), base];
+  return cells.map((cell, index) => padCells(truncateCells(cell, widths[index], ''), widths[index])).join(separator);
+}
+
 function quotaLine(window, label, rep, width, nowMs, theme) {
   const q = value(window);
   const remaining = finite(q?.remainingPercent);
-  if (remaining == null) return `${styleText(label, 'text', theme, { bold: true })} ${styleText('waiting…', 'muted', theme)}`;
+  const labelWidth = 4;
+  const labelText = styledLabel(label, labelWidth, theme, { token: 'text', bold: true });
+  if (remaining == null) return `${labelText} ${styleText('waiting…', 'muted', theme)}`;
   const reset = fmtReset(q?.resetsAtMs ?? q?.resetsAt, nowMs);
   const suffix = reset ? ` ${paint('↻', 'frame', theme)} ${styleText(reset, 'muted', theme)}` : '';
-  if (rep === REPRESENTATION.MICRO) return `${label} ${Math.round(remaining)}%`;
-  const cells = Math.max(6, Math.min(12, width - 25));
-  return `${styleText(label, 'text', theme, { bold: true })} ${bar(remaining, cells, theme)} ${styleText(`${Math.round(remaining)}% left`, barToken(remaining), theme, { bold: true })}${suffix}`;
+  if (rep === REPRESENTATION.MICRO) return `${labelText} ${Math.round(remaining)}%`;
+  const cells = Math.max(6, Math.min(12, width - labelWidth - 21));
+  return `${labelText} ${bar(remaining, cells, theme)} ${styleText(`${Math.round(remaining)}% left`, barToken(remaining), theme, { bold: true })}${suffix}`;
 }
 
 function sectionsFor(config, state) {
@@ -207,7 +241,7 @@ function mergeLanes(layout, state, options) {
   const count = Math.min(layout.maxRows, Math.max(0, ...laneRows.map((rows) => rows.length)));
   const lines = [];
   for (let row = 0; row < count; row += 1) {
-    lines.push(truncateCells(laneRows.map((rows, i) => padCells(rows[row] ?? '', layout.lanes[i].width)).join(' '), layout.width, ''));
+    lines.push(truncateCells(laneRows.map((rows, index) => padCells(rows[row] ?? '', layout.lanes[index].width)).join(' '), layout.width, ''));
   }
   return lines;
 }
@@ -215,13 +249,13 @@ function mergeLanes(layout, state, options) {
 function distribute(total, count) {
   const base = Math.floor(total / count);
   const extra = total - base * count;
-  return Array.from({ length: count }, (_, i) => base + (i < extra ? 1 : 0));
+  return Array.from({ length: count }, (_, index) => base + (index < extra ? 1 : 0));
 }
 
 function tableRow(cells, widths, theme) {
   const edge = paint('│', 'frame', theme);
-  const body = cells.map((cell, i) => {
-    const inner = Math.max(0, widths[i] - 2);
+  const body = cells.map((cell, index) => {
+    const inner = Math.max(0, widths[index] - 2);
     return ` ${padCells(truncateCells(cell ?? '', inner, ''), inner)} `;
   }).join(edge);
   return `${edge}${body}${edge}`;
@@ -256,12 +290,12 @@ function contextColumn(state, width, theme) {
   const input = finite(value(state?.usage?.inputTokens));
   const cacheRatio = finite(value(state?.usage?.cacheRatio));
   const cachePercent = cacheRatio != null ? cacheRatio * 100 : (cached != null && input != null && input > 0 ? (cached / input) * 100 : null);
-  const barWidth = Math.max(6, Math.min(28, width - 4));
+  const barWidth = Math.max(6, Math.min(28, width));
   return [
     `${styleText(`${pct(usedPercent)} used`, barToken(usedPercent, { pressure: true }), theme, { bold: true })} ${paint('·', 'frame', theme)} ${styleText(`${fmtNumber(used)}/${fmtNumber(window)}`, 'bright', theme)}`,
     bar(usedPercent, barWidth, theme, { pressure: true }),
-    `${styleText('CACHE', 'label', theme)} ${styleText(fmtNumber(cached), 'info', theme)}${cachePercent == null ? '' : ` ${styleText(pct(cachePercent), 'info', theme)}`}`,
-    `${styleText('LEFT', 'label', theme)} ${styleText(pct(leftPercent), 'bright', theme)} ${paint('·', 'frame', theme)} ${styleText('CMP', 'label', theme)} ${styleText(fmtNumber(value(state?.compaction?.count)), 'reasoning', theme)}`
+    `${field('CACHE', fmtNumber(cached), 6, theme, { valueToken: 'info' })} ${cachePercent == null ? '' : styleText(pct(cachePercent), 'info', theme)}`.trimEnd(),
+    `${field('LEFT', pct(leftPercent), 6, theme)} ${paint('·', 'frame', theme)} ${field('CMP', fmtNumber(value(state?.compaction?.count)), 4, theme, { valueToken: 'reasoning' })}`
   ];
 }
 
@@ -273,27 +307,41 @@ function usageColumn(state, width, theme, nowMs) {
   const reasoning = fmtNumber(value(state?.usage?.reasoningTokens));
   const turnInput = fmtNumber(value(state?.usage?.turnInputTokens));
   const turnOutput = fmtNumber(value(state?.usage?.turnOutputTokens));
-  const sep = ` ${paint('·', 'frame', theme)} `;
 
   if (auth === 'login') return [
     quotaLine(state?.quota?.fiveHour, '5H', REPRESENTATION.FULL, width, nowMs, theme),
     quotaLine(state?.quota?.weekly, 'WEEK', REPRESENTATION.FULL, width, nowMs, theme),
-    `${styleText('IN', 'label', theme)} ${styleText(input, 'bright', theme)}${sep}${styleText('CACHE', 'label', theme)} ${styleText(cached, 'info', theme)}${sep}${styleText('OUT', 'label', theme)} ${styleText(output, 'tool', theme)}`,
-    `${styleText('RSN', 'label', theme)} ${styleText(reasoning, 'reasoning', theme)}${sep}${styleText('TURN', 'label', theme)} ${styleText(`${turnInput} in / ${turnOutput} out`, 'thinking', theme)}`
+    tripleRow([
+      field('IN', input, 3, theme),
+      field('CACHE', cached, 5, theme, { valueToken: 'info' }),
+      field('OUT', output, 4, theme, { valueToken: 'tool' })
+    ], width, theme),
+    tripleRow([
+      field('RSN', reasoning, 3, theme, { valueToken: 'reasoning' }),
+      field('T.IN', turnInput, 5, theme, { valueToken: 'thinking' }),
+      field('T.OUT', turnOutput, 5, theme, { valueToken: 'thinking' })
+    ], width, theme)
   ];
 
   const requested = value(state?.model?.requested, '--');
   const actual = value(state?.model?.actual, null);
   return [
-    `${styleText('MODEL', 'label', theme)} ${styleText(requested, 'thinking', theme, { bold: true })}`,
-    `${styleText('ACTUAL', 'label', theme)} ${styleText(actual ?? 'waiting…', actual ? 'healthy' : 'muted', theme, { bold: Boolean(actual) })}`,
-    `${styleText('IN', 'label', theme)} ${styleText(input, 'bright', theme)}${sep}${styleText('CACHE', 'label', theme)} ${styleText(cached, 'info', theme)}${sep}${styleText('OUT', 'label', theme)} ${styleText(output, 'tool', theme)}`,
-    `${styleText('RSN', 'label', theme)} ${styleText(reasoning, 'reasoning', theme)}${sep}${styleText('TURN', 'label', theme)} ${styleText(`${turnInput} in / ${turnOutput} out`, 'thinking', theme)}`
+    field('MODEL', requested, 7, theme, { valueToken: 'thinking', boldValue: true }),
+    field('ACTUAL', actual ?? 'waiting…', 7, theme, { valueToken: actual ? 'healthy' : 'muted', boldValue: Boolean(actual) }),
+    tripleRow([
+      field('IN', input, 3, theme),
+      field('CACHE', cached, 5, theme, { valueToken: 'info' }),
+      field('OUT', output, 4, theme, { valueToken: 'tool' })
+    ], width, theme),
+    tripleRow([
+      field('RSN', reasoning, 3, theme, { valueToken: 'reasoning' }),
+      field('T.IN', turnInput, 5, theme, { valueToken: 'thinking' }),
+      field('T.OUT', turnOutput, 5, theme, { valueToken: 'thinking' })
+    ], width, theme)
   ];
 }
 
-function sessionColumn(state, config, theme, nowMs) {
-  const sep = ` ${paint('·', 'frame', theme)} `;
+function sessionColumn(state, config, width, theme, nowMs) {
   const elapsed = fmtDuration(Math.max(0, nowMs - (state?.run?.startedAtMs ?? nowMs)));
   const turns = fmtNumber(value(state?.session?.turnCount));
   const last = fmtDuration(value(state?.session?.lastTurnDurationMs));
@@ -302,20 +350,20 @@ function sessionColumn(state, config, theme, nowMs) {
   const bound = Boolean(value(state?.session?.bound, false));
   const freshness = state?.session?.lastEventAtMs?.freshness ?? 'waiting';
   const systemEnabled = config.sections.system && config.metrics.system !== false;
-  const system = systemEnabled
-    ? `${sep}${styleText('SYS', 'label', theme)} ${styleText(`${pct(value(state?.system?.cpuPercent))} / ${fmtBytes(value(state?.system?.memoryBytes))}`, 'info', theme)}`
-    : '';
-  return [
-    `${styleText('elapsed', 'label', theme)} ${styleText(elapsed, 'bright', theme)}${sep}${styleText('turns', 'label', theme)} ${styleText(turns, 'bright', theme)}`,
-    `${styleText('last', 'label', theme)} ${styleText(last, 'thinking', theme)}${sep}${styleText('update', 'label', theme)} ${styleText(update, 'muted', theme)}`,
-    `${styleText('thread', 'label', theme)} ${styleText(thread, 'info', theme)}${sep}${styleText('fresh', 'label', theme)} ${styleText(String(freshness), freshness === 'current' ? 'healthy' : 'muted', theme)}`,
-    `${styleText('data', 'label', theme)} ${styleText(bound ? 'current rollout' : 'waiting current rollout', bound ? 'healthy' : 'approval', theme)}${system}`
+  const systemValue = systemEnabled
+    ? `${pct(value(state?.system?.cpuPercent))}/${fmtBytes(value(state?.system?.memoryBytes))}`
+    : '--';
+  const rows = [
+    [field('elapsed', elapsed, 7, theme), field('turns', turns, 6, theme)],
+    [field('last', last, 7, theme, { valueToken: 'thinking' }), field('update', update, 6, theme, { valueToken: 'muted' })],
+    [field('thread', thread, 7, theme, { valueToken: 'info' }), field('fresh', freshness, 6, theme, { valueToken: freshness === 'current' ? 'healthy' : 'muted' })],
+    [field('data', bound ? 'current rollout' : 'waiting', 7, theme, { valueToken: bound ? 'healthy' : 'approval' }), field('SYS', systemValue, 6, theme, { valueToken: systemEnabled ? 'info' : 'muted' })]
   ];
+  return rows.map(([left, right]) => splitRow(left, right, width, theme, 0.6));
 }
 
-function activityColumn(state, theme) {
+function activityColumn(state, width, theme) {
   const info = activityInfo(state);
-  const sep = ` ${paint('·', 'frame', theme)} `;
   const detail = value(state?.activity?.detail, info.description) || info.description;
   const source = value(state?.activity?.source, 'runtime') || 'runtime';
   const activeTools = value(state?.activity?.activeTools, null);
@@ -328,9 +376,9 @@ function activityColumn(state, theme) {
   const errors = fmtNumber(value(state?.activity?.errorCount));
   return [
     `${styleText(`${info.symbol} ${info.activity}`, info.token, theme, { bold: true })} ${styleText(info.description, 'muted', theme)}`,
-    `${styleText('source', 'label', theme)} ${styleText(String(source), 'bright', theme)}${sep}${styleText('detail', 'label', theme)} ${styleText(String(detail), 'muted', theme)}`,
-    `${styleText('tools', 'label', theme)} ${styleText(activeToolCount == null ? '--' : String(activeToolCount), 'tool', theme)}${sep}${styleText('last', 'label', theme)} ${styleText(String(toolName), 'info', theme)}`,
-    `${styleText('approval', 'label', theme)} ${styleText(String(approval), approval ? 'approval' : 'muted', theme)}${sep}${styleText('retry', 'label', theme)} ${styleText(retry, 'approval', theme)}${sep}${styleText('err', 'label', theme)} ${styleText(errors, finite(value(state?.activity?.errorCount)) > 0 ? 'error' : 'muted', theme)}`
+    splitRow(field('source', String(source), 8, theme), field('detail', String(detail), 7, theme, { valueToken: 'muted' }), width, theme, 0.46),
+    splitRow(field('tools', activeToolCount == null ? '--' : String(activeToolCount), 8, theme, { valueToken: 'tool' }), field('last', String(toolName), 7, theme, { valueToken: 'info' }), width, theme, 0.46),
+    splitRow(field('approval', String(approval), 8, theme, { valueToken: approval ? 'approval' : 'muted' }), `${field('retry', retry, 6, theme, { valueToken: 'approval' })} ${paint('·', 'frame', theme)} ${field('err', errors, 4, theme, { valueToken: finite(value(state?.activity?.errorCount)) > 0 ? 'error' : 'muted' })}`, width, theme, 0.46)
   ];
 }
 
@@ -338,6 +386,7 @@ function fullDashboard(state, config, width, options) {
   const theme = options.theme;
   const available = width - 5;
   const widths = distribute(available, 4);
+  const innerWidths = widths.map((panelWidth) => Math.max(1, panelWidth - 2));
   const auth = value(state?.auth?.mode, 'unknown');
   const titles = [
     styleText('CONTEXT', 'info', theme, { bold: true }),
@@ -346,10 +395,10 @@ function fullDashboard(state, config, width, options) {
     styleText('CURRENT ACTIVITY', 'thinking', theme, { bold: true })
   ];
   const columns = [
-    contextColumn(state, widths[0], theme),
-    usageColumn(state, widths[1], theme, options.nowMs),
-    sessionColumn(state, config, theme, options.nowMs),
-    activityColumn(state, theme)
+    contextColumn(state, innerWidths[0], theme),
+    usageColumn(state, innerWidths[1], theme, options.nowMs),
+    sessionColumn(state, config, innerWidths[2], theme, options.nowMs),
+    activityColumn(state, innerWidths[3], theme)
   ];
   const lines = [
     topBorder(width, config.preset, theme),
@@ -388,10 +437,11 @@ export function buildLiveFrame({
     hysteresisCells
   });
 
-  // The Full wide representation deliberately mirrors the visual language of
-  // feat/full-monitor-v2. Only the renderer is borrowed; state, collectors,
-  // provenance, passive keyboard ownership and demand rules remain v1-rearchitecture.
-  const useFullVisual = safeWidth >= 120 && height >= 18 && config?.preset === 'full';
+  // Full mode follows the feat/full-monitor-v2 visual language, while the
+  // current normalized state, current-run provenance and passive input contract
+  // remain authoritative. Require enough height for the complete 9-row frame;
+  // otherwise use the responsive compact representation instead of clipping it.
+  const useFullVisual = safeWidth >= 120 && monitorRowBudget(height) >= 9 && config?.preset === 'full';
   const frame = useFullVisual
     ? fullDashboard(state, config, safeWidth, options)
     : [
@@ -403,7 +453,7 @@ export function buildLiveFrame({
     lines: frame.slice(0, budget).map((line) => truncateCells(line, safeWidth, '')),
     rowCount: Math.min(frame.length, budget),
     layout,
-    semantic: { activeTab: 'overview', authMode: value(state?.auth?.mode, 'unknown'), theme, interactive: false, visual: useFullVisual ? 'full-monitor-v2' : 'responsive-compact' }
+    semantic: { activeTab: 'overview', authMode: value(state?.auth?.mode, 'unknown'), theme, interactive: false, visual: useFullVisual ? 'full-monitor-v2-grid' : 'responsive-compact' }
   };
 }
 
