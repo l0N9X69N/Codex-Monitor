@@ -7,24 +7,45 @@ function current(target, key, value, nowMs) {
   setMetric(target, key, value, { source: PROVENANCE.OFFICIAL_CURRENT, observedAtMs: nowMs, evidence: 'demo' });
 }
 
+function derived(target, key, value, nowMs, evidence) {
+  setMetric(target, key, value, { source: PROVENANCE.DERIVED, observedAtMs: nowMs, evidence });
+}
+
 export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Date.now() } = {}) {
-  const state = createNormalizedMonitorState({ runId: 'demo', startedAtMs: nowMs - 742_000 });
+  const state = createNormalizedMonitorState({ runId: 'demo', startedAtMs: nowMs - 182_000 });
   current(state.auth, 'mode', authMode, nowMs);
   current(state.model, 'requested', 'gpt-5.6-luna', nowMs);
-  current(state.model, 'reasoning', 'medium', nowMs);
-  current(state.context, 'windowTokens', 200_000, nowMs);
-  current(state.context, 'usedTokens', 84_200, nowMs);
-  setMetric(state.context, 'leftTokens', 115_800, { source: PROVENANCE.DERIVED, observedAtMs: nowMs, evidence: 'window-used' });
-  setMetric(state.context, 'leftPercent', 58, { source: PROVENANCE.DERIVED, observedAtMs: nowMs, evidence: 'left/window' });
-  current(state.usage, 'inputTokens', 28_400, nowMs);
-  current(state.usage, 'cachedInputTokens', 19_100, nowMs);
-  current(state.usage, 'outputTokens', 4_230, nowMs);
-  current(state.usage, 'reasoningTokens', 1_840, nowMs);
-  current(state.session, 'turnCount', 18, nowMs);
-  setMetric(state.session, 'lastTurnDurationMs', 8_420, { source: PROVENANCE.DERIVED, observedAtMs: nowMs, evidence: 'demo-duration' });
-  current(state.compaction, 'count', 2, nowMs);
-  current(state.quota, 'fiveHour', { remainingPercent: 64, resetsAt: '3h42m' }, nowMs);
-  current(state.quota, 'weekly', { remainingPercent: 82, resetsAt: '6d06h' }, nowMs);
+  current(state.model, 'reasoning', 'high', nowMs);
+  if (authMode === 'api') current(state.model, 'actual', 'gpt-5.6-luna', nowMs);
+
+  current(state.context, 'windowTokens', 258_000, nowMs);
+  current(state.context, 'usedTokens', 95_600, nowMs);
+  derived(state.context, 'leftTokens', 162_400, nowMs, 'window-used');
+  derived(state.context, 'usedPercent', 37, nowMs, 'used/window');
+  derived(state.context, 'leftPercent', 63, nowMs, 'left/window');
+
+  current(state.usage, 'inputTokens', 843_000, nowMs);
+  current(state.usage, 'cachedInputTokens', 749_000, nowMs);
+  current(state.usage, 'outputTokens', 9_500, nowMs);
+  current(state.usage, 'reasoningTokens', 4_900, nowMs);
+  current(state.usage, 'turnInputTokens', 95_400, nowMs);
+  current(state.usage, 'turnOutputTokens', 189, nowMs);
+  derived(state.usage, 'cacheRatio', 749_000 / 843_000, nowMs, 'cached/input');
+
+  current(state.session, 'bound', true, nowMs);
+  current(state.session, 'threadId', '019c-demo-7fa2', nowMs);
+  current(state.session, 'turnCount', 6, nowMs);
+  current(state.session, 'lastEventAtMs', nowMs - 2_000, nowMs);
+  derived(state.session, 'lastTurnDurationMs', 16_000, nowMs, 'demo-duration');
+  current(state.compaction, 'count', 0, nowMs);
+
+  if (authMode === 'login') {
+    current(state.quota, 'fiveHour', { remainingPercent: 64, resetsAt: '3h42m' }, nowMs);
+    current(state.quota, 'weekly', { remainingPercent: 84, resetsAt: '5d22h' }, nowMs);
+  }
+
+  setMetric(state.system, 'cpuPercent', 24, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
+  setMetric(state.system, 'memoryBytes', 13_678_000_000, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
 
   const normalized = String(kind ?? 'idle').toLowerCase();
   const mapping = {
@@ -37,6 +58,14 @@ export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Dat
   const [activity, detail] = mapping[normalized] ?? mapping.idle;
   current(state.activity, 'state', activity, nowMs);
   current(state.activity, 'detail', detail, nowMs);
+  current(state.activity, 'source', 'rollout', nowMs);
+  current(state.activity, 'activeTools', normalized === 'tool' ? ['shell'] : [], nowMs);
+  current(state.activity, 'approvalPending', normalized === 'approval', nowMs);
+  current(state.activity, 'retryCount', normalized === 'error' ? 1 : 0, nowMs);
+  current(state.activity, 'errorCount', normalized === 'error' ? 1 : 0, nowMs);
+  current(state.activity, 'errorActive', normalized === 'error', nowMs);
+  current(state.tools, 'current', normalized === 'tool' ? { name: 'shell' } : null, nowMs);
+  current(state.tools, 'last', { name: 'exec' }, nowMs);
   return state;
 }
 
