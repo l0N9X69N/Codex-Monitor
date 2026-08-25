@@ -123,13 +123,14 @@ export function bootstrapLatestAccountQuota(state, sessionsPath, { fsRef = fs } 
 }
 
 export class CurrentSessionTailer {
-  constructor({ state, sessionsPath, cwd = process.cwd(), fsRef = fs, now = () => Date.now(), resumeMode = false } = {}) {
+  constructor({ state, sessionsPath, cwd = process.cwd(), fsRef = fs, now = () => Date.now(), resumeMode = false, resumeTargetPath = null } = {}) {
     this.state = state;
     this.sessionsPath = sessionsPath;
     this.cwd = cwd;
     this.fs = fsRef;
     this.now = now;
     this.resumeMode = Boolean(resumeMode);
+    this.resumeTargetPath = resumeTargetPath ? path.resolve(String(resumeTargetPath)) : null;
     this.initialFiles = this.resumeMode ? fileSnapshot(sessionsPath, fsRef) : new Map();
     this.pipeline = new MonitorIngestPipeline(state);
     this.boundPath = null;
@@ -139,8 +140,12 @@ export class CurrentSessionTailer {
     setMetric(this.state.session, 'resumeMode', this.resumeMode, {
       source: PROVENANCE.LOCAL,
       observedAtMs: this.now(),
-      evidence: 'codex-args'
+      evidence: this.resumeTargetPath ? 'local-resume-picker' : 'codex-args'
     });
+
+    // A local picker already knows the exact rollout selected by the user, so
+    // hydrate before Codex starts instead of waiting for the first appended turn.
+    if (this.resumeMode && this.resumeTargetPath) this.bindKnownResumeTarget();
   }
 
   hydrateResume(filePath, initialSize) {
@@ -173,8 +178,24 @@ export class CurrentSessionTailer {
     this.remainder = '';
   }
 
+  bindKnownResumeTarget() {
+    if (!this.resumeTargetPath || this.boundPath) return this.boundPath;
+    let stat;
+    try { stat = this.fs.statSync(this.resumeTargetPath); } catch { return null; }
+    if (!stat.isFile?.() && typeof stat.isFile === 'function') return null;
+    this.boundPath = this.resumeTargetPath;
+    this.offset = 0;
+    this.remainder = '';
+    this.hydrateResume(this.boundPath, stat.size);
+    const atMs = this.now();
+    setMetric(this.state.session, 'bound', true, { source: PROVENANCE.LOCAL, observedAtMs: atMs, evidence: 'local-resume-picker' });
+    setMetric(this.state.session, 'filePath', this.boundPath, { source: PROVENANCE.LOCAL, observedAtMs: atMs, evidence: 'local-resume-picker' });
+    return this.boundPath;
+  }
+
   bind() {
     if (this.boundPath) return this.boundPath;
+    if (this.resumeTargetPath) return this.bindKnownResumeTarget();
     const nowMs = this.now();
     if (nowMs - this.lastBindAttemptAtMs < 750) return null;
     this.lastBindAttemptAtMs = nowMs;
