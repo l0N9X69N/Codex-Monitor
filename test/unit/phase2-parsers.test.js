@@ -121,9 +121,16 @@ test('PTY transient parser is independent from renderer and sanitizes details', 
   assert.equal(events[0].detail.includes('\u001b'), false);
 });
 
-test('PTY transient parser does not treat static permissions/status text as a live approval prompt', () => {
+test('PTY transient parser recognizes the real Codex command approval prompt', () => {
+  const events = parsePtyTransient('Would you like to run the following command? Environment: local', 123);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'approval');
+});
+
+test('PTY transient parser does not treat static permissions/status/history text as a live approval prompt', () => {
   assert.deepEqual(parsePtyTransient('Permissions: Workspace (Ask for approval when needed)', 123), []);
   assert.deepEqual(parsePtyTransient('Tip: Use /status to see the current model, approvals, and token usage.', 123), []);
+  assert.deepEqual(parsePtyTransient('You approved Codex to run Remove-Item this time', 123), []);
 });
 
 test('actual model only changes on explicit actual-model evidence', () => {
