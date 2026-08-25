@@ -4,6 +4,9 @@ import { discoverCurrentSessionFiles, firstSessionMeta } from '../collectors/cur
 import { sanitizeText } from '../core/sanitize.js';
 
 const USER_MESSAGE_BEGIN = '## My request for Codex:';
+const ALT_SCREEN_ENTER = '\x1b[?1049h';
+const ALT_SCREEN_LEAVE = '\x1b[?1049l';
+const ARROW_SEQUENCE = /\x1b(?:O|\[[0-9;?]*)([AB])/g;
 
 function samePath(a, b, platform = process.platform) {
   if (!a || !b) return false;
@@ -144,16 +147,41 @@ function renderPicker(stdout, sessions, selected, { showAll = false, nowMs = Dat
   stdout.write(`\x1b[H\x1b[2J${lines.join('\n')}`);
 }
 
+function rawInputText(raw) {
+  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
+  if (ArrayBuffer.isView(raw)) {
+    return Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength).toString('utf8');
+  }
+  return String(raw ?? '');
+}
+
 export function decodePickerInput(raw) {
-  const text = Buffer.isBuffer(raw) || ArrayBuffer.isView(raw)
-    ? Buffer.from(raw.buffer ?? raw, raw.byteOffset ?? 0, raw.byteLength ?? raw.length).toString('utf8')
-    : String(raw ?? '');
+  const text = rawInputText(raw);
   if (!text) return null;
-  if (text === '\x03') return 'cancel';
-  if (text === '\r' || text === '\n' || text === '\r\n') return 'select';
-  if (text === '\x1b') return 'cancel';
-  if (text.includes('\x1b[A') || text.includes('\x1bOA') || text === 'k' || text === 'K') return 'up';
-  if (text.includes('\x1b[B') || text.includes('\x1bOB') || text === 'j' || text === 'J') return 'down';
+
+  // Raw-mode Ctrl+C is ETX on most terminals. Some Windows terminal/Node
+  // combinations can include it in a larger input chunk, so do not require an
+  // exact one-byte match.
+  if (text.includes('\x03')) return 'cancel';
+
+  // Decode navigation before the generic ESC rule because arrow keys are ESC
+  // sequences too. Support both normal/application cursor mode and parameterized
+  // CSI forms emitted by modern terminals.
+  const arrows = [...text.matchAll(ARROW_SEQUENCE)];
+  const withoutArrows = text.replace(ARROW_SEQUENCE, '');
+
+  if (withoutArrows.includes('\r') || withoutArrows.includes('\n')) return 'select';
+
+  // A physical Escape key is not guaranteed to arrive as exactly one byte on
+  // Windows Terminal (enhanced-key protocols can decorate it). Any ESC bytes
+  // left after removing recognized arrow sequences mean cancel.
+  if (withoutArrows.includes('\x1b')) return 'cancel';
+
+  if (arrows.length > 0 && withoutArrows.length === 0) {
+    return arrows.at(-1)?.[1] === 'A' ? 'up' : 'down';
+  }
+  if (text === 'k' || text === 'K') return 'up';
+  if (text === 'j' || text === 'J') return 'down';
   return null;
 }
 
@@ -163,6 +191,7 @@ export async function pickLocalResumeSession({
   showAll = false,
   stdin = process.stdin,
   stdout = process.stdout,
+  processRef = process,
   fsRef = fs,
   now = () => Date.now()
 } = {}) {
@@ -176,6 +205,7 @@ export async function pickLocalResumeSession({
   const wasPaused = Boolean(stdin.isPaused?.());
   let selected = 0;
   let settled = false;
+  let altScreenActive = false;
 
   return await new Promise((resolve) => {
     const cleanup = () => {
@@ -183,9 +213,16 @@ export async function pickLocalResumeSession({
       try { stdin.off?.('end', onEnd); } catch {}
       try { stdin.off?.('close', onEnd); } catch {}
       try { stdin.off?.('error', onError); } catch {}
+      try { processRef?.off?.('SIGINT', onSigint); } catch {}
+      try { processRef?.off?.('SIGTERM', onSigterm); } catch {}
+      try { processRef?.off?.('SIGHUP', onSighup); } catch {}
       try { stdin.setRawMode(previousRaw); } catch {}
       if (wasPaused && !previousRaw) {
         try { stdin.pause?.(); } catch {}
+      }
+      if (altScreenActive) {
+        altScreenActive = false;
+        try { stdout.write(ALT_SCREEN_LEAVE); } catch {}
       }
     };
 
@@ -193,14 +230,14 @@ export async function pickLocalResumeSession({
       if (settled) return;
       settled = true;
       cleanup();
-      // Leave the private picker screen and restore the exact shell/Codex screen
-      // that was underneath it instead of clearing the user's terminal history.
-      try { stdout.write('\x1b[?1049l'); } catch {}
       resolve({ selected: session, reason });
     };
 
     const onEnd = () => finish(null, 'stdin-ended');
     const onError = () => finish(null, 'stdin-error');
+    const onSigint = () => finish(null, 'cancelled');
+    const onSigterm = () => finish(null, 'terminated');
+    const onSighup = () => finish(null, 'hangup');
     const onData = (data) => {
       const action = decodePickerInput(data);
       if (action === 'up') selected = (selected - 1 + sessions.length) % sessions.length;
@@ -213,13 +250,20 @@ export async function pickLocalResumeSession({
     };
 
     try {
-      stdin.setRawMode(true);
-      stdin.resume?.();
-      stdout.write('\x1b[?1049h');
+      // Install every escape hatch before entering raw/alternate-screen mode so
+      // there is no interval where a startup failure can strand the terminal.
       stdin.on?.('data', onData);
       stdin.on?.('end', onEnd);
       stdin.on?.('close', onEnd);
       stdin.on?.('error', onError);
+      processRef?.on?.('SIGINT', onSigint);
+      processRef?.on?.('SIGTERM', onSigterm);
+      processRef?.on?.('SIGHUP', onSighup);
+
+      stdin.setRawMode(true);
+      stdin.resume?.();
+      stdout.write(ALT_SCREEN_ENTER);
+      altScreenActive = true;
       renderPicker(stdout, sessions, selected, { showAll, nowMs: now() });
     } catch {
       finish(null, 'picker-start-error');
