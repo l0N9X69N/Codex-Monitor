@@ -52,7 +52,9 @@ export function createNormalizedMonitorState({ runId = null, startedAtMs = Date.
       currentTurnStartedAtMs: metric(null),
       lastTurnDurationMs: metric(null),
       lastTurnCompletedAtMs: metric(null),
-      lastEventAtMs: metric(null)
+      lastEventAtMs: metric(null),
+      resumeMode: metric(false),
+      resumedHistoryTurns: metric(null)
     },
     activity: {
       state: metric('IDLE'),
