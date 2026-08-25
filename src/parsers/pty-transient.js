@@ -2,10 +2,10 @@ import { sanitizeDetail } from '../core/sanitize.js';
 
 function looksLikeApprovalPrompt(lower) {
   // Do not match static status text such as
-  // "Permissions: Workspace (Ask for approval...)". PTY evidence is only a
-  // fallback, so keep this deliberately conservative and let rollout/session
-  // events remain authoritative whenever possible.
-  return /allow this command|allow once|approve this|approval required|requires approval|confirm\?|confirm this|yes\/no|do you want to (?:allow|approve|continue|proceed)|would you like to (?:allow|approve|continue|proceed)/.test(lower);
+  // "Permissions: Workspace (Ask for approval...)" or historical text such as
+  // "You approved Codex...". PTY evidence is only a fallback, so keep this
+  // deliberately conservative and let rollout/session events remain authoritative.
+  return /would you like to run the following command|allow this command|allow once|approve this|approval required|requires approval|confirm\?|confirm this|yes\/no|do you want to (?:allow|approve|continue|proceed)|would you like to (?:allow|approve|continue|proceed)/.test(lower);
 }
 
 export function parsePtyTransient(text, atMs = Date.now()) {
