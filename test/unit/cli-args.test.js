@@ -7,7 +7,7 @@ function base(expected = {}) {
     action: 'run',
     auth: 'auto',
     codexArgs: [],
-    overrides: { preset: null, theme: null, language: null },
+    overrides: { preset: null, theme: null, background: null, language: null },
     demo: { state: 'idle' },
     ...expected
   };
@@ -19,6 +19,7 @@ test('monitor auth option is consumed while Codex args remain intact', () => {
 
 test('-- escape hatch passes monitor-looking flags to Codex', () => {
   assert.deepEqual(parseMonitorArgs(['--', '--help']), base({ codexArgs: ['--help'] }));
+  assert.deepEqual(parseMonitorArgs(['--', '--background', 'dark']), base({ codexArgs: ['--background', 'dark'] }));
 });
 
 test('--version remains a Codex argument', () => {
@@ -26,8 +27,17 @@ test('--version remains a Codex argument', () => {
 });
 
 test('runtime overrides are consumed by Monitor', () => {
-  assert.deepEqual(parseMonitorArgs(['--preset', 'compact', '--theme=matrix', '--lang', 'en', 'resume']), base({
-    codexArgs: ['resume'], overrides: { preset: 'compact', theme: 'matrix', language: 'en' }
+  assert.deepEqual(parseMonitorArgs(['--preset', 'compact', '--theme=matrix', '--background', 'black', '--lang', 'en', 'resume']), base({
+    codexArgs: ['resume'], overrides: { preset: 'compact', theme: 'matrix', background: 'black', language: 'en' }
+  }));
+});
+
+test('background override accepts both separated and equals syntax', () => {
+  assert.deepEqual(parseMonitorArgs(['--background', 'dark']), base({
+    overrides: { preset: null, theme: null, background: 'dark', language: null }
+  }));
+  assert.deepEqual(parseMonitorArgs(['--background=terminal']), base({
+    overrides: { preset: null, theme: null, background: 'terminal', language: null }
   }));
 });
 
