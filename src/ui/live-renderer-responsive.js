@@ -2,6 +2,7 @@ import path from 'node:path';
 import { assertNoWrap, formatBytes, formatQuotaReset } from './live-renderer.js';
 import { cellWidth, padCells, truncateCells } from './cell-width.js';
 import { paint, styleText } from './theme.js';
+import { contextUsedSeverity, quotaRemainingSeverity, severityToken, systemPressureSeverity } from './severity.js';
 
 // Kept as a compatibility export for callers/tests from the first 5-card
 // implementation. The responsive grid no longer uses a single 200-cell gate.
@@ -109,11 +110,12 @@ function activityInfo(state) {
 
 function healthText(state) {
   const info = activityInfo(state);
-  const context = finite(value(state?.context?.usedPercent));
+  const severity = contextUsedSeverity(value(state?.context?.usedPercent));
   if (info.activity === 'ERROR') return ['HEALTH ERROR', 'error'];
   if (info.activity === 'APPROVAL') return ['HEALTH WAIT', 'approval'];
-  if (context != null && context >= 90) return ['HEALTH PRESSURE', 'error'];
-  if (context != null && context >= 75) return ['HEALTH WARN', 'approval'];
+  if (severity === 'critical') return ['HEALTH PRESSURE', 'error'];
+  if (severity === 'high') return ['HEALTH HIGH', 'approval'];
+  if (severity === 'warning') return ['HEALTH WARN', 'thinking'];
   return ['HEALTH OK', 'healthy'];
 }
 
@@ -351,20 +353,20 @@ function quotaSnapshot(metric, label, nowMs) {
 }
 
 function quotaToken(remaining) {
-  if (remaining == null) return 'muted';
-  return remaining > 60 ? 'healthy' : remaining >= 20 ? 'approval' : 'error';
+  return severityToken(quotaRemainingSeverity(remaining));
 }
 
 function quotaLine(metric, label, width, nowMs, theme, { bar = true } = {}) {
   const q = quotaSnapshot(metric, label, nowMs);
-  const labelText = styleText(label.padEnd(label === '5H' ? 4 : 4), 'text', theme, { bold: true });
+  const labelText = styleText(label.padEnd(4), 'text', theme, { bold: true });
   if (q.remaining == null) return `${labelText} ${styleText('waiting…', 'muted', theme)}`;
+  const token = quotaToken(q.remaining);
   const resetText = q.reset ? ` ${paint('↻', 'frame', theme)} ${styleText(q.reset, 'muted', theme)}` : '';
-  if (!bar) return `${labelText} ${styleText(`${Math.round(q.remaining)}% left`, quotaToken(q.remaining), theme, { bold: true })}${resetText}`;
+  if (!bar) return `${labelText} ${styleText(`${Math.round(q.remaining)}% left`, token, theme, { bold: true })}${resetText}`;
   const resetCells = q.reset ? cellWidth(q.reset) + 3 : 0;
   const barCells = Math.max(6, Math.min(16, width - 4 - 11 - resetCells));
   const gauge = progressBar(q.remaining, barCells);
-  return `${labelText} ${styleText(gauge, quotaToken(q.remaining), theme)} ${styleText(`${Math.round(q.remaining)}% left`, quotaToken(q.remaining), theme, { bold: true })}${resetText}`;
+  return `${labelText} ${styleText(gauge, token, theme)} ${styleText(`${Math.round(q.remaining)}% left`, token, theme, { bold: true })}${resetText}`;
 }
 
 function contextContent(state, rep, width, theme) {
@@ -375,21 +377,28 @@ function contextContent(state, rep, width, theme) {
   const cached = value(state?.usage?.cachedInputTokens);
   const compaction = value(state?.compaction?.count);
   const turnsSince = finite(value(state?.compaction?.turnsSinceCompact));
-  const summary = `${styleText(`${pct(usedPercent)} used`, usedPercent != null && usedPercent >= 80 ? 'approval' : 'thinking', theme, { bold: true })} ${paint('·', 'frame', theme)} ${fmtNumber(used)}/${fmtNumber(window)}`;
+  const token = severityToken(contextUsedSeverity(usedPercent));
+  const summary = `${styleText(`${pct(usedPercent)} used`, token, theme, { bold: true })} ${paint('·', 'frame', theme)} ${fmtNumber(used)}/${fmtNumber(window)}`;
 
-  if (rep === CARD_REPRESENTATION.MINIMAL) return [`${pct(usedPercent)} · ${fmtNumber(used)}/${fmtNumber(window)} · left ${pct(leftPercent)}`];
+  if (rep === CARD_REPRESENTATION.MINIMAL) return [`${styleText(pct(usedPercent), token, theme, { bold: true })} ${paint('·', 'frame', theme)} ${fmtNumber(used)}/${fmtNumber(window)} ${paint('·', 'frame', theme)} left ${pct(leftPercent)}`];
   if (rep === CARD_REPRESENTATION.COMPACT) return [summary, `LEFT ${pct(leftPercent)} ${paint('·', 'frame', theme)} CACHE ${fmtNumber(cached)}`];
   if (rep === CARD_REPRESENTATION.NORMAL) {
     const gauge = progressBar(usedPercent, Math.min(16, Math.max(8, width - 2)));
-    return [summary, styleText(gauge, usedPercent != null && usedPercent >= 80 ? 'approval' : 'thinking', theme), `CACHE ${fmtNumber(cached)} ${paint('·', 'frame', theme)} LEFT ${pct(leftPercent)} ${paint('·', 'frame', theme)} CMP ${fmtNumber(compaction)}`];
+    return [summary, styleText(gauge, token, theme), `CACHE ${fmtNumber(cached)} ${paint('·', 'frame', theme)} LEFT ${pct(leftPercent)} ${paint('·', 'frame', theme)} CMP ${fmtNumber(compaction)}`];
   }
   const gauge = progressBar(usedPercent, Math.min(20, Math.max(8, width - 2)));
   return [
     summary,
-    styleText(gauge, usedPercent != null && usedPercent >= 80 ? 'approval' : 'thinking', theme),
+    styleText(gauge, token, theme),
     `CACHE ${styleText(fmtNumber(cached), 'info', theme)} ${paint('·', 'frame', theme)} LEFT ${pct(leftPercent)}`,
     `CMP ${styleText(fmtNumber(compaction), 'reasoning', theme)}${turnsSince == null ? '' : ` ${paint('·', 'frame', theme)} SINCE ${turnsSince}t`}`
   ];
+}
+
+function quotaCompactText(snapshot, label, theme) {
+  if (snapshot.remaining == null) return `${label} --`;
+  const token = quotaToken(snapshot.remaining);
+  return `${label} ${styleText(`${Math.round(snapshot.remaining)}%`, token, theme, { bold: true })}`;
 }
 
 function usageContent(state, rep, width, theme, nowMs) {
@@ -404,8 +413,8 @@ function usageContent(state, rep, width, theme, nowMs) {
   if (auth === 'login') {
     const five = quotaSnapshot(state?.quota?.fiveHour, '5H', nowMs);
     const week = quotaSnapshot(state?.quota?.weekly, 'WEEK', nowMs);
-    const fiveShort = five.remaining == null ? '5H --' : `5H ${Math.round(five.remaining)}%`;
-    const weekShort = week.remaining == null ? 'W --' : `W ${Math.round(week.remaining)}%`;
+    const fiveShort = quotaCompactText(five, '5H', theme);
+    const weekShort = quotaCompactText(week, 'W', theme);
     if (rep === CARD_REPRESENTATION.MINIMAL) return [`${fiveShort} ${paint('·', 'frame', theme)} ${weekShort} ${paint('·', 'frame', theme)} IN ${input} ${paint('·', 'frame', theme)} OUT ${output}`];
     if (rep === CARD_REPRESENTATION.COMPACT) return [
       `${fiveShort}${five.reset ? ` ↻ ${five.reset}` : ''} ${paint('·', 'frame', theme)} ${weekShort}${week.reset ? ` ↻ ${week.reset}` : ''}`,
@@ -507,6 +516,12 @@ function systemGraph(state, key, width) {
   }), Math.max(4, width));
 }
 
+function pressureText(label, raw, graph, theme) {
+  const token = severityToken(systemPressureSeverity(raw));
+  const percent = styleText(pct(raw), token, theme, { bold: true });
+  return graph ? `${label} ${percent}  ${styleText(graph, token, theme)}` : `${label} ${percent}`;
+}
+
 function systemContent(state, rep, width, theme) {
   const cpu = finite(value(state?.system?.cpuPercent));
   const used = finite(value(state?.system?.memoryBytes));
@@ -516,11 +531,13 @@ function systemContent(state, rep, width, theme) {
   const graphWidth = Math.max(4, Math.min(20, width - 11));
   const cpuGraph = width >= 24 ? systemGraph(state, 'cpu', graphWidth) : null;
   const ramGraph = width >= 24 ? systemGraph(state, 'ram', graphWidth) : null;
-  const cpuLine = cpuGraph ? `CPU ${styleText(pct(cpu), 'info', theme, { bold: true })}  ${styleText(cpuGraph, 'info', theme)}` : `CPU ${styleText(pct(cpu), 'info', theme, { bold: true })}`;
-  const ramLine = ramGraph ? `RAM ${styleText(pct(memoryPercent), 'info', theme, { bold: true })}  ${styleText(ramGraph, 'healthy', theme)}` : `RAM ${styleText(pct(memoryPercent), 'info', theme, { bold: true })}`;
+  const cpuLine = pressureText('CPU', cpu, cpuGraph, theme);
+  const ramLine = pressureText('RAM', memoryPercent, ramGraph, theme);
+  const cpuToken = severityToken(systemPressureSeverity(cpu));
+  const ramToken = severityToken(systemPressureSeverity(memoryPercent));
 
-  if (rep === CARD_REPRESENTATION.MINIMAL) return [`CPU ${pct(cpu)} ${paint('·', 'frame', theme)} RAM ${pct(memoryPercent)}`];
-  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${pct(cpu)} ${paint('·', 'frame', theme)} RAM ${pct(memoryPercent)}`, `FREE ${formatBytes(free)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`];
+  if (rep === CARD_REPRESENTATION.MINIMAL) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`];
+  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, `FREE ${formatBytes(free)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`];
   if (rep === CARD_REPRESENTATION.NORMAL) return [cpuLine, ramLine, `FREE ${styleText(formatBytes(free), 'healthy', theme)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`];
   return [cpuLine, ramLine, `TOTAL ${formatBytes(total)}`, `FREE ${styleText(formatBytes(free), 'healthy', theme)}`];
 }
