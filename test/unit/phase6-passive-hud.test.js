@@ -7,8 +7,14 @@ import { stripAnsi, cellWidth } from '../../src/ui/cell-width.js';
 import { monitorRowBudget } from '../../src/ui/layout.js';
 import { LiveDataRuntime } from '../../src/runtime/live-data.js';
 import { createCurrentRunState } from '../../src/core/state.js';
+import { setMetric } from '../../src/core/normalized-state.js';
+import { PROVENANCE } from '../../src/core/provenance.js';
 
 const NOW = Date.parse('2026-08-25T00:00:00Z');
+
+function setLocal(target, key, value, evidence = 'phase6-test') {
+  setMetric(target, key, value, { source: PROVENANCE.LOCAL, observedAtMs: NOW, evidence });
+}
 
 test('legacy config tabs are ignored and passive v2 preserves valid header choices beyond the recommended four', () => {
   const config = normalizeConfig({
@@ -25,6 +31,11 @@ test('legacy config tabs are ignored and passive v2 preserves valid header choic
 test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its old input model', () => {
   const config = normalizeConfig(configForPreset('full'));
   const state = createDemoState('tool', { authMode: 'login', nowMs: NOW });
+  setLocal(state.git, 'branch', 'main', 'git local branch');
+  setLocal(state.git, 'dirty', true, 'git status --porcelain');
+  setLocal(state.git, 'diff', { changedFiles: 3, additions: 10, deletions: 1 }, 'git diff');
+  setLocal(state.git, 'aheadBehind', { ahead: 2, behind: 1 }, 'git upstream');
+  setMetric(state.compaction, 'turnsSinceCompact', 2, { source: PROVENANCE.DERIVED, observedAtMs: NOW, evidence: 'turnCount-lastCompactTurn' });
   const frame = buildLiveFrame({ state, config, width: 160, height: 40, nowMs: NOW, projectName: 'Codex Monitor' });
   const text = stripAnsi(frame.lines.join('\n'));
   assert.equal(frame.lines.length, 9);
