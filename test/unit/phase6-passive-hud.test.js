@@ -10,16 +10,16 @@ import { createCurrentRunState } from '../../src/core/state.js';
 
 const NOW = Date.parse('2026-08-25T00:00:00Z');
 
-test('legacy config tabs are ignored and schema migrates to passive v2', () => {
+test('legacy config tabs are ignored and passive v2 preserves valid header choices beyond the recommended four', () => {
   const config = normalizeConfig({
     configVersion: 1,
-    preset: 'full',
+    preset: 'custom',
     tabs: ['overview', 'performance', 'processes', 'tools'],
-    header: ['activity', 'model', 'reasoning', 'project', 'git']
+    header: ['activity', 'model', 'reasoning', 'project', 'git', 'auth']
   });
   assert.equal(config.configVersion, 2);
   assert.equal(Object.prototype.hasOwnProperty.call(config, 'tabs'), false);
-  assert.equal(config.header.length, 4);
+  assert.deepEqual(config.header, ['activity', 'model', 'reasoning', 'project', 'git', 'auth']);
 });
 
 test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its old input model', () => {
@@ -31,6 +31,10 @@ test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its o
   assert.equal(frame.semantic.visual, 'full-monitor-v2-grid');
   assert.equal(frame.semantic.interactive, false);
   assert.match(text, /CODEX MONITOR · FULL/);
+  assert.match(text, /main\*/);
+  assert.match(text, /3 files/);
+  assert.match(text, /Δ\+10 −1/);
+  assert.match(text, /↑2 ↓1/);
   assert.match(text, /CONTEXT/);
   assert.match(text, /USAGE · LOGIN/);
   assert.match(text, /SESSION/);
@@ -38,6 +42,7 @@ test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its o
   assert.match(text, /CACHE/);
   assert.match(text, /LEFT/);
   assert.match(text, /CMP/);
+  assert.match(text, /SINCE/);
   assert.match(text, /5H/);
   assert.match(text, /WEEK/);
   assert.match(text, /\bturns\b/i);
@@ -87,7 +92,7 @@ test('responsive passive HUD stays inside terminal cell and row budgets', () => 
   }
 });
 
-test('system collector demand exists only when SYSTEM is actually displayed', () => {
+test('Full demands only displayed System and Git collectors; heavy hidden views stay off', () => {
   const adapter = { paths: () => ({ sessions: null }) };
   const state = createCurrentRunState({ startedAtMs: NOW });
   const recommended = normalizeConfig(configForPreset('recommended'));
@@ -95,9 +100,20 @@ test('system collector demand exists only when SYSTEM is actually displayed', ()
   const recommendedRuntime = new LiveDataRuntime({ state, config: recommended, adapter, now: () => NOW });
   const fullRuntime = new LiveDataRuntime({ state, config: full, adapter, now: () => NOW });
   assert.equal(recommendedRuntime.graph().hasCollector('system'), false);
+  assert.equal(recommendedRuntime.graph().hasCollector('git-branch'), false);
   assert.equal(fullRuntime.graph().hasCollector('system'), true);
+  assert.equal(fullRuntime.graph().hasCollector('git-branch'), true);
+  assert.equal(fullRuntime.graph().hasCollector('git-diff'), true);
+  assert.equal(fullRuntime.graph().hasCollector('git-ahead-behind'), true);
   assert.equal(recommendedRuntime.graph().hasCollector('performance'), false);
   assert.equal(recommendedRuntime.graph().hasCollector('processes'), false);
   assert.equal(fullRuntime.graph().hasCollector('performance'), false);
   assert.equal(fullRuntime.graph().hasCollector('processes'), false);
+});
+
+test('health header is derived from current run state rather than a dead placeholder', () => {
+  const config = normalizeConfig({ ...configForPreset('custom'), header: ['health'], sections: { context: true, usage: false, session: false, activity: true, system: false } });
+  const state = createDemoState('error', { authMode: 'login', nowMs: NOW });
+  const text = stripAnsi(buildLiveFrame({ state, config, width: 80, height: 24, nowMs: NOW }).lines.join('\n'));
+  assert.match(text, /HEALTH ERROR/);
 });
