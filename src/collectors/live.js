@@ -122,6 +122,7 @@ function parsePorcelain(raw) {
 
 export function createLiveCollectorRegistry({ state, adapter, cwd = process.cwd(), sessionTailer = null, now = () => Date.now(), processRef = process } = {}) {
   const registry = new CollectorRegistry();
+  const systemSamples = new RingBuffer(60);
   const performanceSamples = new RingBuffer(60);
   let previousMonitorCpu = processRef.cpuUsage?.() ?? null;
   let previousMonitorAt = now();
@@ -157,6 +158,14 @@ export function createLiveCollectorRegistry({ state, adapter, cwd = process.cwd(
         for (const [key, metricValue] of Object.entries({ cpuPercent: result.cpuPercent, memoryBytes: result.memoryBytes, totalMemoryBytes: result.totalMemoryBytes, freeMemoryBytes: result.freeMemoryBytes })) {
           if (metricValue != null) setMetric(state.system, key, metricValue, { source: PROVENANCE.LOCAL, observedAtMs: atMs, evidence: `platform:${adapter.id}` });
         }
+        const sample = {
+          atMs,
+          cpuPercent: Number.isFinite(result.cpuPercent) ? result.cpuPercent : null,
+          memoryBytes: Number.isFinite(result.memoryBytes) ? result.memoryBytes : null,
+          totalMemoryBytes: Number.isFinite(result.totalMemoryBytes) ? result.totalMemoryBytes : null
+        };
+        systemSamples.push(sample);
+        setMetric(state.system, 'samples', systemSamples.toArray(), { source: PROVENANCE.LOCAL, observedAtMs: atMs, evidence: 'system-lightweight-ring-buffer' });
       }
       return result;
     }
@@ -252,7 +261,8 @@ export function createLiveCollectorRegistry({ state, adapter, cwd = process.cwd(
         const raw = await git(cwd, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}']);
         const [ahead, behind] = raw.split(/\s+/).map(Number);
         const result = { ahead: Number.isFinite(ahead) ? ahead : null, behind: Number.isFinite(behind) ? behind : null };
-        setMetric(state.git, 'aheadBehind', result, { source: PROVENANCE.LOCAL, observedAtMs: now(), evidence: 'git local upstream compare; no fetch' });
+        const atMs = now();
+        setMetric(state.git, 'aheadBehind', result, { source: PROVENANCE.LOCAL, observedAtMs: atMs, evidence: 'git local upstream compare; no fetch' });
         return result;
       } catch {
         return state.git.aheadBehind.value;
