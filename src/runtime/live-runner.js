@@ -10,9 +10,29 @@ import { LivePaneController } from './live-pane.js';
 import { LiveDataRuntime } from './live-data.js';
 
 const SIGNAL_EXIT_CODE = Object.freeze({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 });
-const F4_SEQUENCES = new Set(['\x1bOS', '\x1b[14~']);
-const PREVIOUS_VIEW_SEQUENCES = new Set(['\x1b[1;3D', '\x1b[1;9D']);
-const NEXT_VIEW_SEQUENCES = new Set(['\x1b[1;3C', '\x1b[1;9C']);
+const MONITOR_HOTKEYS = Object.freeze([
+  { sequence: '\x1bOS', action: 'history' },
+  { sequence: '\x1b[14~', action: 'history' },
+  { sequence: '\x1b[1;3D', action: 'previous-view' },
+  { sequence: '\x1b[1;9D', action: 'previous-view' },
+  { sequence: '\x1b[1;3C', action: 'next-view' },
+  { sequence: '\x1b[1;9C', action: 'next-view' }
+]);
+
+export function splitMonitorHotkeys(input) {
+  let remaining = String(input ?? '');
+  const actions = [];
+  for (const hotkey of MONITOR_HOTKEYS) {
+    let index = remaining.indexOf(hotkey.sequence);
+    while (index !== -1) {
+      actions.push({ action: hotkey.action, index });
+      remaining = `${remaining.slice(0, index)}${remaining.slice(index + hotkey.sequence.length)}`;
+      index = remaining.indexOf(hotkey.sequence);
+    }
+  }
+  actions.sort((a, b) => a.index - b.index);
+  return { actions: actions.map((entry) => entry.action), forwarded: remaining };
+}
 
 export async function runCodexLive({
   codexPath,
@@ -116,20 +136,15 @@ export async function runCodexLive({
 
   const onInput = (data) => {
     if (!child || exiting) return;
-    const text = data.toString('utf8');
-    if (F4_SEQUENCES.has(text)) {
-      void requestHistory();
-      return;
+    const parsed = splitMonitorHotkeys(data.toString('utf8'));
+    for (const action of parsed.actions) {
+      if (action === 'history') void requestHistory();
+      else if (action === 'previous-view') shiftView(-1);
+      else if (action === 'next-view') shiftView(1);
     }
-    if (PREVIOUS_VIEW_SEQUENCES.has(text)) {
-      shiftView(-1);
-      return;
+    if (parsed.forwarded) {
+      try { child.write(parsed.forwarded); } catch {}
     }
-    if (NEXT_VIEW_SEQUENCES.has(text)) {
-      shiftView(1);
-      return;
-    }
-    try { child.write(text); } catch {}
   };
 
   try {
