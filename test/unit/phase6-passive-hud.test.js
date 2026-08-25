@@ -28,7 +28,7 @@ test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its o
   const frame = buildLiveFrame({ state, config, width: 160, height: 40, nowMs: NOW, projectName: 'Codex Monitor' });
   const text = stripAnsi(frame.lines.join('\n'));
   assert.equal(frame.lines.length, 9);
-  assert.equal(frame.semantic.visual, 'full-monitor-v2');
+  assert.equal(frame.semantic.visual, 'full-monitor-v2-grid');
   assert.equal(frame.semantic.interactive, false);
   assert.match(text, /CODEX MONITOR · FULL/);
   assert.match(text, /CONTEXT/);
@@ -40,7 +40,7 @@ test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its o
   assert.match(text, /CMP/);
   assert.match(text, /5H/);
   assert.match(text, /WEEK/);
-  assert.match(text, /TURN/);
+  assert.match(text, /\bturns\b/i);
   assert.match(text, /elapsed/);
   assert.match(text, /thread/);
   assert.match(text, /source/);
