@@ -121,6 +121,11 @@ test('PTY transient parser is independent from renderer and sanitizes details', 
   assert.equal(events[0].detail.includes('\u001b'), false);
 });
 
+test('PTY transient parser does not treat static permissions/status text as a live approval prompt', () => {
+  assert.deepEqual(parsePtyTransient('Permissions: Workspace (Ask for approval when needed)', 123), []);
+  assert.deepEqual(parsePtyTransient('Tip: Use /status to see the current model, approvals, and token usage.', 123), []);
+});
+
 test('actual model only changes on explicit actual-model evidence', () => {
   const state = createNormalizedMonitorState();
   applyNormalizedEvent(state, parse(event('session_meta', { model: 'requested-x' })));
