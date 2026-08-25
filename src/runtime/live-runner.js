@@ -23,6 +23,7 @@ export function childOutputMayClobberHud(input) {
 export async function runCodexLive({
   codexPath,
   codexArgs = [],
+  resumeTargetPath = null,
   auth,
   monitorState = null,
   monitorConfig = null,
@@ -54,6 +55,7 @@ export async function runCodexLive({
       adapter: platformAdapter,
       cwd,
       codexArgs,
+      resumeTargetPath,
       processRef,
       onUpdate() { pane?.invalidate?.(); }
     })
@@ -133,10 +135,6 @@ export async function runCodexLive({
 
   const onInput = (data) => {
     if (!child || exiting) return;
-    // Live Monitor is deliberately non-interactive. The child Codex TUI owns
-    // every key. Forward first, unchanged; only observe the already-forwarded
-    // bytes afterwards to clear a latched approval state when the user accepts
-    // or cancels the visible Codex approval prompt.
     const value = Buffer.isBuffer(data) || ArrayBuffer.isView(data)
       ? inputDecoder.write(data)
       : String(data ?? '');
@@ -210,8 +208,6 @@ export async function runCodexLive({
           pane.invalidate();
         }
 
-        // Normal Codex output must stay on the zero-extra-repaint fast path.
-        // Only terminal-wide control sequences can clobber the reserved HUD rows.
         if (childOutputMayClobberHud(data)) scheduleHudRepair();
       }
     });
