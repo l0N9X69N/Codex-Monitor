@@ -177,8 +177,14 @@ test('ultrawide graphs progressively appear only when useful data exists', () =>
     { cpuPercent: 20, memoryBytes: 11_000_000_000, totalMemoryBytes: 16_000_000_000 },
     { cpuPercent: 15, memoryBytes: 11_500_000_000, totalMemoryBytes: 16_000_000_000 }
   ]);
-  const waiting = stripAnsi(buildResponsiveLiveFrame({ state, config, width: 220, height: 40, nowMs: NOW }).lines.join('\n'));
-  assert.doesNotMatch(waiting, /[▁▂▃▄▅▆▇█]{4,}/);
+  const waitingFrame = buildResponsiveLiveFrame({ state, config, width: 220, height: 40, nowMs: NOW });
+  const waitingLines = waitingFrame.lines.map((line) => stripAnsi(line));
+  const waitingCpu = waitingLines.find((line) => line.includes('CPU 30%')) ?? '';
+  const waitingRam = waitingLines.find((line) => line.includes('RAM 12.0 GB')) ?? '';
+  assert.match(waitingCpu, /CPU 30%/);
+  assert.match(waitingRam, /RAM 12\.0 GB · 75%/);
+  assert.doesNotMatch(waitingCpu, /CPU 30%\s+[▁▂▃▄▅▆▇█]{4,}/);
+  assert.doesNotMatch(waitingRam, /RAM .*?[▁▂▃▄▅▆▇█]{4,}/);
 
   setLocal(state.system, 'samples', [
     { cpuPercent: 10, memoryBytes: 10_000_000_000, totalMemoryBytes: 16_000_000_000 },
@@ -187,9 +193,13 @@ test('ultrawide graphs progressively appear only when useful data exists', () =>
     { cpuPercent: 30, memoryBytes: 12_000_000_000, totalMemoryBytes: 16_000_000_000 }
   ]);
   const readyFrame = buildResponsiveLiveFrame({ state, config, width: 220, height: 40, nowMs: NOW });
-  const ready = stripAnsi(readyFrame.lines.join('\n'));
+  const readyLines = readyFrame.lines.map((line) => stripAnsi(line));
+  const ready = readyLines.join('\n');
+  const readyCpu = readyLines.find((line) => line.includes('CPU 30%')) ?? '';
+  const readyRam = readyLines.find((line) => line.includes('RAM 75%')) ?? '';
   assert.equal(readyFrame.semantic.progressiveGraphs, true);
-  assert.match(ready, /[▁▂▃▄▅▆▇█]{4,}/);
+  assert.match(readyCpu, /CPU 30%\s+[▁▂▃▄▅▆▇█]{4,}/);
+  assert.match(readyRam, /RAM 75%\s+[▁▂▃▄▅▆▇█]{4,}/);
   assert.match(ready, /█+░+/);
   assert.equal(readyFrame.lines.every((line) => cellWidth(line) <= 220), true);
   assert.equal(MIN_SPARKLINE_SAMPLES, 4);
