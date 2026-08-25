@@ -1,0 +1,28 @@
+BODY STATE: normal
+STATUS: canonical silhouette / edit carefully
+
+BASE
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+TAIL UP CANDIDATE
+             __
+       /(___()'`;
+        /*    /`
+        \\"--\\
+
+TAIL DOWN CANDIDATE
+             __
+       \\(___()'`;
+        /*    /`
+        \\"--\\
+
+BLINK
+             __
+        (___()_`;
+        /*    /`
+        \\"--\\
+
+Rule: normal is the fastest/lightest body. Keep head position stable unless jump/run gait intentionally moves it.

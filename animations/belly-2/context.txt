@@ -1,0 +1,14 @@
+BODY: belly-2
+GROUP: CONTEXT / RESET
+STATUS: DRAFT KEYFRAMES
+
+ACTION context.eat
+Purpose: belly-2 -> belly-max.
+This is the final growth stage and should feel satisfying: hop/food/nom/chew/gulp -> belly grows downward/back -> stuffed reaction.
+Use current `../eat_preview.txt` frames as reference.
+
+ACTION context.poop-slim
+Purpose: belly-2 -> belly-1 on real context reduction.
+Beat: look around -> move to free corner -> squat -> tiny `*` -> stand -> switch silhouette to belly-1 -> kick ground/trot away.
+
+Large compact may immediately schedule another slim step if context target is normal.

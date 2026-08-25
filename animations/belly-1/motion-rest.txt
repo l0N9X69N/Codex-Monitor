@@ -1,0 +1,23 @@
+BODY: belly-1
+GROUP: MOTION + FATIGUE + SLEEP
+STATUS: DRAFT KEYFRAMES
+
+motion.walk: 1 X cell/tick; alternate front/back leg emphasis.
+motion.trot: 1-2 X cells/tick.
+motion.run: shorter stride than normal, small belly bounce allowed if silhouette stays readable.
+motion.explore: selected on wide terminal.
+
+Run candidate A
+             __
+     /(____()'`;
+       /*     /`__
+      //_   _/'\\
+Run candidate B
+             __
+     \\(____()'`;
+       /*     /`
+       \_   _//^
+
+DRAFT: refine legs visually.
+
+Fatigue: same energy model. Sleep remains animated with breathe/ear-twitch/Z pulse and latches until reset.

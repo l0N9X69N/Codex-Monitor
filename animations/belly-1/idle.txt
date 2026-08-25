@@ -1,0 +1,26 @@
+BODY: belly-1
+GROUP: IDLE / RELAX
+STATUS: DRAFT KEYFRAMES
+
+Use the same behavior IDs as `normal/idle.txt`:
+`idle.stand-breathe`, `idle.wander`, `idle.sit`, `idle.lick-paw`, `idle.sniff`, `idle.scratch`, `idle.stretch`, `idle.yawn`.
+
+Stand/wag base:
+             __
+     /(____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+Blink:
+             __
+      (____()_`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+Design notes:
+- Wander slightly slower than normal.
+- Lick-paw/scratch may use one fewer hop.
+- Yawn and sit become slightly more likely as energy falls.
+- X movement remains code-driven.

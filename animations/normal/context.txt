@@ -1,0 +1,25 @@
+BODY: normal
+GROUP: CONTEXT / RESET
+STATUS: DRAFT KEYFRAMES
+
+ACTION context.eat
+Purpose: context crosses normal -> belly-1 threshold.
+Use the validated working prototype in `../eat_preview.txt` as source-of-truth for detailed eating frames until split migration is finished.
+Core beat:
+stand -> blink -> food appears -> happy hop -> food closer -> nom -> chew -> gulp -> transition to belly-1.
+
+Neutral start:
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+ACTION context.poop-slim
+Normal cannot become thinner. If context reduction occurs while already normal, play only a tiny relief/reset reaction or skip poop animation.
+
+ACTION reset.wake-stretch
+If sleeping: ear twitch -> eyes open -> head up -> stretch -> shake -> stand.
+If awake: shake -> stretch -> stand.
+Reset energy to 100.
+
+Important: ordinary running must NEVER change bodyState.

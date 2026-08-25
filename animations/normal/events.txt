@@ -1,0 +1,28 @@
+BODY: normal
+GROUP: WAIT / STREAM / SUCCESS / ERROR / RATE LIMIT
+STATUS: DRAFT KEYFRAMES
+
+ACTION stream.trot / stream.wag-walk
+Calm forward motion, slower than tool.run. Tail alternates `/(` and `\(`; occasional blink.
+
+ACTION wait.sit-look
+Rough sitting candidate:
+             __
+        (___()'`;
+        /     /`
+       /  __/
+      //-\\
+DRAFT: anatomy needs preview refinement. Behavior: sit -> blink -> head tilt -> wag once.
+
+ACTION wait.paw-tap
+From sit, one front paw lifts/taps every few seconds; do not loop rapidly.
+
+ACTION success.happy-hop
+Use clear `ground -> up -> ground`, 1-2 hops, fast tail wag, then return to current long-lived state.
+
+ACTION error.sad-sit
+Same sit base but tail low, slower blink. No dramatic collapse.
+
+ACTION rate.empty-bowl
+Look/sniff toward a tiny bowl positioned ahead of the dog, then sit/yawn if wait is long.
+Bowl candidate: `\\___/`

@@ -1,0 +1,28 @@
+BODY: belly-max
+GROUP: MOTION + FATIGUE + SLEEP
+STATUS: DRAFT KEYFRAMES
+
+motion.walk: slow, clear leg alternation.
+motion.trot: moderate X movement.
+motion.run: short steps + optional belly bounce; still readable as running.
+motion.explore: wide terminal allows a long traversal even for belly-max.
+
+Run rough A
+              __
+     /(______()'`;
+      /*       /`__
+     /         \
+     \___    __/
+       //"-'\\
+Run rough B
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-^^
+
+DRAFT: refine legs after preview.
+
+EXHAUSTED/SLEEP
+Required sequence: yawn -> slow walk -> lie down -> curl/sleep. While sleeping: breathe A/B + occasional ear twitch + Z pulse. Sleep latches until reset-class event.

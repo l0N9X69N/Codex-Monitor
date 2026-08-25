@@ -1,0 +1,20 @@
+BODY: belly-1
+GROUP: THINKING
+STATUS: DRAFT KEYFRAMES
+
+Signature remains `think.scratch-ear`.
+
+A
+             __
+     /(____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+B scratch pulse (rough)
+             __
+     \\(____()_`;
+       /*     /`
+       \_   _/
+        \\^^-'\\
+
+Also support head-tilt, short pace, look-up, blink and ear-twitch. Keep thinking curious rather than frantic.

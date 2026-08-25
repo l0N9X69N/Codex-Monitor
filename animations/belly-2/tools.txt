@@ -1,0 +1,23 @@
+BODY: belly-2
+GROUP: TOOL ACTIVITY
+STATUS: DRAFT KEYFRAMES
+
+Generic tool: tail chase. This body can make the chase look comically determined rather than extremely fast.
+
+A
+             __
+     /(_____()'`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+B
+             __
+     \\(_____()'`;
+      /*      /`
+      \_    _/
+      //"-'\\
+
+Search/read/grep -> sniff-search.
+Shell/exec -> trot/run.
+Write/edit -> paw-ground.
+Long tool -> alternate tail-chase and short movement so one loop is not repeated forever.

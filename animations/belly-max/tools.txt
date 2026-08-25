@@ -1,0 +1,25 @@
+BODY: belly-max
+GROUP: TOOL ACTIVITY
+STATUS: DRAFT KEYFRAMES
+
+Generic tool: tail chase, deliberately a little slower/heavier for comedy.
+Search -> sniff-search.
+Shell/exec -> determined trot/run.
+Write/edit -> paw-ground.
+
+Tail chase A/B:
+              __
+     /(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+       //"-'\\
+
+Never slim merely because it runs. Context is authoritative.

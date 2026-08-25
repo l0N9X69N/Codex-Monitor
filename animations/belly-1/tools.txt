@@ -1,0 +1,22 @@
+BODY: belly-1
+GROUP: TOOL ACTIVITY
+STATUS: DRAFT KEYFRAMES
+
+`tool.tail-chase`: primary generic tool action. Same idea as normal but slightly slower turn cadence.
+
+A
+             __
+     /(____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+B
+             __
+     \\(____()'`;
+       /*     /`
+       \_   _/
+       //"-'\\
+
+`tool.sniff-search`: nose-down short walk.
+`tool.run`: use belly-1 motion gait; shorter stride than normal.
+`tool.paw-ground`: two paw taps, then return to tool pool.

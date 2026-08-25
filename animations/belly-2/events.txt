@@ -1,0 +1,11 @@
+BODY: belly-2
+GROUP: WAIT / STREAM / SUCCESS / ERROR / RATE LIMIT
+STATUS: DRAFT KEYFRAMES
+
+Maintain the same semantic event IDs.
+
+Success: one happy hop + fast wag; avoid excessive vertical movement if anatomy breaks.
+Wait: sit/look -> blink -> head tilt -> yawn -> lie-down as duration grows.
+Error: ears/tail down, slow blink, then settle.
+Rate limit: inspect empty bowl -> look toward user -> sit beside bowl.
+Streaming: comfortable trot/wag-walk, not frantic tool motion.

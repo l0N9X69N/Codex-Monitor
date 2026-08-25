@@ -1,0 +1,22 @@
+BODY: belly-max
+GROUP: THINKING
+STATUS: DRAFT KEYFRAMES
+
+Signature remains scratch-ear/head-tilt. Belly should not morph while scratching.
+
+A
+              __
+     /(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+B rough scratch/blink
+              __
+     \\(______()_`;
+      /*       /`
+     /         \
+     \___    __/
+        \\^^-'\\
+
+Use short pacing rather than long runs for ordinary thinking.

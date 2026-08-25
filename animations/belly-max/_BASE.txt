@@ -1,0 +1,36 @@
+BODY STATE: belly-max
+STATUS: canonical silhouette derived from current eat preview
+
+BASE
+              __
+      (______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+
+TAIL UP
+              __
+     /(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+
+TAIL DOWN
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+
+BLINK
+              __
+      (______()_`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+
+Rule: stuffed, not deformed. Feet remain under belly. Head remains recognizable.

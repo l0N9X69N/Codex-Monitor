@@ -1,0 +1,11 @@
+BODY: belly-max
+GROUP: WAIT / STREAM / SUCCESS / ERROR / RATE LIMIT
+STATUS: DRAFT KEYFRAMES
+
+SUCCESS: stuffed happy hop or strong tail wag; one-shot then settle.
+STREAM: slow trot/wag-walk.
+WAIT USER: sit/look; long wait -> yawn -> lie-down.
+ERROR: ears/tail down, slow blink.
+RATE LIMIT: empty bowl routine is especially readable here because a stuffed dog suddenly finds no more food.
+
+Happy wag candidates already exist in the end of `../eat_preview.txt`; use those as reference.

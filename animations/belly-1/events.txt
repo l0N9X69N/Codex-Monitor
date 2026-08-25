@@ -1,0 +1,17 @@
+BODY: belly-1
+GROUP: WAIT / STREAM / SUCCESS / ERROR / RATE LIMIT
+STATUS: DRAFT KEYFRAMES
+
+Same semantic actions as normal:
+- stream.trot / stream.wag-walk
+- wait.sit-look / wait.paw-tap / wait.yawn-lie
+- success.happy-hop / success.spin
+- error.sad-sit / error.ears-down
+- rate.empty-bowl
+
+Differences:
+- happy hop still energetic but slightly lower than normal.
+- stream gait is a comfortable trot.
+- waiting may settle into sit a little sooner.
+
+Use `_BASE.txt` silhouette as the anatomy anchor when drafting each pose.

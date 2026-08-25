@@ -1,0 +1,20 @@
+BODY: belly-max
+GROUP: IDLE / RELAX
+STATUS: DRAFT KEYFRAMES
+
+Same IDLE behavior IDs, but personality should acknowledge the heavy body:
+- stand-breathe / sit / lick-paw common
+- wander slow and deliberate
+- sniff still available
+- yawn/stretch more likely at lower energy
+- occasional happy wag
+
+Base:
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \___    __/
+        \\"-'\\
+
+Do not make belly-max permanently lazy; active monitor events can still make it move.

@@ -1,0 +1,40 @@
+BODY: normal
+GROUP: MOTION + FATIGUE + SLEEP
+STATUS: DRAFT KEYFRAMES
+
+ACTION motion.walk
+A
+             __
+       /(___()'`;
+        /*    /`
+       //"--\\
+B
+             __
+       \\(___()'`;
+        /*    /`
+        \\"--//
+Move X 1 cell per gait tick.
+
+ACTION motion.run
+Use larger leg alternation and faster X movement. Normal may use the widest stride of all body states.
+A
+             __
+       /(___()'`;
+        /*    /`__
+       //"---'\\
+B
+             __
+       \\(___()'`;
+        /*    /`
+       //"---^^
+DRAFT: based on current jump/run language; refine after terminal preview.
+
+ACTION motion.explore
+On wide terminal: walk -> trot -> optional full run across track -> turn -> wander back.
+
+FATIGUE
+When energy < 30, reduce run selection and introduce yawn/lie-down.
+When energy < 10, enter sleep latch.
+
+ACTION sleep.breathe
+Sleeping art is not finalized. Required motion even while asleep: breathing A/B, occasional ear twitch, optional `z`/`Z` pulse. Remain asleep until reset-class event.

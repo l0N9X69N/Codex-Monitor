@@ -1,0 +1,20 @@
+BODY: belly-2
+GROUP: MOTION + FATIGUE + SLEEP
+STATUS: DRAFT KEYFRAMES
+
+Walk/trot/run all remain possible. Speed selection depends on monitor activity + energy + terminal width.
+
+Run candidate A
+             __
+     /(_____()'`;
+      /*      /`__
+     //_    _/'\\
+Run candidate B
+             __
+     \\(_____()'`;
+      /*      /`
+      \_    _//^
+
+DRAFT: legs/belly bounce need visual review.
+
+At low energy prefer sit, yawn and lie-down. Exhaustion enters sleep latch until reset. Sleeping dog must still breathe/twitch occasionally.

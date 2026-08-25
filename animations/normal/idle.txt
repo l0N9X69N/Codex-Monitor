@@ -1,0 +1,40 @@
+BODY: normal
+GROUP: IDLE / RELAX
+STATUS: DRAFT KEYFRAMES
+
+ACTION idle.stand-breathe
+A
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+B (blink / tiny life motion)
+             __
+       /(___()_`;
+        /*    /`
+        \\"--\\
+Suggested loop: A A A B A, with random delays.
+
+ACTION idle.wander
+Use the same standing/walking sprite and move X in code. Do not draw every column.
+Sequence idea: stand -> walk 2-6 cells -> sniff -> walk -> stop.
+
+ACTION idle.lick-paw (rough candidate)
+             __
+       \\(___()'`;
+        /*   _/`
+        \\_./\\
+DRAFT: front paw lifts toward muzzle; refine anatomy after preview.
+
+ACTION idle.sniff
+             __
+       /(___()'`;
+        /*   /_.
+        \\"--\\
+Nose-down/ground dot can pulse once or twice.
+
+ACTION idle.scratch
+Prefer reusing the thinking scratch-ear sequence at lower probability.
+
+ACTION idle.yawn / idle.stretch
+Use sparingly with cooldown >= 20s so the dog does not look repetitive.

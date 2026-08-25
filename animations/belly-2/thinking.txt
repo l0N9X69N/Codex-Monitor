@@ -1,0 +1,20 @@
+BODY: belly-2
+GROUP: THINKING
+STATUS: DRAFT KEYFRAMES
+
+Signature: scratch ear while belly remains stable.
+
+A
+             __
+     /(_____()'`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+B rough scratch
+             __
+     \\(_____()_`;
+      /*      /`
+      \_    _/
+       \\^^-'\\
+
+Other variants: head tilt, blink, look-up, short pace. Pace should be shorter than normal when energy is low.

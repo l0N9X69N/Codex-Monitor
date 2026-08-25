@@ -1,0 +1,37 @@
+BODY: normal
+GROUP: THINKING
+STATUS: DRAFT KEYFRAMES
+
+Primary identity: curious dog. Scratch ear is the signature THINKING action.
+
+ACTION think.scratch-ear
+A stand
+             __
+       /(___()'`;
+        /*    /`
+        \\"--\\
+B lift rear paw (rough)
+             __
+       \\(___()'`;
+        /*    /`
+        \\^-\\
+C scratch pulse
+             __
+       /(___()_`;
+        /*    /`
+        \\^^\\
+D return to stand.
+
+ACTION think.head-tilt
+Keep body fixed; alter only head/ear line if possible. Candidate:
+            _/
+       /(___()'`;
+        /*    /`
+        \\"--\\
+DRAFT: refine after visual test; do not distort muzzle.
+
+ACTION think.pace
+walk 2-4 cells -> stop -> head tilt -> walk back. X movement is renderer-driven.
+
+ACTION think.look-up
+Small one-shot between scratch/head-tilt cycles; pair with blink or ear twitch.

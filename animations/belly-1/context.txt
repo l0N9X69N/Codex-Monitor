@@ -1,0 +1,17 @@
+BODY: belly-1
+GROUP: CONTEXT / RESET
+STATUS: DRAFT KEYFRAMES
+
+ACTION context.eat
+Purpose: belly-1 -> belly-2.
+Validated detailed frames currently live in `../eat_preview.txt`.
+Beat: idle -> blink -> food -> hop -> nom -> chew -> gulp -> belly-2 transition.
+
+ACTION context.poop-slim
+Purpose: belly-1 -> normal after real context reduction.
+Draft beat:
+look around -> walk a few cells -> squat -> tiny `*` behind dog -> stand/shake -> switch to normal -> trot away.
+Keep the poop symbol tiny; comedy comes from timing, not detail.
+
+ACTION reset.wake-stretch
+Same wake semantics as normal. Body remains belly-1 unless context reset actually changes the context bucket.

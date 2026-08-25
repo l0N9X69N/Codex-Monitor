@@ -1,0 +1,32 @@
+BODY STATE: belly-1
+STATUS: DRAFT canonical silhouette
+
+BASE
+             __
+      (____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+TAIL UP
+             __
+     /(____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+TAIL DOWN
+             __
+     \\(____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+BLINK
+             __
+      (____()_`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+Rule: mildly heavier than normal. Preserve feet under belly and head anchor.

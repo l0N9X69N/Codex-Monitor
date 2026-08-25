@@ -1,0 +1,18 @@
+BODY: belly-2
+GROUP: IDLE / RELAX
+STATUS: DRAFT KEYFRAMES
+
+Same IDLE behavior IDs as other bodies. Personality changes through timing, not different semantics.
+
+Base/wag:
+             __
+     /(_____()'`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+
+Recommended pool changes:
+- stand/sit/lick-paw slightly more common.
+- wander remains available.
+- full-speed run is rarer unless monitor activity requires it.
+- stretch/yawn become visually fun because belly is obvious.

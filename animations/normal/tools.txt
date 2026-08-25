@@ -1,0 +1,35 @@
+BODY: normal
+GROUP: TOOL ACTIVITY
+STATUS: DRAFT KEYFRAMES
+
+ACTION tool.tail-chase (generic tool signature)
+A
+             __
+       /(___()'`;
+        /*    /`
+        \\"--\\
+B
+             __
+       \\(___()'`;
+        /*    /`
+       //"--\\
+C: shift/turn body a few columns, then repeat A/B. Renderer may move X in a tiny local circle illusion.
+
+ACTION tool.sniff-search
+For read/search/grep.
+             __
+       /(___()'`;
+        /*   /_.
+       //"--\\
+Use nose-down walk + tiny ground dots; no frantic running.
+
+ACTION tool.run
+For shell/exec or long active tool. Use motion.run keyframes from `motion-rest.txt`.
+
+ACTION tool.paw-ground
+For write/edit. Rough cue: front paw taps twice while head stays forward.
+             __
+       \\(___()'`;
+        /*   /`
+       //"--\\
+DRAFT: paw detail to refine later.

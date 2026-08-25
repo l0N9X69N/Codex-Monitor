@@ -1,0 +1,32 @@
+BODY STATE: belly-2
+STATUS: canonical silhouette derived from current eat preview
+
+BASE
+             __
+      (_____()'`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+
+TAIL UP
+             __
+     /(_____()'`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+
+TAIL DOWN
+             __
+     \\(_____()'`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+
+BLINK
+             __
+      (_____()_`;
+      /*      /`
+      \_    _/
+       \\"-'\\
+
+Rule: clearly full; movement may be bouncier/slower but must still read as the same dog.
