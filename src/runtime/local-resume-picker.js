@@ -3,6 +3,8 @@ import path from 'node:path';
 import { discoverCurrentSessionFiles, firstSessionMeta } from '../collectors/current-session.js';
 import { sanitizeText } from '../core/sanitize.js';
 
+const USER_MESSAGE_BEGIN = '## My request for Codex:';
+
 function samePath(a, b, platform = process.platform) {
   if (!a || !b) return false;
   const left = path.resolve(String(a));
@@ -10,11 +12,21 @@ function samePath(a, b, platform = process.platform) {
   return platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
 
+function humanUserText(value) {
+  const raw = String(value ?? '');
+  const marker = raw.indexOf(USER_MESSAGE_BEGIN);
+  const stripped = marker >= 0 ? raw.slice(marker + USER_MESSAGE_BEGIN.length).trim() : raw.trim();
+  if (!stripped) return null;
+  // Do not use known startup/injected instruction blocks as a session title.
+  if (/^#\s*AGENTS\.md instructions\b/i.test(stripped) || /^<INSTRUCTIONS>/i.test(stripped)) return null;
+  return sanitizeText(stripped, { maxLength: 220 });
+}
+
 function explicitUserPreviewFromObject(obj) {
   if (!obj || typeof obj !== 'object') return null;
   const payload = obj.payload && typeof obj.payload === 'object' ? obj.payload : obj;
   if (obj.type === 'event_msg' && payload?.type === 'user_message') {
-    return sanitizeText(payload?.message, { maxLength: 140 });
+    return humanUserText(payload?.message);
   }
   return null;
 }
@@ -30,12 +42,12 @@ function previewFromObject(obj) {
       .filter((item) => item?.type === 'input_text' && typeof item.text === 'string')
       .map((item) => item.text)
       .join(' ');
-    return sanitizeText(text, { maxLength: 140 });
+    return humanUserText(text);
   }
   return null;
 }
 
-function firstUserPreview(filePath, fsRef = fs, maxBytes = 256 * 1024) {
+function firstUserPreview(filePath, fsRef = fs, maxBytes = 512 * 1024) {
   let fd = null;
   try {
     fd = fsRef.openSync(filePath, 'r');
@@ -49,9 +61,6 @@ function firstUserPreview(filePath, fsRef = fs, maxBytes = 256 * 1024) {
       if (!line.trim()) continue;
       try {
         const obj = JSON.parse(line);
-        // Codex can persist injected instructions as role=user response items.
-        // The event_msg user_message is the stronger signal for the text the
-        // human actually submitted, so scan for that before using a fallback.
         const explicit = explicitUserPreviewFromObject(obj);
         if (explicit) return explicit;
         if (!fallback) fallback = previewFromObject(obj);
@@ -77,13 +86,16 @@ export function listLocalResumeSessions(sessionsPath, {
       const meta = firstSessionMeta(filePath, fsRef);
       if (!meta?.threadId) continue;
       if (!showAll && meta.cwd && !samePath(meta.cwd, cwd, platform)) continue;
+      const sessionCwd = meta.cwd ?? null;
       sessions.push({
         threadId: meta.threadId,
         filePath,
-        cwd: meta.cwd ?? null,
+        cwd: sessionCwd,
+        project: sessionCwd ? path.basename(path.resolve(sessionCwd)) : '(unknown project)',
+        branch: meta.gitBranch ?? null,
         startedAtMs: meta.atMs ?? null,
         updatedAtMs: stat.mtimeMs,
-        preview: firstUserPreview(filePath, fsRef) ?? '(no user preview)'
+        preview: firstUserPreview(filePath, fsRef) ?? '(no conversation preview)'
       });
     } catch {}
   }
@@ -101,29 +113,35 @@ function formatAge(timestamp, nowMs = Date.now()) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function clip(text, width) {
+  const value = String(text ?? '');
+  if (value.length <= width) return value;
+  return width <= 1 ? value.slice(0, width) : `${value.slice(0, width - 1)}…`;
+}
+
 function renderPicker(stdout, sessions, selected, { showAll = false, nowMs = Date.now() } = {}) {
-  const height = Math.max(10, stdout.rows || 24);
-  const visible = Math.max(4, Math.min(12, height - 7));
+  const height = Math.max(12, stdout.rows || 24);
+  const visible = Math.max(2, Math.min(8, Math.floor((height - 7) / 2)));
   const start = Math.max(0, Math.min(selected - Math.floor(visible / 2), Math.max(0, sessions.length - visible)));
   const end = Math.min(sessions.length, start + visible);
-  const width = Math.max(50, stdout.columns || 100);
+  const width = Math.max(60, stdout.columns || 100);
   const lines = [
-    'Codex Monitor · Local Resume',
-    `Local sessions${showAll ? ' · all directories' : ' · current directory'} · ↑/↓ select · Enter resume · Esc cancel`,
+    'Resume a previous session',
+    `${showAll ? 'All local projects' : 'Current project'}  ·  ↑/↓ navigate  ·  Enter resume  ·  Esc cancel`,
     ''
   ];
   for (let index = start; index < end; index += 1) {
     const item = sessions[index];
     const marker = index === selected ? '›' : ' ';
     const age = formatAge(item.updatedAtMs, nowMs).padStart(4);
-    const maxPreview = Math.max(18, width - 12);
-    const preview = String(item.preview ?? '').length > maxPreview
-      ? `${String(item.preview).slice(0, Math.max(1, maxPreview - 1))}…`
-      : String(item.preview ?? '');
-    lines.push(`${marker} ${age}  ${preview}`);
+    const branch = item.branch ? `   ${item.branch}` : '';
+    const meta = `${marker} ${age}  ${item.project}${branch}`;
+    const previewIndent = '       ';
+    lines.push(clip(meta, width));
+    lines.push(`${previewIndent}${clip(item.preview, Math.max(12, width - previewIndent.length))}`);
   }
   lines.push('', `${selected + 1}/${sessions.length}`);
-  stdout.write(`\x1b[2J\x1b[H${lines.join('\n')}`);
+  stdout.write(`\x1b[H\x1b[2J${lines.join('\n')}`);
 }
 
 export function decodePickerInput(raw) {
@@ -175,7 +193,9 @@ export async function pickLocalResumeSession({
       if (settled) return;
       settled = true;
       cleanup();
-      try { stdout.write('\x1b[2J\x1b[H'); } catch {}
+      // Leave the private picker screen and restore the exact shell/Codex screen
+      // that was underneath it instead of clearing the user's terminal history.
+      try { stdout.write('\x1b[?1049l'); } catch {}
       resolve({ selected: session, reason });
     };
 
@@ -195,6 +215,7 @@ export async function pickLocalResumeSession({
     try {
       stdin.setRawMode(true);
       stdin.resume?.();
+      stdout.write('\x1b[?1049h');
       stdin.on?.('data', onData);
       stdin.on?.('end', onEnd);
       stdin.on?.('close', onEnd);
@@ -222,4 +243,4 @@ export function codexArgsForLocalResume(codexArgs, threadId) {
   return ['resume', String(threadId), ...preserved];
 }
 
-export { firstUserPreview, previewFromObject };
+export { firstUserPreview, previewFromObject, humanUserText };
