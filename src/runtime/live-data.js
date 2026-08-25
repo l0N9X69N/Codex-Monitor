@@ -1,15 +1,19 @@
 import { buildDemandGraph } from '../core/demand-graph.js';
 import { CollectorManager } from '../collectors/manager.js';
 import { CentralScheduler } from '../core/scheduler.js';
-import { CurrentSessionTailer } from '../collectors/current-session.js';
+import { CurrentSessionTailer, bootstrapLatestAccountQuota } from '../collectors/current-session.js';
 import { createLiveCollectorRegistry } from '../collectors/live.js';
 
 const PASSIVE_LIVE_METRICS = Object.freeze({
   overview: ['activity', 'model', 'reasoning', 'context', 'usage', 'quota', 'session']
 });
 
+function isResumeIntent(codexArgs = []) {
+  return Array.isArray(codexArgs) && codexArgs.some((arg) => String(arg).toLowerCase() === 'resume');
+}
+
 export class LiveDataRuntime {
-  constructor({ state, config, adapter, cwd = process.cwd(), now = () => Date.now(), processRef = process, onUpdate = null } = {}) {
+  constructor({ state, config, adapter, cwd = process.cwd(), codexArgs = [], now = () => Date.now(), processRef = process, onUpdate = null } = {}) {
     if (!state || !config || !adapter) throw new Error('LiveDataRuntime requires state, config and adapter');
     this.state = state;
     this.config = config;
@@ -17,7 +21,20 @@ export class LiveDataRuntime {
     this.cwd = cwd;
     this.onUpdate = onUpdate;
     const sessionsPath = adapter.paths()?.sessions ?? null;
-    this.sessionTailer = new CurrentSessionTailer({ state, sessionsPath, cwd, now });
+    this.resumeMode = isResumeIntent(codexArgs);
+
+    // Account quota is account-scoped, not session-scoped. Bootstrap once from
+    // the newest local Codex evidence so Login users do not start from a blank
+    // quota panel. A new current-session snapshot will supersede it naturally.
+    this.quotaBootstrap = bootstrapLatestAccountQuota(state, sessionsPath);
+
+    this.sessionTailer = new CurrentSessionTailer({
+      state,
+      sessionsPath,
+      cwd,
+      now,
+      resumeMode: this.resumeMode
+    });
     this.registry = createLiveCollectorRegistry({ state, adapter, cwd, sessionTailer: this.sessionTailer, now, processRef });
     for (const entry of this.registry.list()) {
       const run = entry.run;
@@ -55,3 +72,5 @@ export class LiveDataRuntime {
   start() { this.sync(); return this.scheduler.start(); }
   stop() { return this.scheduler.stop(); }
 }
+
+export { isResumeIntent };
