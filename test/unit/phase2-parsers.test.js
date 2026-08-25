@@ -141,24 +141,38 @@ test('PTY transient parser recognizes the real Codex command approval prompt', (
   assert.equal(events[0].kind, 'approval');
 });
 
-test('streaming PTY parser recognizes approval split across child output chunks and its resolution', () => {
+test('streaming PTY parser recognizes approval split across child output chunks and resolves only on user decision', () => {
   const parser = new PtyTransientStreamParser();
   assert.deepEqual(parser.push('Would you like to run the following ', 100), []);
   const prompt = parser.push('command? Environment: local', 101);
   assert.equal(prompt.length, 1);
   assert.equal(prompt[0].kind, 'approval');
+  assert.equal(parser.approvalState, true);
+
   const duplicate = parser.push(' 1. Yes, proceed', 102);
   assert.equal(duplicate.filter((item) => item.kind === 'approval').length, 0);
-  const resolved = parser.push(' You approved Codex to run Remove-Item this time', 103);
+
+  // Historical TUI repaint text must never resolve the current live approval.
+  const history = parser.push(' You approved Codex to run Remove-Item this time', 103);
+  assert.equal(history.some((item) => item.kind === 'approval-resolved'), false);
+  assert.equal(parser.approvalState, true);
+
+  const resolved = parser.observeInput('\r', 104);
   assert.equal(resolved.some((item) => item.kind === 'approval-resolved'), true);
+  assert.equal(parser.approvalState, false);
 });
 
-test('PTY transient parser does not treat static permissions/status text as a live approval prompt', () => {
+test('streaming PTY parser finds approval after a large terminal repaint', () => {
+  const parser = new PtyTransientStreamParser();
+  const prefix = `old terminal content ${'x'.repeat(600)} `;
+  const events = parser.push(`${prefix}Would you like to run the following command?`, 200);
+  assert.equal(events.some((item) => item.kind === 'approval'), true);
+});
+
+test('PTY transient parser does not treat static permissions/status/history text as a live approval prompt', () => {
   assert.deepEqual(parsePtyTransient('Permissions: Workspace (Ask for approval when needed)', 123), []);
   assert.deepEqual(parsePtyTransient('Tip: Use /status to see the current model, approvals, and token usage.', 123), []);
-  const resolved = parsePtyTransient('You approved Codex to run Remove-Item this time', 123);
-  assert.equal(resolved.length, 1);
-  assert.equal(resolved[0].kind, 'approval-resolved');
+  assert.deepEqual(parsePtyTransient('You approved Codex to run Remove-Item this time', 123), []);
 });
 
 test('actual model only changes on explicit actual-model evidence', () => {
