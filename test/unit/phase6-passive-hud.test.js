@@ -115,18 +115,18 @@ test('custom config removes only disabled cards and redistributes the remaining 
   assert.doesNotMatch(text, /\bSYSTEM\b/);
 });
 
-test('Login usage gets quota bars when width permits and keeps essential quota values when compact', () => {
+test('Login usage gets thin quota bars when width permits and keeps essential quota values when compact', () => {
   const config = normalizeConfig(configForPreset('full'));
   const state = fullState('login');
 
   const wide = textOf(buildLiveFrame({ state, config, width: 220, height: 50, nowMs: NOW }));
-  assert.match(wide, /5H\s+[█░]{6,}\s+\d+% left/);
-  assert.match(wide, /WEEK\s+[█░]{6,}\s+\d+% left/);
+  assert.match(wide, /5H\s+[━─]{6,}\s+\d+% left/);
+  assert.match(wide, /WEEK\s+[━─]{6,}\s+\d+% left/);
 
   const narrow = textOf(buildLiveFrame({ state, config, width: 60, height: 45, nowMs: NOW }));
   assert.match(narrow, /5H \d+%/);
   assert.match(narrow, /W \d+%/);
-  assert.doesNotMatch(narrow, /WEEK\s+[█░]{6,}/);
+  assert.doesNotMatch(narrow, /WEEK\s+[━─]{6,}/);
 });
 
 test('API key mode never displays Login quota and keeps model plus token usage across representations', () => {
@@ -146,7 +146,7 @@ test('API key mode never displays Login quota and keeps model plus token usage a
   }
 });
 
-test('system sparkline appears only after enough samples and never replaces essential CPU/RAM values', () => {
+test('system low-profile sparkline appears only after enough samples and never replaces essential CPU/RAM values', () => {
   const config = normalizeConfig(configForPreset('full'));
   const state = fullState('login');
   setLocal(state.system, 'samples', [
@@ -158,7 +158,7 @@ test('system sparkline appears only after enough samples and never replaces esse
   const waiting = textOf(buildLiveFrame({ state, config, width: 220, height: 50, nowMs: NOW }));
   assert.match(waiting, /CPU 30%/);
   assert.match(waiting, /RAM 75%/);
-  assert.doesNotMatch(waiting, /CPU 30%.*[▁▂▃▄▅▆▇█]{4,}/);
+  assert.doesNotMatch(waiting, /CPU 30%.*[▁▂▃▄]{4,}/);
 
   setLocal(state.system, 'samples', [
     { cpuPercent: 10, memoryBytes: 10_000_000_000, totalMemoryBytes: 16_000_000_000 },
@@ -167,12 +167,12 @@ test('system sparkline appears only after enough samples and never replaces esse
     { cpuPercent: 30, memoryBytes: 12_000_000_000, totalMemoryBytes: 16_000_000_000 }
   ]);
   const ready = textOf(buildLiveFrame({ state, config, width: 220, height: 50, nowMs: NOW }));
-  assert.match(ready, /CPU 30%.*[▁▂▃▄▅▆▇█]{4,}/);
-  assert.match(ready, /RAM 75%.*[▁▂▃▄▅▆▇█]{4,}/);
+  assert.match(ready, /CPU 30%\s{2}[▁▂▃▄]{4,}/);
+  assert.match(ready, /RAM 75%\s{2}[▁▂▃▄]{4,}/);
   assert.equal(MIN_SPARKLINE_SAMPLES, 4);
   assert.equal(sparkline([10, 20, 15], 12), null);
   assert.ok(sparkline([10, 20, 15, 30], 12));
-  assert.ok(progressBar(25, 8));
+  assert.match(progressBar(25, 8), /^[━─]{8}$/);
 });
 
 test('all supported responsive widths remain bounded and keep Codex priority on realistic terminal heights', () => {
