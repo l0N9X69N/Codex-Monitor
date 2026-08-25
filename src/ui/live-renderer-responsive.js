@@ -7,7 +7,7 @@ import { paint, styleText } from './theme.js';
 // implementation. The responsive grid no longer uses a single 200-cell gate.
 const ULTRAWIDE_SYSTEM_CARD_MIN_CELLS = 200;
 const MIN_SPARKLINE_SAMPLES = 4;
-const SPARK_BLOCKS = '▁▂▃▄▅▆▇█';
+const SPARK_BLOCKS = '▁▂▃▄';
 const MIN_CARD_OUTER_CELLS = 34;
 const MAX_CARD_COLUMNS = 5;
 const MIN_CHILD_ROWS = 8;
@@ -81,7 +81,7 @@ function progressBar(percent, width) {
   const cells = Math.max(4, Math.floor(width));
   if (p == null || cells <= 0) return null;
   const filled = Math.max(0, Math.min(cells, Math.round((Math.max(0, Math.min(100, p)) / 100) * cells)));
-  return `${'█'.repeat(filled)}${'░'.repeat(cells - filled)}`;
+  return `${'━'.repeat(filled)}${'─'.repeat(cells - filled)}`;
 }
 
 function sparkline(values, width) {
@@ -516,8 +516,8 @@ function systemContent(state, rep, width, theme) {
   const graphWidth = Math.max(4, Math.min(20, width - 11));
   const cpuGraph = width >= 24 ? systemGraph(state, 'cpu', graphWidth) : null;
   const ramGraph = width >= 24 ? systemGraph(state, 'ram', graphWidth) : null;
-  const cpuLine = cpuGraph ? `CPU ${styleText(pct(cpu), 'info', theme, { bold: true })} ${paint('·', 'frame', theme)} ${styleText(cpuGraph, 'info', theme)}` : `CPU ${styleText(pct(cpu), 'info', theme, { bold: true })}`;
-  const ramLine = ramGraph ? `RAM ${styleText(pct(memoryPercent), 'info', theme, { bold: true })} ${paint('·', 'frame', theme)} ${styleText(ramGraph, 'healthy', theme)}` : `RAM ${styleText(pct(memoryPercent), 'info', theme, { bold: true })}`;
+  const cpuLine = cpuGraph ? `CPU ${styleText(pct(cpu), 'info', theme, { bold: true })}  ${styleText(cpuGraph, 'info', theme)}` : `CPU ${styleText(pct(cpu), 'info', theme, { bold: true })}`;
+  const ramLine = ramGraph ? `RAM ${styleText(pct(memoryPercent), 'info', theme, { bold: true })}  ${styleText(ramGraph, 'healthy', theme)}` : `RAM ${styleText(pct(memoryPercent), 'info', theme, { bold: true })}`;
 
   if (rep === CARD_REPRESENTATION.MINIMAL) return [`CPU ${pct(cpu)} ${paint('·', 'frame', theme)} RAM ${pct(memoryPercent)}`];
   if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${pct(cpu)} ${paint('·', 'frame', theme)} RAM ${pct(memoryPercent)}`, `FREE ${formatBytes(free)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`];
