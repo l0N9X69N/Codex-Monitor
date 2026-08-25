@@ -25,7 +25,8 @@ export async function configureMonitor({
   const rl = readline.createInterface({ input, output });
   try {
     let config = normalizeConfig(currentConfig);
-    output.write('\nCodex Monitor configuration\n\n');
+    output.write('\nCodex Monitor configuration\n');
+    output.write('Live Monitor is a passive HUD; official Codex owns all keyboard input.\n\n');
 
     const language = (await rl.question(`Language [vi/en] (${config.language}): `)).trim().toLowerCase();
     if (CONFIG_VALUES.languages.has(language)) config.language = language;
@@ -48,12 +49,7 @@ export async function configureMonitor({
       }
     }
 
-    output.write('\nLive Tabs\n');
-    const tabs = await rl.question(`Tabs comma-separated (${config.tabs.join(',')}): `);
-    const nextTabs = parseList(tabs, CONFIG_VALUES.tabs, config.tabs);
-    if (nextTabs.length) config.tabs = nextTabs;
-
-    output.write('\nHeader — select up to 4\n');
+    output.write('\nHeader — select up to 4 status items\n');
     const header = await rl.question(`Header comma-separated (${config.header.join(',')}): `);
     config.header = parseList(header, CONFIG_VALUES.header, config.header).slice(0, 4);
 
