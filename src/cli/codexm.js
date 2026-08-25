@@ -8,8 +8,6 @@ import { getMonitorConfigPath, loadMonitorConfig, resetMonitorConfig } from '../
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
-import { HistoryEngine } from '../history/engine.js';
-import { runHistoryTui } from '../history/app.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { renderDemo } from '../ui/demo.js';
@@ -22,7 +20,7 @@ function printHelp() {
   process.stdout.write('Usage: codexm [monitor options] [codex arguments]\n\n');
   process.stdout.write('Monitor options:\n');
   process.stdout.write('  --help                        Show Monitor help\n');
-  process.stdout.write('  --history                     Open local full-screen History viewer\n');
+  process.stdout.write('  --manager                     Open Session Manager (Phase 08 implementation)\n');
   process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
   process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
@@ -33,10 +31,11 @@ function printHelp() {
   process.stdout.write('  --reset                       Reset Monitor config and rerun setup\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
-  process.stdout.write('  --demo                        Render Live Monitor demo\n');
+  process.stdout.write('  --demo                        Render passive Live HUD demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n');
   process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
-  process.stdout.write('Live: Monitor HUD is read-only; all keyboard input belongs to Codex. Use `codexm --history` for History.\n');
+  process.stdout.write('Live Monitor is display-only: every keyboard byte belongs to official Codex.\n');
+  process.stdout.write('There is no public --history mode in the current v1 contract.\n');
   process.stdout.write('Example: codexm -- --help   # official Codex help\n');
 }
 
@@ -50,10 +49,9 @@ async function main() {
   if (loaded.error) process.stderr.write(`codexm: config could not be read; using defaults (${loaded.error.message}).\n`);
 
   if (parsed.action === 'help') { printHelp(); return 0; }
-  if (parsed.action === 'history') {
-    const sessionsPath = platformAdapter.paths()?.sessions;
-    const engine = new HistoryEngine({ sessionsPath });
-    return await runHistoryTui({ engine });
+  if (parsed.action === 'manager') {
+    process.stderr.write('codexm: Session Manager is the v1 analytics UI and will be implemented in Phase 08.\n');
+    return 2;
   }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
