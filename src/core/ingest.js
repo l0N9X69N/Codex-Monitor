@@ -15,7 +15,7 @@ export class MonitorIngestPipeline {
     };
   }
 
-  pushRolloutChunk(chunk) {
+  pushRolloutChunk(chunk, { source = PROVENANCE.OFFICIAL_CURRENT } = {}) {
     const results = this.rollout.push(chunk);
     for (const result of results) {
       this.stats.rolloutLines += 1;
@@ -25,12 +25,12 @@ export class MonitorIngestPipeline {
       }
       this.stats.rolloutAccepted += 1;
       const event = result.event;
-      applyNormalizedEvent(this.state, event, { source: PROVENANCE.OFFICIAL_CURRENT });
+      applyNormalizedEvent(this.state, event, { source });
 
       // Modern Codex stores RateLimitSnapshot inside TokenCountEvent rather than
-      // requiring a separate rate_limits rollout line. Feed that embedded
-      // snapshot through the existing quota reducer as a synthetic normalized
-      // event so 5H/WEEK update from the same official current-session source.
+      // requiring a separate rate_limits rollout line. Preserve the provenance
+      // of the enclosing rollout chunk: replayed resume history must remain
+      // OFFICIAL_HISTORY while newly appended events are OFFICIAL_CURRENT.
       if (event?.kind === 'usage' && event.rateLimits && typeof event.rateLimits === 'object') {
         const { primary = null, secondary = null } = event.rateLimits;
         if (primary || secondary) {
@@ -40,7 +40,7 @@ export class MonitorIngestPipeline {
             rawType: `${event.rawType ?? 'token_count'}:rate_limits`,
             primary,
             secondary
-          }, { source: PROVENANCE.OFFICIAL_CURRENT });
+          }, { source });
         }
       }
     }
