@@ -123,7 +123,159 @@ activity,model,reasoning,project,git,auth,health,session-age
 
 **PASS:** config lưu đủ các item hợp lệ. Ở terminal hẹp renderer có thể chỉ hiện prefix phù hợp; kéo rộng hơn thì các item sau có thể xuất hiện mà không cần configure lại.
 
-## P0-09 — Terminal restore
+## P0-09 — Từng tín hiệu hiển thị một
+
+Chạy Live Full trong repo test sạch và kiểm tra từng tín hiệu riêng, không trộn nhiều trạng thái cùng lúc.
+
+### 09A — IDLE
+
+Không chạy prompt nào trong vài giây.
+
+**PASS:**
+
+```text
+IDLE waiting input
+approval false
+tools 0
+```
+
+### 09B — THINKING
+
+Gửi prompt chỉ cần trả lời chữ, không yêu cầu tool, ví dụ:
+
+```text
+Trả lời đúng một câu: hello monitor
+```
+
+Quan sát trong lúc Codex đang suy nghĩ.
+
+**PASS:** header/activity tạm thành `THINKING`; sau khi trả lời xong phải trở về `IDLE`.
+
+### 09C — TOOL
+
+Yêu cầu tool không cần approval, ví dụ:
+
+```text
+Đọc package.json rồi cho biết trường name, không sửa file.
+```
+
+**PASS:** trong lúc tool chạy:
+
+```text
+TOOL running tool
+tools >= 1
+current <tool-name>
+approval false
+```
+
+Sau khi tool xong, `tools` về 0 và cuối turn về `IDLE`.
+
+### 09D — APPROVAL thật
+
+Yêu cầu một thao tác mà policy hiện tại bắt buộc hỏi quyền, ví dụ xóa một file test:
+
+```powershell
+Set-Content .\phase6-approval-test.txt 'test'
+```
+
+Sau đó trong Codex:
+
+```text
+Xóa file phase6-approval-test.txt và hãy dùng lệnh cần xin approval nếu Codex yêu cầu.
+```
+
+Khi Codex hiện hộp:
+
+```text
+Would you like to run the following command?
+```
+
+**PASS ngay lúc hộp approval đang mở:**
+
+```text
+APPROVAL waiting approval
+approval true
+```
+
+Sau khi chọn `Yes` hoặc `No`, trạng thái không được kẹt ở APPROVAL. Khi turn hoàn tất phải về `IDLE`, `approval false`.
+
+Các dòng tĩnh như sau **không được** tự kích hoạt APPROVAL:
+
+```text
+Permissions: Workspace (Ask for approval...)
+Tip: Use /status to see ... approvals ...
+You approved Codex to run ... this time
+```
+
+### 09E — Git sạch
+
+Đưa repo về sạch:
+
+```powershell
+git status --short
+```
+
+không có output.
+
+**PASS:** branch hiện không có `*`; changed file count/delta không báo thay đổi giả.
+
+### 09F — Git untracked file trống
+
+```powershell
+New-Item .\phase6-git-empty.txt -ItemType File
+```
+
+Chờ ít nhất 5 giây.
+
+**PASS:**
+
+```text
+<branch>*
+1 file
+Δ+0 −0
+```
+
+`Δ+0 −0` là đúng vì file trống không có dòng nội dung.
+
+### 09G — Git untracked file có nội dung
+
+```powershell
+Set-Content .\phase6-git-empty.txt 'hello'
+```
+
+Chờ collector cập nhật.
+
+**PASS:** dirty `*` và `1 file` vẫn còn. Line delta có thể phụ thuộc Git numstat đối với untracked file; không được dùng line delta làm bằng chứng duy nhất cho untracked content.
+
+### 09H — Git tracked file edit để test delta
+
+Chọn một file tracked an toàn, hoặc tạo/commit file test trước, rồi sửa một dòng. Ví dụ trong repo test riêng:
+
+```powershell
+Add-Content .\tracked-test.txt 'new line'
+```
+
+**PASS:** `1 file` (hoặc đúng tổng số file thay đổi) và `Δ+N −M` phản ánh diff so với HEAD.
+
+Sau test xóa file test hoặc restore repo.
+
+### 09I — ERROR
+
+Tạo một tool command chắc chắn fail nhưng không phá dữ liệu, ví dụ yêu cầu Codex chạy:
+
+```powershell
+Get-Item .\__phase6_file_that_does_not_exist__ -ErrorAction Stop
+```
+
+**PASS:** khi error evidence xuất hiện, Activity chuyển `ERROR`, `err` tăng. Một turn mới hợp lệ phải clear `errorActive` và không để ERROR kẹt vô hạn.
+
+### 09J — RETRY
+
+Chỉ PASS khi có evidence retry thật từ Codex/network. Không cố tình phá network chỉ để tạo retry.
+
+**PASS:** `retry` chỉ tăng khi parser nhận `retrying` / stream retry evidence thật; không tự tăng trong run bình thường.
+
+## P0-10 — Terminal restore
 
 Test cả:
 
@@ -143,6 +295,7 @@ Phase 06 manual PASS
 Visual >= v1 baseline: PASS
 Keyboard ownership: PASS
 Git/header completeness: PASS
+Activity lifecycle: PASS
 Resize/prompt isolation: PASS
 Terminal restore: PASS
 ```
