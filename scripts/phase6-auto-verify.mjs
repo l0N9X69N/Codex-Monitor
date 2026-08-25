@@ -20,6 +20,7 @@ const steps = [
   ]],
   ['Focused Phase 06 passive Live', process.execPath, ['--test',
     'test/unit/phase6-passive-hud.test.js',
+    'test/unit/phase6-bootstrap.test.js',
     'test/integration/phase6-passive-runtime.test.js'
   ]]
 ];
