@@ -134,10 +134,20 @@ export async function runCodexLive({
   const onInput = (data) => {
     if (!child || exiting) return;
     // Live Monitor is deliberately non-interactive. The child Codex TUI owns
-    // every key. Do not parse, buffer, debounce, or reserve any stdin byte.
-    writeChildInput(Buffer.isBuffer(data) || ArrayBuffer.isView(data)
+    // every key. Forward first, unchanged; only observe the already-forwarded
+    // bytes afterwards to clear a latched approval state when the user accepts
+    // or cancels the visible Codex approval prompt.
+    const value = Buffer.isBuffer(data) || ArrayBuffer.isView(data)
       ? inputDecoder.write(data)
-      : String(data ?? ''));
+      : String(data ?? '');
+    writeChildInput(value);
+    if (pane && monitorState) {
+      const events = ptyTransient.observeInput(value, Date.now());
+      if (events.length > 0) {
+        for (const event of events) applyNormalizedEvent(monitorState, event, { source: PROVENANCE.LOCAL });
+        pane.invalidate();
+      }
+    }
   };
 
   try {
