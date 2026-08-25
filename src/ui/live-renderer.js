@@ -101,7 +101,24 @@ function healthInfo(state) {
   return { label: 'HEALTH OK', token: 'healthy' };
 }
 
-function gitText(state, maxCells = 34) {
+function gitStatusText(diff) {
+  if (!diff || typeof diff !== 'object') return '';
+  const parts = [];
+  for (const [key, label] of [
+    ['added', 'A'],
+    ['modified', 'M'],
+    ['deleted', 'D'],
+    ['renamed', 'R'],
+    ['untracked', '?'],
+    ['conflicted', '!']
+  ]) {
+    const count = finite(diff[key]);
+    if (count != null && count > 0) parts.push(`${label}${count}`);
+  }
+  return parts.join(' ');
+}
+
+function gitText(state, maxCells = 72) {
   const branch = value(state?.git?.branch);
   if (!branch) return null;
   const dirty = value(state?.git?.dirty, null);
@@ -111,20 +128,26 @@ function gitText(state, maxCells = 34) {
   const additions = finite(diff?.additions);
   const deletions = finite(diff?.deletions);
   const branchText = `${branch}${dirty === true ? '*' : ''}`;
-  const fullParts = [branchText];
-  if (changedFiles != null) fullParts.push(`${changedFiles} ${changedFiles === 1 ? 'file' : 'files'}`);
-  if (additions != null || deletions != null) fullParts.push(`Δ+${additions ?? '--'} −${deletions ?? '--'}`);
-  if (ab && (ab.ahead != null || ab.behind != null)) fullParts.push(`↑${ab.ahead ?? '--'} ↓${ab.behind ?? '--'}`);
+  const status = gitStatusText(diff);
+  const fileText = changedFiles == null ? '' : `${changedFiles} ${changedFiles === 1 ? 'file' : 'files'}`;
+  const delta = additions == null && deletions == null ? '' : `Δ+${additions ?? '--'} −${deletions ?? '--'}`;
+  const remote = ab && (ab.ahead != null || ab.behind != null) ? `↑${ab.ahead ?? '--'} ↓${ab.behind ?? '--'}` : '';
+  const join = (...parts) => parts.filter(Boolean).join('  ');
   const candidates = [
-    fullParts.join('  '),
-    `${branchText}${additions != null || deletions != null ? `  Δ+${additions ?? '--'} −${deletions ?? '--'}` : ''}`,
+    join(branchText, status, fileText, delta, remote),
+    join(branchText, status, fileText, remote),
+    join(branchText, status, fileText),
+    join(branchText, status),
+    join(branchText, fileText),
+    join(branchText, delta),
     branchText,
     `git${dirty === true ? '*' : ''}`
-  ];
-  return candidates.find((candidate) => cellWidth(candidate) <= maxCells) ?? truncateCells(candidates.at(-1), maxCells, '');
+  ].filter(Boolean);
+  return candidates.find((candidate) => cellWidth(candidate) <= maxCells)
+    ?? truncateCells(candidates.at(-1), maxCells, '');
 }
 
-function headerItem(item, state, options) {
+function headerItem(item, state, options, maxCells = null) {
   const info = activityInfo(state);
   if (item === 'activity') return `${styleText(`${info.symbol} ${info.activity}`, info.token, options.theme, { bold: true })} ${styleText(info.description, 'muted', options.theme)}`;
   if (item === 'model') {
@@ -147,7 +170,7 @@ function headerItem(item, state, options) {
   }
   if (item === 'fast') return options.fast ? styleText('FAST', 'thinking', options.theme, { bold: true }) : null;
   if (item === 'git') {
-    const text = gitText(state, 34) ?? options.gitLabel ?? null;
+    const text = gitText(state, Math.max(4, maxCells ?? 72)) ?? options.gitLabel ?? null;
     return text ? styleText(text, 'healthy', options.theme) : null;
   }
   return null;
@@ -308,10 +331,11 @@ function headerItems(config, state, options, maxWidth) {
   const rendered = [];
   let used = 0;
   for (const item of config.header ?? []) {
-    const next = headerItem(item, state, options);
+    const extra = rendered.length ? separatorWidth : 0;
+    const remaining = Math.max(1, maxWidth - used - extra);
+    const next = headerItem(item, state, options, remaining);
     if (!next) continue;
     const nextWidth = cellWidth(next);
-    const extra = rendered.length ? separatorWidth : 0;
     if (rendered.length && used + extra + nextWidth > maxWidth) break;
     if (!rendered.length && nextWidth > maxWidth) {
       rendered.push(truncateCells(next, maxWidth, ''));
