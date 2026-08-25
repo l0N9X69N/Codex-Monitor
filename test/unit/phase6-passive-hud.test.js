@@ -33,16 +33,29 @@ test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its o
   const state = createDemoState('tool', { authMode: 'login', nowMs: NOW });
   setLocal(state.git, 'branch', 'main', 'git local branch');
   setLocal(state.git, 'dirty', true, 'git status --porcelain');
-  setLocal(state.git, 'diff', { changedFiles: 3, additions: 10, deletions: 1 }, 'git diff');
+  setLocal(state.git, 'diff', {
+    changedFiles: 3,
+    added: 0,
+    modified: 1,
+    deleted: 1,
+    renamed: 0,
+    untracked: 1,
+    conflicted: 0,
+    additions: 10,
+    deletions: 1
+  }, 'git diff');
   setLocal(state.git, 'aheadBehind', { ahead: 2, behind: 1 }, 'git upstream');
   setMetric(state.compaction, 'turnsSinceCompact', 2, { source: PROVENANCE.DERIVED, observedAtMs: NOW, evidence: 'turnCount-lastCompactTurn' });
-  const frame = buildLiveFrame({ state, config, width: 160, height: 40, nowMs: NOW, projectName: 'Codex Monitor' });
+  const frame = buildLiveFrame({ state, config, width: 200, height: 40, nowMs: NOW, projectName: 'Codex Monitor' });
   const text = stripAnsi(frame.lines.join('\n'));
   assert.equal(frame.lines.length, 9);
   assert.equal(frame.semantic.visual, 'full-monitor-v2-grid');
   assert.equal(frame.semantic.interactive, false);
   assert.match(text, /CODEX MONITOR · FULL/);
   assert.match(text, /main\*/);
+  assert.match(text, /M1/);
+  assert.match(text, /D1/);
+  assert.match(text, /\?1/);
   assert.match(text, /3 files/);
   assert.match(text, /Δ\+10 −1/);
   assert.match(text, /↑2 ↓1/);
@@ -65,7 +78,29 @@ test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its o
   assert.match(text, /err/);
   assert.match(text, /╭/);
   assert.match(text, /╰/);
-  assert.equal(assertNoWrap(frame, 160), true);
+  assert.equal(assertNoWrap(frame, 200), true);
+});
+
+test('long Git branch keeps file status before optional line delta when header space is constrained', () => {
+  const config = normalizeConfig({ ...configForPreset('custom'), header: ['git'] });
+  const state = createDemoState('idle', { authMode: 'login', nowMs: NOW });
+  setLocal(state.git, 'branch', 'v1-rearchitecture');
+  setLocal(state.git, 'dirty', true);
+  setLocal(state.git, 'diff', {
+    changedFiles: 1,
+    added: 0,
+    modified: 0,
+    deleted: 0,
+    renamed: 0,
+    untracked: 1,
+    conflicted: 0,
+    additions: 0,
+    deletions: 0
+  });
+  const text = stripAnsi(buildLiveFrame({ state, config, width: 42, height: 20, nowMs: NOW }).lines[0]);
+  assert.match(text, /v1-rearchitecture\*/);
+  assert.match(text, /\?1/);
+  assert.match(text, /1 file/);
 });
 
 test('passive HUD never renders old Live navigation chrome', () => {
