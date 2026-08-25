@@ -14,7 +14,7 @@ function isResumeIntent(codexArgs = []) {
 }
 
 export class LiveDataRuntime {
-  constructor({ state, config, adapter, cwd = process.cwd(), codexArgs = [], now = () => Date.now(), processRef = process, onUpdate = null } = {}) {
+  constructor({ state, config, adapter, cwd = process.cwd(), codexArgs = [], resumeTargetPath = null, now = () => Date.now(), processRef = process, onUpdate = null } = {}) {
     if (!state || !config || !adapter) throw new Error('LiveDataRuntime requires state, config and adapter');
     this.state = state;
     this.config = config;
@@ -22,7 +22,7 @@ export class LiveDataRuntime {
     this.cwd = cwd;
     this.onUpdate = onUpdate;
     const sessionsPath = adapter.paths()?.sessions ?? null;
-    this.resumeMode = isResumeIntent(codexArgs);
+    this.resumeMode = isResumeIntent(codexArgs) || Boolean(resumeTargetPath);
 
     // Account quota is account-scoped, not session-scoped. Bootstrap once from
     // local Codex evidence without touching Session freshness/usage. A newer
@@ -34,7 +34,8 @@ export class LiveDataRuntime {
       sessionsPath,
       cwd,
       now,
-      resumeMode: this.resumeMode
+      resumeMode: this.resumeMode,
+      resumeTargetPath
     });
     this.registry = createLiveCollectorRegistry({ state, adapter, cwd, sessionTailer: this.sessionTailer, now, processRef });
     for (const entry of this.registry.list()) {
