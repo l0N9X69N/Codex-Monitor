@@ -23,14 +23,9 @@ export function parseMonitorArgs(argv = []) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-
-    if (parsingMonitor && arg === '--') {
-      parsingMonitor = false;
-      continue;
-    }
-
+    if (parsingMonitor && arg === '--') { parsingMonitor = false; continue; }
     if (parsingMonitor && arg === '--help') { action = 'help'; continue; }
-    if (parsingMonitor && arg === '--history') { action = 'history'; continue; }
+    if (parsingMonitor && arg === '--manager') { action = 'manager'; continue; }
     if (parsingMonitor && arg === '--doctor') { action = 'doctor'; continue; }
     if (parsingMonitor && arg === '--monitor-version') { action = 'monitor-version'; continue; }
     if (parsingMonitor && arg === '--configure') { action = 'configure'; continue; }
@@ -44,38 +39,26 @@ export function parseMonitorArgs(argv = []) {
       i += 1;
       continue;
     }
-    if (parsingMonitor && arg.startsWith('--auth=')) {
-      auth = normalizeAuthOverride(arg.slice('--auth='.length));
-      continue;
-    }
+    if (parsingMonitor && arg.startsWith('--auth=')) { auth = normalizeAuthOverride(arg.slice('--auth='.length)); continue; }
 
     if (parsingMonitor && arg === '--preset') {
       overrides.preset = normalizeChoice('presets', requireValue(argv, i, '--preset'), '--preset');
       i += 1;
       continue;
     }
-    if (parsingMonitor && arg.startsWith('--preset=')) {
-      overrides.preset = normalizeChoice('presets', arg.slice('--preset='.length), '--preset');
-      continue;
-    }
+    if (parsingMonitor && arg.startsWith('--preset=')) { overrides.preset = normalizeChoice('presets', arg.slice('--preset='.length), '--preset'); continue; }
     if (parsingMonitor && arg === '--theme') {
       overrides.theme = normalizeChoice('themes', requireValue(argv, i, '--theme'), '--theme');
       i += 1;
       continue;
     }
-    if (parsingMonitor && arg.startsWith('--theme=')) {
-      overrides.theme = normalizeChoice('themes', arg.slice('--theme='.length), '--theme');
-      continue;
-    }
+    if (parsingMonitor && arg.startsWith('--theme=')) { overrides.theme = normalizeChoice('themes', arg.slice('--theme='.length), '--theme'); continue; }
     if (parsingMonitor && arg === '--lang') {
       overrides.language = normalizeChoice('languages', requireValue(argv, i, '--lang'), '--lang');
       i += 1;
       continue;
     }
-    if (parsingMonitor && arg.startsWith('--lang=')) {
-      overrides.language = normalizeChoice('languages', arg.slice('--lang='.length), '--lang');
-      continue;
-    }
+    if (parsingMonitor && arg.startsWith('--lang=')) { overrides.language = normalizeChoice('languages', arg.slice('--lang='.length), '--lang'); continue; }
     if (parsingMonitor && arg === '--demo-state') {
       const value = String(requireValue(argv, i, '--demo-state')).trim().toLowerCase();
       if (!['idle', 'thinking', 'tool', 'approval', 'error'].includes(value)) throw new Error(`--demo-state received unsupported value: ${value}`);
