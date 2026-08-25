@@ -90,6 +90,13 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       if (event.model != null) setMetric(state.model, 'requested', event.model, { source, observedAtMs: atMs });
       if (event.reasoning != null) setMetric(state.model, 'reasoning', event.reasoning, { source, observedAtMs: atMs });
       break;
+    case 'model-settings':
+      // turn_context/thread_settings_applied are Codex's durable effective
+      // settings for the turn. Treat the model as the current requested/effective
+      // model unless a later explicit model_reroute provides stronger evidence.
+      if (event.model != null) setMetric(state.model, 'requested', event.model, { source, observedAtMs: atMs, evidence: event.rawType ?? 'model-settings' });
+      if (event.reasoning != null) setMetric(state.model, 'reasoning', event.reasoning, { source, observedAtMs: atMs, evidence: event.rawType ?? 'model-settings' });
+      break;
     case 'turn-start':
       setMetric(state.session, 'turnInProgress', true, { source, observedAtMs: atMs });
       setMetric(state.session, 'currentTurnId', event.turnId ?? null, { source, observedAtMs: atMs });
@@ -125,8 +132,6 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       const id = event.callId ?? `anonymous:${tools.length + 1}`;
       if (!tools.includes(id)) tools.push(id);
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
-      // Do not clear approval here. Codex can announce/start the tool call before
-      // the visible permission prompt is resolved; APPROVAL must keep priority.
       setMetric(state.activity, 'errorActive', false, { source, observedAtMs: atMs });
       trackToolStart(state, event, atMs, source);
       updateActivity(state, atMs, `running ${event.tool ?? 'tool'}`, source);
@@ -137,8 +142,6 @@ export function applyNormalizedEvent(state, event, { source = PROVENANCE.OFFICIA
       if (event.callId) tools = tools.filter((id) => id !== event.callId);
       else if (tools.length === 1) tools = [];
       setMetric(state.activity, 'activeTools', tools, { source, observedAtMs: atMs });
-      // Approval is cleared by approval-resolved/turn-complete, not by tool
-      // lifecycle events that can race with the TUI prompt.
       trackToolEnd(state, event, atMs, source);
       updateActivity(state, atMs, null, source);
       break;
