@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { runCodexLive } from '../../src/runtime/live-runner.js';
+import { runCodexLive, splitMonitorHotkeys } from '../../src/runtime/live-runner.js';
 import { createCurrentRunState } from '../../src/core/state.js';
 import { normalizeConfig, configForPreset } from '../../src/config/schema.js';
 import { createFakePlatformAdapter } from '../../src/platform/fake.js';
@@ -41,6 +41,12 @@ function fakeChild() {
   };
 }
 
+test('monitor hotkey splitter consumes Alt-arrow even when combined with other stdin bytes', () => {
+  const parsed = splitMonitorHotkeys(`a\x1b[1;3Cb\x1b[1;3D`);
+  assert.deepEqual(parsed.actions, ['next-view', 'previous-view']);
+  assert.equal(parsed.forwarded, 'ab');
+});
+
 test('F4 opens History and Alt+Right changes Live view without forwarding hotkeys to Codex', async () => {
   const io = fakeIo();
   const child = fakeChild();
@@ -63,14 +69,14 @@ test('F4 opens History and Alt+Right changes Live view without forwarding hotkey
 
   setImmediate(() => {
     io.stdin.emit('data', Buffer.from('\x1bOS'));
-    io.stdin.emit('data', Buffer.from('\x1b[1;3C'));
-    io.stdin.emit('data', Buffer.from('x'));
+    io.stdin.emit('data', Buffer.from('x\x1b[1;3Cy'));
     setImmediate(() => child.exit(0));
   });
 
   const code = await running;
   assert.equal(code, 0);
-  assert.deepEqual(child.writes, ['x']);
+  assert.deepEqual(child.writes, ['xy']);
   assert.ok(adapter.calls.some((item) => item.name === 'openHistoryTerminal'));
   assert.equal(state.processes.rootPid.value, 4242);
+  assert.match(io.stdout.output, /\[tools\]|\[Tools\]/i);
 });
