@@ -1,39 +1,38 @@
 # Codex Monitor v1 — Roadmap triển khai chi tiết
 
-> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor Final Project Specification v1, design freeze 2026-08-24. Nếu tài liệu phase mâu thuẫn với `PROJECT-SPEC.md`, **PROJECT-SPEC.md thắng**.
-
-> **Bổ sung UX đã chốt sau spec:** Live phải hiện đại, gọn, làm nổi bật thông tin cần xem. History giữ tinh thần cyberpunk/hacker/netrunner tương lai nhưng không nhồi tràn lan một màn hình; ưu tiên nhiều panel/biểu đồ có khoảng thở, responsive và chuyển động từ dữ liệu thật.
-
+> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline, frozen 2026-08-25. Nếu tài liệu phase mâu thuẫn với `PROJECT-SPEC.md`, **PROJECT-SPEC.md thắng**.
 
 ## Mục đích
 
-`PROJECT-SPEC.md` có Phase A–H ở cấp sản phẩm. Roadmap này **không đổi scope v1**, mà chia thành milestone nhỏ hơn để mỗi phase có thể:
+Roadmap chia implementation thành các gate nhỏ, tuần tự:
 
 ```text
 code
-→ unit/integration test
-→ artifact/test report
+→ unit/integration/snapshot/fuzz
+→ handoff docs
 → manual test nếu cần
 → exit gate
 → phase tiếp theo
 ```
 
+Không gộp Phase 06–09 thành một batch acceptance nữa. Từ Phase 06 trở đi phải đóng từng phase riêng rồi mới tăng phase.
+
 ## 12 phase thực thi
 
 | Phase | Tên | Mục tiêu |
 |---:|---|---|
-| 01 | Correctness & Terminal Safety | Làm Live Monitor đáng tin trước khi mở rộng UI: current-run only, auth đúng, không stale leak, terminal luôn được phục hồi. |
-| 02 | Normalized State & Parser Test Harness | Tạo một Normalized Monitor State duy nhất để UI, History và collectors không tự đọc raw event theo cách riêng. |
-| 03 | Demand Graph, Central Scheduler & ANSI Diff Renderer | Thực thi 4 luật performance: không dùng thì không collect/poll/repaint; PTY luôn quan trọng hơn telemetry. |
-| 04 | Live Monitor UI hiện đại + Responsive + Custom | Xây Live UI v1 gọn, hiện đại, semantic-color rõ, hỗ trợ nhiều lane/cột Custom nhưng luôn giữ đủ không gian cho Codex. |
-| 05 | Live UI Fuzz, Snapshot & UX Gate | Không thêm feature lớn; phá Live UI bằng automation và manual UX review trước khi mở rộng views. |
-| 06 | Live Views & Lazy Collectors | Hoàn thiện 6 Live views mà vẫn demand-driven. |
-| 07 | Platform Adapters: Windows / Linux / macOS | Giữ semantics/UI/config chung, cô lập OS-specific behavior sau Platform Adapter. |
-| 08 | History Core Engine | Xây data engine cho `codexm --history`: local JSONL, RAM index, lazy parse, live-tail, không DB. |
-| 09 | History Cyberpunk / Netrunner TUI | Xây full-screen History TUI có cảm giác tương lai/hacker/netrunner, nhưng thoáng, readable và không nhồi mọi analytics lên cùng một màn hình. |
-| 10 | History Charts & Live Dynamics | Thêm 5 chart + event timeline; History trông sống động nhờ data thật. |
-| 11 | History Storage, Delete Safety & History QA | Hoàn thiện storage/delete và stress-test History trước productization. |
-| 12 | Productization, Full QA, Packaging & Release Candidate | Không thêm feature lớn; harden toàn bộ sản phẩm thành Release Candidate có thể public. |
+| 01 | Correctness & Terminal Safety | Current-run only, auth đúng, terminal restore an toàn. |
+| 02 | Normalized State & Parser Test Harness | Một normalized state/provenance/freshness model duy nhất. |
+| 03 | Demand Graph, Central Scheduler & ANSI Diff Renderer | Không demand thì không collect/poll/repaint; PTY ưu tiên cao nhất. |
+| 04 | Live Monitor UI + Responsive + Custom | Responsive HUD foundation, presets/themes/custom. |
+| 05 | Live UI Fuzz, Snapshot & UX Gate | Layout fuzz/snapshot/UX safety gate. |
+| 06 | Passive Live HUD Completion & v1 Visual Baseline | Chốt Live thành single passive HUD, bỏ navigation/hotkeys/History hook, migrate config, phục hồi visual tối thiểu bằng v1 trước refactor. |
+| 07 | Platform Adapters: Windows / Linux / macOS | Cô lập PTY/process/system/disk/path/restore theo OS; không History launcher. |
+| 08 | Session Manager Core | `codexm --manager`, discover/classify/tail nhiều LIVE+ENDED sessions, RAM index, selected-session deep parser. |
+| 09 | Session Manager Dashboard TUI | Cyber/professional multi-session dashboard, session table, search/filter/sort, 3 primary global charts. |
+| 10 | Session Detail Analytics & Live Dynamics | Info/Tokens/Turns/Tools/Resources/Errors + Context Timeline và detail charts. |
+| 11 | Session Storage, Delete Safety & Manager QA | Storage summary, safe selection/delete, LIVE protection, stress QA. |
+| 12 | Productization, Full QA, Packaging & Release Candidate | CLI/config/updater/security/install/release/cross-platform hardening. |
 
 ## Dependency
 
@@ -42,78 +41,91 @@ P01 Correctness
  ↓
 P02 State/Parsers
  ↓
-P03 Demand/Scheduler/Diff renderer
+P03 Demand/Scheduler/Diff
  ↓
-P04 Live UI + Responsive + Custom
+P04 Live UI Foundation
  ↓
-P05 Live UI Fuzz/UX Gate
+P05 Live Fuzz/UX Gate
  ↓
-P06 Live Views + Lazy Collectors
+P06 Passive Live Completion + v1 Visual Floor
  ↓
 P07 Platform Adapters
  ↓
-P08 History Core
+P08 Session Manager Core
  ↓
-P09 History Cyberpunk TUI
+P09 Manager Dashboard TUI
  ↓
-P10 History Charts
+P10 Session Detail Analytics
  ↓
-P11 History Storage + QA
+P11 Storage/Delete Safety + Manager QA
  ↓
 P12 Productization + Release
 ```
 
-## Ánh xạ với Phase A–H trong PROJECT-SPEC
+## Change-control note cho Phase 01–05
 
-```text
-Spec A -> P01 + P02
-Spec B -> P03
-Spec D -> P04 + P05 + P06
-Spec C -> P07
-Spec E -> P08
-Spec F -> P09 + P10
-Spec G -> P11
-Spec H -> P12
-```
+Phase 01–05 là historical implementation records đã đóng trước product baseline 2026-08-25. Những behavior cũ như Live interactive tabs/F4/Monitor hotkeys đã bị `PROJECT-SPEC.md` mới supersede và được loại ở Phase 06. Không cần chạy lại toàn bộ Phase 01–05 như phase mới, nhưng regression test liên quan phải được migration để phản ánh product contract hiện tại.
 
-Security/privacy, terminal safety, performance và test là concern xuyên suốt; không đợi P12 mới kiểm tra.
-
-## Chốt visual
+## Visual contract
 
 ### Live Monitor
 
-- Modern professional terminal UI.
-- Gọn theo chiều cao; tận dụng chiều ngang/multiple lanes.
-- Primary info nổi bật bằng semantic color.
-- Custom mạnh nhưng user chỉ chọn **thông tin**, layout engine chọn **cột/lane/width/density**.
-- Không word-wrap telemetry.
-- Full/Compact/Custom cùng semantics.
-- Login quota 5H/WEEK phải dễ nhìn; API không có quota Login.
+Live là **display-only HUD**. Official Codex sở hữu toàn bộ keyboard input.
 
-### History Viewer
+Visual floor từ Phase 06:
 
-- Full-screen TUI, cyberpunk/hacker/netrunner tương lai.
-- Không nhồi mọi dữ liệu lên cùng màn hình.
-- Chia panel/table/chart/detail tabs có khoảng thở.
-- Màn ultrawide có thể bung thành control-room dashboard.
-- Neon có hierarchy, không rainbow.
-- Chỉ động khi source data thật thay đổi; không decorative 30/60 FPS.
+- ít nhất bằng chất lượng giao diện v1 trước refactor ở wide/full;
+- outer frame/panel hierarchy rõ;
+- `CONTEXT`, `USAGE`, `SESSION`, `CURRENT ACTIVITY` nhìn ra ngay;
+- semantic colors, bars, spacing/padding;
+- gọn chiều cao và responsive;
+- narrow có thể giảm chrome/detail nhưng không wrap/overflow;
+- sau khi floor ổn mới polish đẹp hơn, không hy sinh correctness/input latency.
+
+Không còn Live tabs/navigation/F4 History.
+
+### Session Manager
+
+Canonical command:
+
+```powershell
+codexm --manager
+```
+
+Manager là interactive analytics/dashboard TUI duy nhất:
+
+- multi-LIVE + ENDED sessions;
+- session table/search/filter/sort;
+- global Token Activity / Context Pressure / Tool Activity;
+- selected-session detail analytics;
+- storage/delete ended sessions;
+- cyberpunk/hacker-futuristic nhưng thoáng/readable;
+- data-driven motion, không fake fixed-FPS animation.
+
+Không có public standalone `--history` feature trong v1.
+
+## Cross-platform policy
+
+Windows/Linux/macOS dùng cùng semantics/UI model. OS-specific behavior ở Platform Adapter. Platform chưa có môi trường thật phải ghi `UNVERIFIED PLATFORM`, không được giả PASS.
 
 ## Quy ước test
 
-Xem:
+Xem `00-QUY-UOC-TEST-VA-BAN-GIAO.md`.
+
+Mỗi phase có:
 
 ```text
-00-QUY-UOC-TEST-VA-BAN-GIAO.md
+PHASE-N-RESULT.md
+AUTO-TEST-REPORT.md
+MANUAL-TEST-REQUIRED.md
+KNOWN-ISSUES.md
 ```
-
-Mỗi phase có file riêng trong thư mục này.
 
 ## Quy tắc thay đổi roadmap
 
-Nếu sau này đổi sản phẩm:
+Nếu product semantics đổi:
 
-1. Ghi amendment vào source-of-truth.
-2. Xác định phase bị ảnh hưởng.
-3. Update roadmap + phase docs.
-4. Không âm thầm đổi semantics.
+1. update `PROJECT-SPEC.md` hoặc explicit amendment;
+2. xác định phases bị ảnh hưởng;
+3. update roadmap + phase docs trước implementation tiếp;
+4. không âm thầm đổi behavior chỉ trong code/chat.
