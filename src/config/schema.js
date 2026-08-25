@@ -11,6 +11,17 @@ const VALID = Object.freeze({
   ])
 });
 
+export const DEFAULT_FIELD_VISIBILITY = Object.freeze({
+  context: Object.freeze({ used: true, gauge: true, cache: true, left: true, compaction: true }),
+  usage: Object.freeze({
+    fiveHour: true, weekly: true, input: true, cache: true, output: true,
+    reasoning: true, turnInput: true, turnOutput: true, model: true, actual: true
+  }),
+  session: Object.freeze({ elapsed: true, turns: true, last: true, update: true, thread: true, freshness: true, data: true }),
+  activity: Object.freeze({ state: true, source: true, tools: true, lastTool: true, approval: true, retry: true, errors: true }),
+  system: Object.freeze({ cpu: true, ram: true, ramCapacity: true })
+});
+
 const PRESET_DEFINITIONS = Object.freeze({
   recommended: Object.freeze({
     sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false }),
@@ -54,6 +65,14 @@ function booleanMap(input, keys, fallback) {
   return result;
 }
 
+function fieldVisibility(input, fallback = DEFAULT_FIELD_VISIBILITY) {
+  const result = {};
+  for (const [section, fields] of Object.entries(DEFAULT_FIELD_VISIBILITY)) {
+    result[section] = booleanMap(input?.[section], Object.keys(fields), fallback?.[section] ?? fields);
+  }
+  return result;
+}
+
 function uniqueValid(values, valid, fallback = []) {
   const source = Array.isArray(values) ? values : fallback;
   return [...new Set(source.filter((value) => valid.has(value)))];
@@ -68,6 +87,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   layout: 'auto',
   sections: PRESET_DEFINITIONS.recommended.sections,
   metrics: PRESET_DEFINITIONS.recommended.metrics,
+  fields: DEFAULT_FIELD_VISIBILITY,
   header: PRESET_DEFINITIONS.recommended.header,
   updateCheck: true
 });
@@ -98,6 +118,7 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     layout: 'auto',
     sections: booleanMap(input?.sections, [...VALID.sections], presetBase.sections),
     metrics: booleanMap(input?.metrics, [...VALID.metrics], presetBase.metrics),
+    fields: fieldVisibility(input?.fields, presetBase.fields ?? DEFAULT_FIELD_VISIBILITY),
     header: uniqueValid(input?.header, VALID.header, presetBase.header),
     updateCheck: typeof input?.updateCheck === 'boolean' ? input.updateCheck : Boolean(presetBase.updateCheck)
   };
@@ -108,6 +129,7 @@ export function applyRuntimeOverrides(config, overrides = {}) {
   let next = normalizeConfig(config);
   if (overrides.preset && VALID.presets.has(overrides.preset)) next = normalizeConfig(configForPreset(overrides.preset, next));
   if (overrides.theme && VALID.themes.has(overrides.theme)) next.theme = overrides.theme;
+  if (overrides.background && VALID.backgrounds.has(overrides.background)) next.background = overrides.background;
   if (overrides.language && VALID.languages.has(overrides.language)) next.language = overrides.language;
   return next;
 }
