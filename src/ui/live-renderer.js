@@ -91,6 +91,39 @@ function activityInfo(state) {
   return { activity: 'IDLE', symbol: '●', description: 'waiting input', token: 'healthy' };
 }
 
+function healthInfo(state) {
+  const info = activityInfo(state);
+  const contextUsed = finite(value(state?.context?.usedPercent));
+  if (info.activity === 'ERROR') return { label: 'HEALTH ERROR', token: 'error' };
+  if (info.activity === 'APPROVAL') return { label: 'HEALTH WAIT', token: 'approval' };
+  if (contextUsed != null && contextUsed >= 90) return { label: 'HEALTH PRESSURE', token: 'error' };
+  if (contextUsed != null && contextUsed >= 75) return { label: 'HEALTH WARN', token: 'approval' };
+  return { label: 'HEALTH OK', token: 'healthy' };
+}
+
+function gitText(state, maxCells = 34) {
+  const branch = value(state?.git?.branch);
+  if (!branch) return null;
+  const dirty = value(state?.git?.dirty, null);
+  const diff = value(state?.git?.diff);
+  const ab = value(state?.git?.aheadBehind);
+  const changedFiles = finite(diff?.changedFiles);
+  const additions = finite(diff?.additions);
+  const deletions = finite(diff?.deletions);
+  const branchText = `${branch}${dirty === true ? '*' : ''}`;
+  const fullParts = [branchText];
+  if (changedFiles != null) fullParts.push(`${changedFiles} ${changedFiles === 1 ? 'file' : 'files'}`);
+  if (additions != null || deletions != null) fullParts.push(`Δ+${additions ?? '--'} −${deletions ?? '--'}`);
+  if (ab && (ab.ahead != null || ab.behind != null)) fullParts.push(`↑${ab.ahead ?? '--'} ↓${ab.behind ?? '--'}`);
+  const candidates = [
+    fullParts.join('  '),
+    `${branchText}${additions != null || deletions != null ? `  Δ+${additions ?? '--'} −${deletions ?? '--'}` : ''}`,
+    branchText,
+    `git${dirty === true ? '*' : ''}`
+  ];
+  return candidates.find((candidate) => cellWidth(candidate) <= maxCells) ?? truncateCells(candidates.at(-1), maxCells, '');
+}
+
 function headerItem(item, state, options) {
   const info = activityInfo(state);
   if (item === 'activity') return `${styleText(`${info.symbol} ${info.activity}`, info.token, options.theme, { bold: true })} ${styleText(info.description, 'muted', options.theme)}`;
@@ -107,18 +140,15 @@ function headerItem(item, state, options) {
     const auth = value(state?.auth?.mode);
     return auth ? `${styleText('AUTH', 'label', options.theme)} ${styleText(String(auth).toUpperCase(), auth === 'api' ? 'reasoning' : 'info', options.theme, { bold: true })}` : null;
   }
-  if (item === 'session-age') return fmtDuration(Math.max(0, options.nowMs - (state?.run?.startedAtMs ?? options.nowMs)));
-  if (item === 'health') return options.health ?? null;
+  if (item === 'session-age') return `${styleText('AGE', 'label', options.theme)} ${fmtDuration(Math.max(0, options.nowMs - (state?.run?.startedAtMs ?? options.nowMs)))}`;
+  if (item === 'health') {
+    const health = healthInfo(state);
+    return styleText(health.label, health.token, options.theme, { bold: true });
+  }
   if (item === 'fast') return options.fast ? styleText('FAST', 'thinking', options.theme, { bold: true }) : null;
   if (item === 'git') {
-    const branch = value(state?.git?.branch);
-    if (!branch) return options.gitLabel ?? null;
-    const diff = value(state?.git?.diff);
-    const ab = value(state?.git?.aheadBehind);
-    const dirtyCount = finite(diff?.changedFiles);
-    const dirty = dirtyCount && dirtyCount > 0 ? ` +${dirtyCount}` : '';
-    const remote = ab ? ` ↑${ab.ahead ?? '--'} ↓${ab.behind ?? '--'}` : '';
-    return styleText(truncateCells(`git:${branch}${dirty}${remote}`, 34), 'healthy', options.theme);
+    const text = gitText(state, 34) ?? options.gitLabel ?? null;
+    return text ? styleText(text, 'healthy', options.theme) : null;
   }
   return null;
 }
@@ -273,10 +303,30 @@ function topBorder(width, preset, theme) {
   return `${paint(prefix, 'frame', theme)}${styleText(title, 'tool', theme, { bold: true })}${paint(`${'─'.repeat(fill)}${suffix}`, 'frame', theme)}`;
 }
 
+function headerItems(config, state, options, maxWidth) {
+  const separatorWidth = 3;
+  const rendered = [];
+  let used = 0;
+  for (const item of config.header ?? []) {
+    const next = headerItem(item, state, options);
+    if (!next) continue;
+    const nextWidth = cellWidth(next);
+    const extra = rendered.length ? separatorWidth : 0;
+    if (rendered.length && used + extra + nextWidth > maxWidth) break;
+    if (!rendered.length && nextWidth > maxWidth) {
+      rendered.push(truncateCells(next, maxWidth, ''));
+      break;
+    }
+    rendered.push(next);
+    used += extra + nextWidth;
+  }
+  return rendered;
+}
+
 function summaryRow(state, config, width, options) {
-  const items = (config.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4);
   const separator = ` ${paint('·', 'frame', options.theme)} `;
   const inner = Math.max(0, width - 4);
+  const items = headerItems(config, state, options, inner);
   const text = truncateCells(items.join(separator), inner, '');
   return `${paint('│', 'frame', options.theme)} ${padCells(text, inner)} ${paint('│', 'frame', options.theme)}`;
 }
@@ -290,12 +340,14 @@ function contextColumn(state, width, theme) {
   const input = finite(value(state?.usage?.inputTokens));
   const cacheRatio = finite(value(state?.usage?.cacheRatio));
   const cachePercent = cacheRatio != null ? cacheRatio * 100 : (cached != null && input != null && input > 0 ? (cached / input) * 100 : null);
+  const turnsSinceCompact = finite(value(state?.compaction?.turnsSinceCompact));
   const barWidth = Math.max(6, Math.min(28, width));
+  const compactDetail = turnsSinceCompact == null ? '' : ` ${paint('·', 'frame', theme)} ${field('SINCE', `${turnsSinceCompact}t`, 5, theme, { valueToken: 'reasoning' })}`;
   return [
     `${styleText(`${pct(usedPercent)} used`, barToken(usedPercent, { pressure: true }), theme, { bold: true })} ${paint('·', 'frame', theme)} ${styleText(`${fmtNumber(used)}/${fmtNumber(window)}`, 'bright', theme)}`,
     bar(usedPercent, barWidth, theme, { pressure: true }),
     `${field('CACHE', fmtNumber(cached), 6, theme, { valueToken: 'info' })} ${cachePercent == null ? '' : styleText(pct(cachePercent), 'info', theme)}`.trimEnd(),
-    `${field('LEFT', pct(leftPercent), 6, theme)} ${paint('·', 'frame', theme)} ${field('CMP', fmtNumber(value(state?.compaction?.count)), 4, theme, { valueToken: 'reasoning' })}`
+    `${field('LEFT', pct(leftPercent), 6, theme)} ${paint('·', 'frame', theme)} ${field('CMP', fmtNumber(value(state?.compaction?.count)), 4, theme, { valueToken: 'reasoning' })}${compactDetail}`
   ];
 }
 
@@ -370,14 +422,16 @@ function activityColumn(state, width, theme) {
   const activeToolCount = Array.isArray(activeTools) ? activeTools.length : finite(activeTools);
   const currentTool = value(state?.tools?.current, null);
   const lastTool = value(state?.tools?.last, null);
-  const toolName = currentTool?.name ?? currentTool?.tool ?? lastTool?.name ?? lastTool?.tool ?? '--';
+  const tool = currentTool ?? lastTool;
+  const toolName = tool?.name ?? tool?.tool ?? '--';
+  const toolLabel = currentTool ? 'current' : 'last';
   const approval = Boolean(value(state?.activity?.approvalPending, false));
   const retry = fmtNumber(value(state?.activity?.retryCount));
   const errors = fmtNumber(value(state?.activity?.errorCount));
   return [
     `${styleText(`${info.symbol} ${info.activity}`, info.token, theme, { bold: true })} ${styleText(info.description, 'muted', theme)}`,
     splitRow(field('source', String(source), 8, theme), field('detail', String(detail), 7, theme, { valueToken: 'muted' }), width, theme, 0.46),
-    splitRow(field('tools', activeToolCount == null ? '--' : String(activeToolCount), 8, theme, { valueToken: 'tool' }), field('last', String(toolName), 7, theme, { valueToken: 'info' }), width, theme, 0.46),
+    splitRow(field('tools', activeToolCount == null ? '--' : String(activeToolCount), 8, theme, { valueToken: 'tool' }), field(toolLabel, String(toolName), 7, theme, { valueToken: 'info' }), width, theme, 0.46),
     splitRow(field('approval', String(approval), 8, theme, { valueToken: approval ? 'approval' : 'muted' }), `${field('retry', retry, 6, theme, { valueToken: 'approval' })} ${paint('·', 'frame', theme)} ${field('err', errors, 4, theme, { valueToken: finite(value(state?.activity?.errorCount)) > 0 ? 'error' : 'muted' })}`, width, theme, 0.46)
   ];
 }
@@ -419,7 +473,7 @@ export function buildLiveFrame({
   cwd = process.cwd(),
   nowMs = Date.now(),
   projectName = null,
-  health = 'WAITING',
+  health = null,
   gitLabel = null,
   fast = false,
   previousLaneCount = null,
@@ -437,15 +491,11 @@ export function buildLiveFrame({
     hysteresisCells
   });
 
-  // Full mode follows the feat/full-monitor-v2 visual language, while the
-  // current normalized state, current-run provenance and passive input contract
-  // remain authoritative. Require enough height for the complete 9-row frame;
-  // otherwise use the responsive compact representation instead of clipping it.
   const useFullVisual = safeWidth >= 120 && monitorRowBudget(height) >= 9 && config?.preset === 'full';
   const frame = useFullVisual
     ? fullDashboard(state, config, safeWidth, options)
     : [
-      truncateCells((config?.header ?? []).map((item) => headerItem(item, state, options)).filter(Boolean).slice(0, 4).join(` ${paint('·', 'frame', theme)} `), safeWidth, ''),
+      truncateCells(headerItems(config, state, options, safeWidth).join(` ${paint('·', 'frame', theme)} `), safeWidth, ''),
       ...mergeLanes(layout, state, options)
     ];
   const budget = monitorRowBudget(height);
