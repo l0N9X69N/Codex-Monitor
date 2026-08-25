@@ -11,6 +11,10 @@ function derived(target, key, value, nowMs, evidence) {
   setMetric(target, key, value, { source: PROVENANCE.DERIVED, observedAtMs: nowMs, evidence });
 }
 
+function local(target, key, value, nowMs, evidence = 'demo-local') {
+  setMetric(target, key, value, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence });
+}
+
 export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Date.now() } = {}) {
   const state = createNormalizedMonitorState({ runId: 'demo', startedAtMs: nowMs - 182_000 });
   current(state.auth, 'mode', authMode, nowMs);
@@ -37,15 +41,21 @@ export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Dat
   current(state.session, 'turnCount', 6, nowMs);
   current(state.session, 'lastEventAtMs', nowMs - 2_000, nowMs);
   derived(state.session, 'lastTurnDurationMs', 16_000, nowMs, 'demo-duration');
-  current(state.compaction, 'count', 0, nowMs);
+  current(state.compaction, 'count', 1, nowMs);
+  current(state.compaction, 'lastCompactTurn', 4, nowMs);
+  derived(state.compaction, 'turnsSinceCompact', 2, nowMs, 'turnCount-lastCompactTurn');
 
   if (authMode === 'login') {
     current(state.quota, 'fiveHour', { remainingPercent: 64, resetsAt: '3h42m' }, nowMs);
     current(state.quota, 'weekly', { remainingPercent: 84, resetsAt: '5d22h' }, nowMs);
   }
 
-  setMetric(state.system, 'cpuPercent', 24, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
-  setMetric(state.system, 'memoryBytes', 13_678_000_000, { source: PROVENANCE.LOCAL, observedAtMs: nowMs, evidence: 'demo-local' });
+  local(state.system, 'cpuPercent', 24, nowMs);
+  local(state.system, 'memoryBytes', 13_678_000_000, nowMs);
+  local(state.git, 'branch', 'main', nowMs, 'demo-git');
+  local(state.git, 'dirty', true, nowMs, 'demo-git');
+  local(state.git, 'diff', { changedFiles: 3, additions: 10, deletions: 1 }, nowMs, 'demo-git');
+  local(state.git, 'aheadBehind', { ahead: 2, behind: 1 }, nowMs, 'demo-git');
 
   const normalized = String(kind ?? 'idle').toLowerCase();
   const mapping = {
