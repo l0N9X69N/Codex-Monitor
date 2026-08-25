@@ -1,6 +1,6 @@
-import { sanitizeDetail } from '../core/sanitize.js';
+import { sanitizeDetail, sanitizeText } from '../core/sanitize.js';
 
-const APPROVAL_PROMPT = /would you like to run the following command|allow this command|allow once|approve this|approval required|requires approval|confirm\?|confirm this|yes\/no|do you want to (?:allow|approve|continue|proceed)|would you like to (?:allow|approve|continue|proceed)/i;
+const APPROVAL_PROMPT = /would you like to run the following command|press enter to confirm or esc to cancel|allow this command|allow once|approve this|approval required|requires approval|confirm\?|confirm this|yes\/no|do you want to (?:allow|approve|continue|proceed)|would you like to (?:allow|approve|continue|proceed)/i;
 const APPROVAL_RESOLVED = /you approved .* to run|you denied .* to run|approval (?:was )?(?:denied|cancelled|canceled)|command (?:was )?(?:cancelled|canceled)/i;
 
 function lastMatchIndex(text, pattern) {
@@ -27,8 +27,9 @@ export function parsePtyTransient(text, atMs = Date.now()) {
 }
 
 // Codex TUI output can split one visible approval prompt across multiple PTY
-// chunks. Keep a small rolling window so detection follows what the user sees
-// instead of assuming chunk boundaries are line boundaries.
+// chunks and can repaint a large portion of the screen before the prompt. Keep
+// a rolling raw window, then sanitize the whole window without the 160-char
+// detail truncation used for UI labels.
 export class PtyTransientStreamParser {
   constructor({ maxBufferChars = 4096 } = {}) {
     this.maxBufferChars = Math.max(512, Number(maxBufferChars) || 4096);
@@ -40,7 +41,7 @@ export class PtyTransientStreamParser {
     const raw = String(text ?? '');
     if (!raw) return [];
     this.buffer = `${this.buffer}${raw}`.slice(-this.maxBufferChars);
-    const cleanWindow = sanitizeDetail(this.buffer) ?? '';
+    const cleanWindow = sanitizeText(this.buffer, { maxLength: this.maxBufferChars }) ?? '';
     const events = [];
 
     const promptIndex = lastMatchIndex(cleanWindow, APPROVAL_PROMPT);
