@@ -1,12 +1,165 @@
-MINI CODEX DOG — BELLY +2 -> EAT -> BELLY MAX
+MINI CODEX DOG — NORMAL -> EAT -> BELLY +1 -> EAT -> BELLY +2 -> EAT -> BELLY MAX
 EDITABLE ASCII PREVIEW
-Rule: keep HEAD anchor and BOWL anchor on the same columns in every frame.
+Rule: keep HEAD anchor on the same columns in every frame.
 
 COLUMN RULER
 00000000001111111111222222222233333333334444444444
 01234567890123456789012345678901234567890123456789
 
-FRAME 01 — BELLY +2 / IDLE
+FRAME 01 — NORMAL / IDLE
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+
+FRAME 02 — NORMAL / BLINK
+--------------------------------------------------
+             __
+        (___()_`;
+        /*    /`
+        \\"--\\
+
+
+FRAME 03 — NORMAL / EYES OPEN
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+
+FRAME 04 — NORMAL / FOOD APPEARS
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`            .
+        \\"--\\
+
+
+FRAME 05 — NORMAL / FOOD CLOSER
+--------------------------------------------------
+             __
+        (___()'`;      .
+        /*    /`
+        \\"--\\
+
+
+FRAME 06 — NORMAL / EAT NOM
+--------------------------------------------------
+             __
+        (___()'`: .
+        /*    /`
+        \\"--\\
+
+
+FRAME 07 — NORMAL / CHEW
+--------------------------------------------------
+             __
+        (___()'`o
+        /*    /`
+        \\"--\\
+
+
+FRAME 08 — NORMAL / CHEW 2
+--------------------------------------------------
+             __
+        (___()'`:
+        /*    /`
+        \\"--\\
+
+
+FRAME 09 — NORMAL / GULP
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+
+FRAME 10 — BELLY +1 / IDLE
+--------------------------------------------------
+             __
+       (____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 11 — BELLY +1 / BLINK
+--------------------------------------------------
+             __
+       (____()_`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 12 — BELLY +1 / EYES OPEN
+--------------------------------------------------
+             __
+       (____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 13 — BELLY +1 / FOOD APPEARS
+--------------------------------------------------
+             __
+       (____()'`;
+       /*     /`           .
+       \_   _/
+        \\"-'\\
+
+
+FRAME 14 — BELLY +1 / FOOD CLOSER
+--------------------------------------------------
+             __
+       (____()'`;      .
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 15 — BELLY +1 / EAT NOM
+--------------------------------------------------
+             __
+       (____()'`: .
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 16 — BELLY +1 / CHEW
+--------------------------------------------------
+             __
+       (____()'`o
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 17 — BELLY +1 / CHEW 2
+--------------------------------------------------
+             __
+       (____()'`:
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 18 — BELLY +1 / GULP
+--------------------------------------------------
+             __
+       (____()'`;
+       /*     /`
+       \_   _/
+        \\"-'\\
+
+
+FRAME 19 — BELLY +2 / IDLE
 --------------------------------------------------
              __
       (_____()'`;
@@ -15,7 +168,7 @@ FRAME 01 — BELLY +2 / IDLE
        \\"-'\\
 
 
-FRAME 02 — BELLY +2 / BLINK
+FRAME 20 — BELLY +2 / BLINK
 --------------------------------------------------
              __
       (_____()_`;
@@ -24,7 +177,7 @@ FRAME 02 — BELLY +2 / BLINK
        \\"-'\\
 
 
-FRAME 03 — BELLY +2 / EYES OPEN
+FRAME 21 — BELLY +2 / EYES OPEN
 --------------------------------------------------
              __
        (____()'`;
@@ -33,7 +186,7 @@ FRAME 03 — BELLY +2 / EYES OPEN
        \\"-'\\
 
 
-FRAME 04 — FOOD APPEARS
+FRAME 22 — BELLY +2 / FOOD APPEARS
 --------------------------------------------------
              __
       (_____()'`;
@@ -42,7 +195,7 @@ FRAME 04 — FOOD APPEARS
        \\"-'\\
 
 
-FRAME 05 — FOOD CLOSER
+FRAME 23 — BELLY +2 / FOOD CLOSER
 --------------------------------------------------
              __
       (_____()'`;      .
@@ -51,7 +204,7 @@ FRAME 05 — FOOD CLOSER
        \\"-'\\
 
 
-FRAME 06 — EAT / NOM
+FRAME 24 — BELLY +2 / EAT NOM
 --------------------------------------------------
              __
       (_____()'`: .
@@ -60,7 +213,7 @@ FRAME 06 — EAT / NOM
        \\"-'\\
 
 
-FRAME 07 — EAT / CHEW
+FRAME 25 — BELLY +2 / CHEW
 --------------------------------------------------
              __
       (_____()'`o
@@ -69,7 +222,7 @@ FRAME 07 — EAT / CHEW
        \\"-'\\
 
 
-FRAME 08 — EAT / CHEW 2
+FRAME 26 — BELLY +2 / CHEW 2
 --------------------------------------------------
              __
       (_____()'`:
@@ -78,7 +231,7 @@ FRAME 08 — EAT / CHEW 2
        \\"-'\\
 
 
-FRAME 09 — GULP / BACK TO FACE
+FRAME 27 — BELLY +2 / GULP
 --------------------------------------------------
              __
       (_____()'`;
@@ -87,7 +240,7 @@ FRAME 09 — GULP / BACK TO FACE
        \\"-'\\
 
 
-FRAME 10 — BELLY GROW TRANSITION
+FRAME 28 — BELLY GROW TRANSITION
 --------------------------------------------------
              __
      (______()'`;
@@ -96,7 +249,7 @@ FRAME 10 — BELLY GROW TRANSITION
        \\"-'\\
 
 
-FRAME 11 — BELLY MAX / IDLE
+FRAME 29 — BELLY MAX / IDLE
 --------------------------------------------------
               __
       (______()'`;
@@ -106,7 +259,7 @@ FRAME 11 — BELLY MAX / IDLE
         \\"-'\\
 
 
-FRAME 12 — BELLY MAX / BLINK
+FRAME 30 — BELLY MAX / BLINK
 --------------------------------------------------
               __
       (______()_`;
@@ -116,7 +269,7 @@ FRAME 12 — BELLY MAX / BLINK
         \\"-'\\
 
 
-FRAME 13 — BELLY MAX / EYES OPEN
+FRAME 31 — BELLY MAX / EYES OPEN
 --------------------------------------------------
               __
       (______()'`;
@@ -126,7 +279,7 @@ FRAME 13 — BELLY MAX / EYES OPEN
         \\"-'\\
 
 
-FRAME 14 — BELLY MAX / HAPPY WAG A
+FRAME 32 — BELLY MAX / HAPPY WAG A
 --------------------------------------------------
               __
      /(______()'`;
@@ -136,7 +289,7 @@ FRAME 14 — BELLY MAX / HAPPY WAG A
         \\"-'\\
 
 
-FRAME 15 — BELLY MAX / HAPPY WAG B
+FRAME 33 — BELLY MAX / HAPPY WAG B
 --------------------------------------------------
               __
      \(______()'`;
@@ -151,6 +304,6 @@ NOTES FOR EDITING
 - Do not use proportional fonts while editing.
 - Keep each ASCII line <= 50 columns.
 - Head anchor should stay near the same X position.
-- Bowl should stay fixed.
 - Only belly/body should expand left/down when getting fatter.
 - Legs should remain under the body, not outside the belly.
+- eat.js reads this file directly, so editing these frames updates the animation.
