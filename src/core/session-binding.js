@@ -26,9 +26,15 @@ export function hasCurrentRunEvidence(candidate, {
     && Number.isFinite(candidate.lastEventAtMs)
     && candidate.lastEventAtMs >= threshold;
 
-  // File mtime alone is intentionally not accepted. A previous rollout can
-  // have a recent mtime and must not be used to fill current-run telemetry.
-  return startedDuringRun || appendedDuringRun;
+  // Resume re-opens an existing rollout, so its original session_meta timestamp
+  // is intentionally old. Codex can touch/re-open the selected rollout before
+  // it appends the next event. This evidence is only set by the resume-aware
+  // tailer; normal runs still reject mtime-only candidates.
+  const resumedDuringRun = candidate.resumeTouchedAfterRun === true
+    && Number.isFinite(candidate.lastEventAtMs)
+    && candidate.lastEventAtMs >= threshold;
+
+  return startedDuringRun || appendedDuringRun || resumedDuringRun;
 }
 
 export function scoreCurrentRunCandidate(candidate, {
@@ -43,6 +49,7 @@ export function scoreCurrentRunCandidate(candidate, {
 
   let score = 0;
   if (candidate.appendedAfterRun === true) score += 100;
+  if (candidate.resumeTouchedAfterRun === true) score += 90;
   if (Number.isFinite(candidate.startedAtMs) && candidate.startedAtMs >= runStartedAtMs - toleranceMs) score += 80;
   if (cwd && candidate.cwd && pathMatch(cwd, candidate.cwd, platform)) score += 25;
   if (candidate.currentProcessHint === true) score += 40;
