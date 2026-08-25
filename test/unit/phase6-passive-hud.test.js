@@ -22,22 +22,34 @@ test('legacy config tabs are ignored and schema migrates to passive v2', () => {
   assert.equal(config.header.length, 4);
 });
 
-test('wide Full restores framed v1-quality dashboard hierarchy', () => {
+test('wide Full mirrors full-monitor-v2 visual hierarchy without restoring its old input model', () => {
   const config = normalizeConfig(configForPreset('full'));
   const state = createDemoState('tool', { authMode: 'login', nowMs: NOW });
   const frame = buildLiveFrame({ state, config, width: 160, height: 40, nowMs: NOW, projectName: 'Codex Monitor' });
   const text = stripAnsi(frame.lines.join('\n'));
-  assert.equal(frame.lines.length, 7);
+  assert.equal(frame.lines.length, 9);
+  assert.equal(frame.semantic.visual, 'full-monitor-v2');
+  assert.equal(frame.semantic.interactive, false);
   assert.match(text, /CODEX MONITOR · FULL/);
   assert.match(text, /CONTEXT/);
   assert.match(text, /USAGE · LOGIN/);
   assert.match(text, /SESSION/);
   assert.match(text, /CURRENT ACTIVITY/);
-  assert.match(text, /TOOL/);
+  assert.match(text, /CACHE/);
+  assert.match(text, /LEFT/);
+  assert.match(text, /CMP/);
+  assert.match(text, /5H/);
+  assert.match(text, /WEEK/);
+  assert.match(text, /TURN/);
+  assert.match(text, /elapsed/);
+  assert.match(text, /thread/);
+  assert.match(text, /source/);
+  assert.match(text, /approval/);
+  assert.match(text, /retry/);
+  assert.match(text, /err/);
   assert.match(text, /╭/);
   assert.match(text, /╰/);
   assert.equal(assertNoWrap(frame, 160), true);
-  assert.equal(frame.semantic.interactive, false);
 });
 
 test('passive HUD never renders old Live navigation chrome', () => {
@@ -47,13 +59,18 @@ test('passive HUD never renders old Live navigation chrome', () => {
   assert.doesNotMatch(text, /\[overview\]|performance\s+processes|Alt\+|F4 History|Ctrl\+G/i);
 });
 
-test('API mode does not display Login quota in framed or compact layouts', () => {
+test('API mode keeps full-monitor-v2 card structure but never displays Login quota', () => {
   for (const [width, height] of [[160, 40], [90, 24], [56, 18]]) {
     const config = normalizeConfig(configForPreset(width >= 120 ? 'full' : 'recommended'));
     const state = createDemoState('idle', { authMode: 'api', nowMs: NOW });
     const text = stripAnsi(buildLiveFrame({ state, config, width, height, nowMs: NOW }).lines.join('\n'));
     assert.doesNotMatch(text, /\b5H\b/);
     assert.doesNotMatch(text, /\bWEEK\b/);
+    if (width >= 120) {
+      assert.match(text, /USAGE · API/);
+      assert.match(text, /MODEL/);
+      assert.match(text, /ACTUAL/);
+    }
   }
 });
 
