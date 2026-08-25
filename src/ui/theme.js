@@ -1,5 +1,7 @@
 const ESC = '\x1b[';
-const RESET = `${ESC}0m`;
+const RESET_FG = `${ESC}39m`;
+const RESET_STYLE = `${ESC}22;39m`;
+const RESET_ALL = `${ESC}0m`;
 const BOLD = `${ESC}1m`;
 
 // Color theme intentionally follows the proven feat/full-monitor-v2 visual
@@ -46,23 +48,38 @@ const MATRIX = Object.freeze({
   strong: BOLD
 });
 
+const BACKGROUNDS = Object.freeze({
+  terminal: '',
+  black: `${ESC}48;2;0;0;0m`,
+  dark: `${ESC}48;2;15;23;42m`
+});
+
 const THEMES = Object.freeze({ color: COLOR, mono: MONO, matrix: MATRIX });
 
 export function themeTokens(theme = 'color') {
   const tokens = THEMES[theme] ?? COLOR;
-  return { ...tokens, reset: RESET, name: THEMES[theme] ? theme : 'color' };
+  return { ...tokens, reset: RESET_STYLE, name: THEMES[theme] ? theme : 'color' };
 }
 
 export function paint(text, token, theme = 'color') {
   const tokens = themeTokens(theme);
   const prefix = tokens[token] ?? '';
-  return prefix ? `${prefix}${text}${tokens.reset}` : String(text ?? '');
+  return prefix ? `${prefix}${text}${RESET_FG}` : String(text ?? '');
 }
 
 export function styleText(text, token = 'text', theme = 'color', { bold = false } = {}) {
   const tokens = themeTokens(theme);
   const prefix = `${bold ? tokens.strong : ''}${tokens[token] ?? ''}`;
-  return prefix ? `${prefix}${text}${tokens.reset}` : String(text ?? '');
+  return prefix ? `${prefix}${text}${RESET_STYLE}` : String(text ?? '');
+}
+
+export function applyLineBackground(text, background = 'terminal') {
+  const prefix = BACKGROUNDS[background] ?? '';
+  return prefix ? `${prefix}${text}${RESET_ALL}` : String(text ?? '');
+}
+
+export function backgroundToken(background = 'terminal') {
+  return BACKGROUNDS[background] ?? '';
 }
 
 export function activityToken(activity) {
