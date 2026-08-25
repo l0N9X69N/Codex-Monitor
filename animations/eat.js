@@ -1,27 +1,38 @@
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_SOURCE = resolve(here, 'eat_preview.txt');
 
 function parseArgs(argv) {
   const options = {
     once: false,
     raw: false,
     speed: 1,
-    source: resolve(here, 'eat_preview.txt'),
+    source: DEFAULT_SOURCE,
   };
 
   for (const arg of argv) {
     if (arg === '--once') {
       options.once = true;
-    } else if (arg === '--raw') {
+      continue;
+    }
+
+    if (arg === '--raw') {
       options.raw = true;
-    } else if (arg.startsWith('--speed=')) {
-      const value = Number(arg.slice('--speed='.length));
-      if (Number.isFinite(value) && value > 0) options.speed = value;
-    } else if (arg.startsWith('--source=')) {
-      options.source = resolve(process.cwd(), arg.slice('--source='.length));
+      continue;
+    }
+
+    if (arg.startsWith('--speed=')) {
+      const speed = Number(arg.slice('--speed='.length));
+      if (Number.isFinite(speed) && speed > 0) options.speed = speed;
+      continue;
+    }
+
+    if (arg.startsWith('--source=')) {
+      const source = arg.slice('--source='.length).trim();
+      if (source) options.source = resolve(process.cwd(), source);
     }
   }
 
@@ -29,73 +40,97 @@ function parseArgs(argv) {
 }
 
 function parseFrames(text) {
-  const normalized = text.replace(/\r\n/g, '\n');
-  const frameRe = /FRAME\s+(\d+)\s+[—–-]\s+([^\n]+)\n-{10,}\n([\s\S]*?)(?=\n{2,}FRAME\s+\d+\s+[—–-]\s+|\n{2,}NOTES FOR EDITING|$)/g;
-  const frames = [];
+  const normalized = text.replace(/\r\n?/g, '\n');
+  const header = /^FRAME\s+(\d+)\s+[—–-]\s+(.+)$/gm;
+  const matches = [...normalized.matchAll(header)];
 
-  for (const match of normalized.matchAll(frameRe)) {
-    frames.push({
-      number: Number(match[1]),
-      title: match[2].trim(),
-      art: match[3].replace(/\n+$/g, ''),
-    });
-  }
-
-  if (frames.length === 0) {
+  if (matches.length === 0) {
     throw new Error('No FRAME sections found in eat_preview.txt');
   }
 
-  return frames;
+  return matches.map((match, index) => {
+    const blockStart = match.index + match[0].length;
+    const blockEnd = index + 1 < matches.length
+      ? matches[index + 1].index
+      : normalized.indexOf('\nNOTES FOR EDITING', blockStart) >= 0
+        ? normalized.indexOf('\nNOTES FOR EDITING', blockStart)
+        : normalized.length;
+
+    let block = normalized.slice(blockStart, blockEnd);
+    block = block.replace(/^\n-{10,}\n/, '');
+    block = block.replace(/\n+$/g, '');
+
+    return {
+      number: Number(match[1]),
+      title: match[2].trim(),
+      art: block,
+    };
+  });
 }
 
-function frameDelay(frame) {
+function delayFor(frame) {
   const title = frame.title.toUpperCase();
 
-  if (title.includes('BLINK')) return 150;
-  if (title.includes('EYES OPEN')) return 280;
-  if (title.includes('FOOD APPEARS')) return 550;
-  if (title.includes('FOOD CLOSER')) return 330;
-  if (title.includes('NOM')) return 240;
-  if (title.includes('CHEW')) return 190;
-  if (title.includes('GULP')) return 420;
-  if (title.includes('GROW')) return 460;
-  if (title.includes('HAPPY WAG')) return 240;
-  if (title.includes('BELLY MAX')) return 700;
+  if (title.includes('BLINK')) return 135;
+  if (title.includes('EYES OPEN')) return 250;
+  if (title.includes('FOOD APPEARS')) return 520;
+  if (title.includes('FOOD CLOSER')) return 300;
+  if (title.includes('EAT NOM')) return 220;
+  if (title.includes('CHEW 2')) return 180;
+  if (title.includes('CHEW')) return 180;
+  if (title.includes('GULP')) return 430;
+  if (title.includes('GROW TRANSITION')) return 520;
+  if (title.includes('HAPPY WAG')) return 230;
+  if (title.includes('BELLY MAX / IDLE')) return 760;
+  if (title.includes('BELLY +2 / IDLE')) return 650;
+  if (title.includes('BELLY +1 / IDLE')) return 650;
+  if (title.includes('NORMAL / IDLE')) return 800;
 
-  return 650;
+  return 420;
 }
 
-function getCanvasWidth(frames) {
+function visualWidth(text) {
+  return [...text].length;
+}
+
+function padRight(text, width) {
+  return text + ' '.repeat(Math.max(0, width - visualWidth(text)));
+}
+
+function getLayout(frames) {
+  const artRows = Math.max(...frames.map((frame) => frame.art.split('\n').length));
   const artWidth = Math.max(
-    0,
-    ...frames.flatMap((frame) => frame.art.split('\n').map((line) => line.length)),
+    ...frames.flatMap((frame) => frame.art.split('\n').map(visualWidth)),
   );
   const stateWidth = Math.max(
-    0,
-    ...frames.map((frame) => `FRAME ${String(frame.number).padStart(2, '0')}  ${frame.title}`.length),
+    ...frames.map((frame) => visualWidth(`FRAME ${String(frame.number).padStart(2, '0')}  ${frame.title}`)),
   );
 
-  return Math.max(50, artWidth, stateWidth);
+  return {
+    width: Math.max(50, artWidth, stateWidth),
+    artRows,
+  };
 }
 
-function padRight(line, width) {
-  return line + ' '.repeat(Math.max(0, width - line.length));
-}
-
-function renderBox(frame, width, artRows) {
+function renderBox(frame, layout, totalFrames) {
+  const { width, artRows } = layout;
   const artLines = frame.art.split('\n');
-  const state = `FRAME ${String(frame.number).padStart(2, '0')}  ${frame.title}`;
+  const label = `FRAME ${String(frame.number).padStart(2, '0')}/${String(totalFrames).padStart(2, '0')}  ${frame.title}`;
   const title = ' MINI CODEX DOG · EAT ';
-  const top = `╭${title}${'─'.repeat(Math.max(0, width - title.length))}╮`;
+  const top = `╭${title}${'─'.repeat(Math.max(0, width - visualWidth(title)))}╮`;
   const divider = `├${'─'.repeat(width)}┤`;
   const bottom = `╰${'─'.repeat(width)}╯`;
-  const lines = [top, `│${padRight(state, width)}│`, divider];
+  const lines = [
+    top,
+    `│${padRight(label, width)}│`,
+    divider,
+  ];
 
   for (const line of artLines) {
     lines.push(`│${padRight(line, width)}│`);
   }
 
-  for (let i = artLines.length; i < artRows; i += 1) {
+  for (let row = artLines.length; row < artRows; row += 1) {
     lines.push(`│${' '.repeat(width)}│`);
   }
 
@@ -109,14 +144,13 @@ function sleep(ms) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const text = await readFile(options.source, 'utf8');
-  const frames = parseFrames(text);
-  const width = getCanvasWidth(frames);
-  const artRows = Math.max(...frames.map((frame) => frame.art.split('\n').length));
+  const preview = await readFile(options.source, 'utf8');
+  const frames = parseFrames(preview);
+  const layout = getLayout(frames);
   const isTty = Boolean(process.stdout.isTTY);
-  let running = true;
+  let stopped = false;
 
-  const cleanup = () => {
+  const restoreTerminal = () => {
     if (isTty) process.stdout.write('\x1b[?25h');
   };
 
@@ -126,11 +160,18 @@ async function main() {
   });
 
   process.on('SIGINT', () => {
-    running = false;
-    cleanup();
+    stopped = true;
+    restoreTerminal();
     process.exit(130);
   });
-  process.on('exit', cleanup);
+
+  process.on('SIGTERM', () => {
+    stopped = true;
+    restoreTerminal();
+    process.exit(143);
+  });
+
+  process.on('exit', restoreTerminal);
 
   if (isTty) {
     process.stdout.write('\x1b[?25l\x1b[2J\x1b[H');
@@ -138,11 +179,11 @@ async function main() {
 
   do {
     for (const frame of frames) {
-      if (!running) break;
+      if (stopped) break;
 
       const output = options.raw
         ? frame.art
-        : renderBox(frame, width, artRows);
+        : renderBox(frame, layout, frames.length);
 
       if (isTty) {
         process.stdout.write(`\x1b[H${output}\x1b[J`);
@@ -150,14 +191,14 @@ async function main() {
         process.stdout.write(`${output}\n\n`);
       }
 
-      const delay = Math.max(40, Math.round(frameDelay(frame) / options.speed));
+      const delay = Math.max(35, Math.round(delayFor(frame) / options.speed));
       await sleep(delay);
     }
 
-    if (!options.once && running) {
-      await sleep(Math.max(80, Math.round(700 / options.speed)));
+    if (!options.once && !stopped) {
+      await sleep(Math.max(100, Math.round(1100 / options.speed)));
     }
-  } while (running && !options.once);
+  } while (!options.once && !stopped);
 }
 
 main().catch((error) => {
