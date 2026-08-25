@@ -86,6 +86,7 @@ export async function runCodexLive({
     if (!pane || exiting) return;
     const geometry = pane.geometry();
     guard.setScrollRegion(1, geometry.childRows);
+    try { child?.resize?.(geometry.width, geometry.childRows); } catch {}
     pane.render({ force: true });
   };
 
@@ -116,7 +117,7 @@ export async function runCodexLive({
 
   const resizeChild = (geometry = null) => {
     if (!child || exiting) return;
-    const nextCols = Math.max(20, stdout.columns || 80);
+    const nextCols = geometry?.width ?? Math.max(20, stdout.columns || 80);
     const nextRows = geometry?.childRows ?? Math.max(8, stdout.rows || 24);
     if (pane) guard.setScrollRegion(1, nextRows);
     try { child.resize(nextCols, nextRows); } catch {}
@@ -124,8 +125,21 @@ export async function runCodexLive({
 
   const onResize = () => {
     if (!child || exiting) return;
-    if (pane) pane.onResize((geometry) => resizeChild(geometry));
-    else resizeChild();
+    if (!pane) {
+      resizeChild();
+      return;
+    }
+
+    // Windows Terminal can emit a burst of resize events while maximizing or
+    // dragging. Apply the latest geometry to the PTY and scroll region
+    // immediately so Codex paints into the correct viewport on the first event;
+    // the debounced pane repaint then settles the HUD after the burst.
+    const immediateGeometry = pane.geometry();
+    resizeChild(immediateGeometry);
+    pane.onResize((geometry) => {
+      resizeChild(geometry);
+      scheduleHudRepair();
+    });
   };
 
   const writeChildInput = (value) => {
