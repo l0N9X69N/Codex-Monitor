@@ -49,7 +49,10 @@ function firstSessionMeta(filePath, fsRef = fs) {
 function fileSnapshot(root, fsRef = fs) {
   const map = new Map();
   for (const filePath of discoverJsonl(root, fsRef)) {
-    try { map.set(filePath, fsRef.statSync(filePath).size); } catch {}
+    try {
+      const stat = fsRef.statSync(filePath);
+      map.set(filePath, { size: stat.size, mtimeMs: stat.mtimeMs });
+    } catch {}
   }
   return map;
 }
@@ -127,7 +130,7 @@ export class CurrentSessionTailer {
     this.fs = fsRef;
     this.now = now;
     this.resumeMode = Boolean(resumeMode);
-    this.initialSizes = this.resumeMode ? fileSnapshot(sessionsPath, fsRef) : new Map();
+    this.initialFiles = this.resumeMode ? fileSnapshot(sessionsPath, fsRef) : new Map();
     this.pipeline = new MonitorIngestPipeline(state);
     this.boundPath = null;
     this.offset = 0;
@@ -148,8 +151,6 @@ export class CurrentSessionTailer {
     if (chunk) this.pipeline.pushRolloutChunk(chunk);
     if (remainder.trim()) this.pipeline.pushRolloutChunk(`${remainder}\n`);
 
-    // Account quota is not session-scoped. Keep a newer bootstrap snapshot if
-    // replaying the resumed session encountered an older rate-limit event.
     for (const key of ['fiveHour', 'weekly']) {
       const saved = preservedQuota[key];
       const current = this.state.quota[key];
@@ -169,26 +170,28 @@ export class CurrentSessionTailer {
     const recent = discoverJsonl(this.sessionsPath, this.fs).map((filePath) => {
       try {
         const stat = this.fs.statSync(filePath);
-        return { filePath, stat, initialSize: this.initialSizes.get(filePath) };
+        const initial = this.initialFiles.get(filePath) ?? null;
+        return { filePath, stat, initial };
       } catch { return null; }
     }).filter(Boolean)
-      .filter(({ stat, initialSize }) => this.resumeMode
-        ? (initialSize == null || stat.size > initialSize || stat.mtimeMs >= runStartedAtMs - 10_000)
+      .filter(({ stat, initial }) => this.resumeMode
+        ? (initial == null || stat.size > initial.size || stat.mtimeMs >= runStartedAtMs - 10_000)
         : (!Number.isFinite(runStartedAtMs) || stat.mtimeMs >= runStartedAtMs - 10_000))
       .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)
       .slice(0, this.resumeMode ? 50 : 20);
 
-    const candidates = recent.map(({ filePath, stat, initialSize }) => {
+    const candidates = recent.map(({ filePath, stat, initial }) => {
       const meta = firstSessionMeta(filePath, this.fs);
       return {
         filePath,
         startedAtMs: meta?.atMs ?? null,
         lastEventAtMs: stat.mtimeMs,
-        appendedAfterRun: Number.isFinite(initialSize) && stat.size > initialSize,
+        appendedAfterRun: Boolean(initial && stat.size > initial.size),
+        resumeTouchedAfterRun: Boolean(this.resumeMode && initial && stat.mtimeMs > initial.mtimeMs && stat.mtimeMs >= runStartedAtMs - 10_000),
         cwd: meta?.cwd ?? null,
         currentProcessHint: false,
         sizeBytes: stat.size,
-        initialSize: Number.isFinite(initialSize) ? initialSize : 0
+        initialSize: Number.isFinite(initial?.size) ? initial.size : 0
       };
     });
     const selected = selectCurrentSession(candidates, { runStartedAtMs, cwd: this.cwd, toleranceMs: 5000 });
@@ -212,7 +215,7 @@ export class CurrentSessionTailer {
       this.remainder = '';
       this.pipeline = new MonitorIngestPipeline(this.state);
     }
-    if (stat.size === this.offset) return { bound: true, bytes: 0, events: 0 };
+    if (stat.size === this.offset) return { bound: true, bytes: 0, events: 0, resumed: this.resumeMode };
     const fd = this.fs.openSync(filePath, 'r');
     try {
       const length = stat.size - this.offset;
