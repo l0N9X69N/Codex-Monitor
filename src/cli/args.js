@@ -18,7 +18,7 @@ export function parseMonitorArgs(argv = []) {
   let auth = 'auto';
   let action = 'run';
   let parsingMonitor = true;
-  const overrides = { preset: null, theme: null, language: null };
+  const overrides = { preset: null, theme: null, background: null, language: null };
   const demo = { state: 'idle' };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -53,6 +53,12 @@ export function parseMonitorArgs(argv = []) {
       continue;
     }
     if (parsingMonitor && arg.startsWith('--theme=')) { overrides.theme = normalizeChoice('themes', arg.slice('--theme='.length), '--theme'); continue; }
+    if (parsingMonitor && arg === '--background') {
+      overrides.background = normalizeChoice('backgrounds', requireValue(argv, i, '--background'), '--background');
+      i += 1;
+      continue;
+    }
+    if (parsingMonitor && arg.startsWith('--background=')) { overrides.background = normalizeChoice('backgrounds', arg.slice('--background='.length), '--background'); continue; }
     if (parsingMonitor && arg === '--lang') {
       overrides.language = normalizeChoice('languages', requireValue(argv, i, '--lang'), '--lang');
       i += 1;
