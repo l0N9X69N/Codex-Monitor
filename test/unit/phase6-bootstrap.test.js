@@ -5,9 +5,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCurrentRunState } from '../../src/core/state.js';
 import { bootstrapAccountQuota } from '../../src/collectors/quota-bootstrap.js';
-import { CurrentSessionTailer } from '../../src/collectors/current-session.js';
+import { CurrentSessionTailer, firstSessionMeta } from '../../src/collectors/current-session.js';
 import { PROVENANCE } from '../../src/core/provenance.js';
 import { isResumeIntent } from '../../src/runtime/live-data.js';
+import { codexArgsForLocalResume, listLocalResumeSessions, localResumePickerIntent } from '../../src/runtime/local-resume-picker.js';
 
 function tempSessions() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-phase6-'));
@@ -41,6 +42,25 @@ function tokenCount(timestamp, { input = 100, cached = 50, output = 20, context 
       },
       rate_limits: rateLimits
     }
+  };
+}
+
+function nestedSessionMeta(timestamp, { id, cwd }) {
+  return {
+    timestamp,
+    type: 'session_meta',
+    payload: {
+      meta: { id, timestamp, cwd, originator: 'codex' },
+      git: null
+    }
+  };
+}
+
+function userMessage(timestamp, text) {
+  return {
+    timestamp,
+    type: 'response_item',
+    payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] }
   };
 }
 
@@ -119,6 +139,79 @@ test('resume intent hydrates durable telemetry from the selected old session whi
     assert.equal(state.activity.approvalPending.value, false);
     assert.deepEqual(state.activity.activeTools.value, []);
     assert.equal(state.tools.current.value, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('modern nested session_meta exposes thread id and cwd to local resume discovery', () => {
+  const { root, sessions } = tempSessions();
+  try {
+    const filePath = path.join(sessions, 'nested.jsonl');
+    fs.writeFileSync(filePath, jsonl([nestedSessionMeta('2026-08-20T10:00:00.000Z', { id: 'thread-nested', cwd: root })]));
+    const meta = firstSessionMeta(filePath);
+    assert.equal(meta.threadId, 'thread-nested');
+    assert.equal(meta.cwd, root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('local resume picker lists chat previews and maps selection to official resume thread id', () => {
+  const { root, sessions } = tempSessions();
+  try {
+    const filePath = path.join(sessions, 'picked.jsonl');
+    fs.writeFileSync(filePath, jsonl([
+      nestedSessionMeta('2026-08-20T10:00:00.000Z', { id: 'thread-picked', cwd: root }),
+      userMessage('2026-08-20T10:00:01.000Z', 'Continue the monitor architecture work')
+    ]));
+    const listed = listLocalResumeSessions(sessions, { cwd: root });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].threadId, 'thread-picked');
+    assert.match(listed[0].preview, /monitor architecture/);
+    assert.deepEqual(localResumePickerIntent(['resume']), { showAll: false });
+    assert.deepEqual(localResumePickerIntent(['resume', '--all']), { showAll: true });
+    assert.equal(localResumePickerIntent(['resume', '--last']), null);
+    assert.equal(localResumePickerIntent(['resume', 'already-known-id']), null);
+    assert.deepEqual(codexArgsForLocalResume(['resume', '--all'], 'thread-picked'), ['resume', 'thread-picked']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('exact local resume target hydrates before any new Codex turn is appended', () => {
+  const { root, sessions } = tempSessions();
+  try {
+    const now = Date.now();
+    const filePath = path.join(sessions, 'prebound.jsonl');
+    fs.writeFileSync(filePath, jsonl([
+      nestedSessionMeta('2026-08-20T10:00:00.000Z', { id: 'thread-prebound', cwd: root }),
+      { timestamp: '2026-08-20T10:00:01.000Z', type: 'turn_started', payload: { turn_id: 'old-turn' } },
+      tokenCount('2026-08-20T10:00:02.000Z', { input: 4321, cached: 3000, output: 222, context: 1400 }),
+      { timestamp: '2026-08-20T10:00:03.000Z', type: 'turn_complete', payload: { turn_id: 'old-turn' } }
+    ]));
+
+    const state = createCurrentRunState({ startedAtMs: now, authMode: 'login' });
+    const tailer = new CurrentSessionTailer({
+      state,
+      sessionsPath: sessions,
+      cwd: root,
+      now: () => now,
+      resumeMode: true,
+      resumeTargetPath: filePath
+    });
+
+    assert.equal(tailer.boundPath, filePath);
+    assert.equal(state.session.bound.value, true);
+    assert.equal(state.session.threadId.value, 'thread-prebound');
+    assert.equal(state.session.turnCount.value, 1);
+    assert.equal(state.session.resumedHistoryTurns.value, 1);
+    assert.equal(state.usage.inputTokens.value, 4321);
+    assert.equal(state.usage.inputTokens.provenance.source, PROVENANCE.OFFICIAL_HISTORY);
+    assert.equal(state.context.usedTokens.value, 1400);
+    assert.equal(state.activity.state.value, 'IDLE');
+    assert.equal(state.activity.approvalPending.value, false);
+    assert.equal(tailer.poll().bytes, 0);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
