@@ -1,11 +1,9 @@
 import path from 'node:path';
 import { assertNoWrap, formatBytes, formatQuotaReset } from './live-renderer.js';
 import { cellWidth, padCells, truncateCells } from './cell-width.js';
-import { paint, styleText } from './theme.js';
+import { applyLineBackground, paint, styleText } from './theme.js';
 import { contextUsedSeverity, quotaRemainingSeverity, severityToken, systemPressureSeverity } from './severity.js';
 
-// Kept as a compatibility export for callers/tests from the first 5-card
-// implementation. The responsive grid no longer uses a single 200-cell gate.
 const ULTRAWIDE_SYSTEM_CARD_MIN_CELLS = 200;
 const MIN_SPARKLINE_SAMPLES = 4;
 const SPARK_BLOCKS = '▁▂▃▄';
@@ -527,18 +525,71 @@ function systemContent(state, rep, width, theme) {
   const used = finite(value(state?.system?.memoryBytes));
   const total = finite(value(state?.system?.totalMemoryBytes));
   const memoryPercent = used != null && total != null && total > 0 ? (used / total) * 100 : null;
-  const graphWidth = Math.max(4, Math.min(20, width - 11));
+  const graphWidth = Math.max(4, Math.min(36, width - 10));
   const cpuGraph = width >= 24 ? systemGraph(state, 'cpu', graphWidth) : null;
   const ramGraph = width >= 24 ? systemGraph(state, 'ram', graphWidth) : null;
   const cpuLine = pressureText('CPU', cpu, cpuGraph, theme);
   const ramLine = pressureText('RAM', memoryPercent, ramGraph, theme);
   const cpuToken = severityToken(systemPressureSeverity(cpu));
   const ramToken = severityToken(systemPressureSeverity(memoryPercent));
-  const capacityLine = `USED ${formatBytes(used)} ${paint('·', 'frame', theme)} TOTAL ${formatBytes(total)}`;
+  const capacityBar = progressBar(memoryPercent, Math.max(6, Math.min(10, width - 23)));
+  const capacityLine = capacityBar
+    ? `USED ${styleText(capacityBar, ramToken, theme)} ${formatBytes(used)}/${formatBytes(total)}`
+    : `USED ${formatBytes(used)}/${formatBytes(total)}`;
 
   if (rep === CARD_REPRESENTATION.MINIMAL) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`];
-  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, capacityLine];
+  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, `USED ${formatBytes(used)}/${formatBytes(total)}`];
   return [cpuLine, ramLine, capacityLine];
+}
+
+function fieldEnabled(fields, name) {
+  return fields?.[name] !== false;
+}
+
+function anyField(fields, names) {
+  return names.some((name) => fieldEnabled(fields, name));
+}
+
+function filterContentRows(cardId, rows, rep, fields, authMode) {
+  if (!fields) return rows;
+  let keep = [];
+
+  if (cardId === 'context') {
+    if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['used', 'left'])];
+    else if (rep === CARD_REPRESENTATION.COMPACT) keep = [fieldEnabled(fields, 'used'), anyField(fields, ['left', 'cache'])];
+    else if (rep === CARD_REPRESENTATION.NORMAL) keep = [fieldEnabled(fields, 'used'), fieldEnabled(fields, 'gauge'), anyField(fields, ['cache', 'left', 'compaction'])];
+    else keep = [fieldEnabled(fields, 'used'), fieldEnabled(fields, 'gauge'), anyField(fields, ['cache', 'left']), fieldEnabled(fields, 'compaction')];
+  } else if (cardId === 'usage') {
+    if (authMode === 'login') {
+      if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['fiveHour', 'weekly', 'input', 'output'])];
+      else if (rep === CARD_REPRESENTATION.COMPACT) keep = [anyField(fields, ['fiveHour', 'weekly']), anyField(fields, ['input', 'cache', 'output'])];
+      else if (rep === CARD_REPRESENTATION.NORMAL) keep = [fieldEnabled(fields, 'fiveHour'), fieldEnabled(fields, 'weekly'), anyField(fields, ['input', 'cache', 'output'])];
+      else keep = [fieldEnabled(fields, 'fiveHour'), fieldEnabled(fields, 'weekly'), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
+    } else {
+      if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['input', 'output', 'model'])];
+      else if (rep === CARD_REPRESENTATION.COMPACT) keep = [anyField(fields, ['model', 'reasoning']), anyField(fields, ['input', 'cache', 'output'])];
+      else if (rep === CARD_REPRESENTATION.NORMAL) keep = [anyField(fields, ['model', 'actual']), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
+      else keep = [fieldEnabled(fields, 'model'), fieldEnabled(fields, 'actual'), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
+    }
+  } else if (cardId === 'session') {
+    if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['turns', 'thread', 'data'])];
+    else if (rep === CARD_REPRESENTATION.COMPACT) keep = [anyField(fields, ['turns', 'elapsed']), anyField(fields, ['thread', 'data'])];
+    else if (rep === CARD_REPRESENTATION.NORMAL) keep = [anyField(fields, ['elapsed', 'turns']), anyField(fields, ['last', 'update']), anyField(fields, ['thread', 'freshness', 'data'])];
+    else keep = [anyField(fields, ['elapsed', 'turns']), anyField(fields, ['last', 'update']), anyField(fields, ['thread', 'freshness']), fieldEnabled(fields, 'data')];
+  } else if (cardId === 'activity') {
+    if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['state', 'tools', 'approval'])];
+    else if (rep === CARD_REPRESENTATION.COMPACT) keep = [fieldEnabled(fields, 'state'), anyField(fields, ['tools', 'lastTool'])];
+    else if (rep === CARD_REPRESENTATION.NORMAL) keep = [fieldEnabled(fields, 'state'), fieldEnabled(fields, 'source'), anyField(fields, ['tools', 'lastTool', 'approval'])];
+    else keep = [fieldEnabled(fields, 'state'), fieldEnabled(fields, 'source'), anyField(fields, ['tools', 'lastTool']), anyField(fields, ['approval', 'retry', 'errors'])];
+  } else if (cardId === 'system') {
+    if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['cpu', 'ram'])];
+    else if (rep === CARD_REPRESENTATION.COMPACT) keep = [anyField(fields, ['cpu', 'ram']), fieldEnabled(fields, 'ramCapacity')];
+    else keep = [fieldEnabled(fields, 'cpu'), fieldEnabled(fields, 'ram'), fieldEnabled(fields, 'ramCapacity')];
+  } else {
+    return rows;
+  }
+
+  return rows.filter((_, index) => keep[index] !== false);
 }
 
 function enabledCards(config, state) {
@@ -552,34 +603,34 @@ function enabledCards(config, state) {
   return cards;
 }
 
-function cardContent(item, state, theme, nowMs) {
+function cardContent(item, state, config, theme, nowMs) {
   const { card, representation, innerWidth } = item;
-  if (card.id === 'context') return contextContent(state, representation, innerWidth, theme);
-  if (card.id === 'usage') return usageContent(state, representation, innerWidth, theme, nowMs);
-  if (card.id === 'session') return sessionContent(state, representation, theme, nowMs);
-  if (card.id === 'activity') return activityContent(state, representation, theme);
-  if (card.id === 'system') return systemContent(state, representation, innerWidth, theme);
-  return ['--'];
+  let content = ['--'];
+  if (card.id === 'context') content = contextContent(state, representation, innerWidth, theme);
+  else if (card.id === 'usage') content = usageContent(state, representation, innerWidth, theme, nowMs);
+  else if (card.id === 'session') content = sessionContent(state, representation, theme, nowMs);
+  else if (card.id === 'activity') content = activityContent(state, representation, theme);
+  else if (card.id === 'system') content = systemContent(state, representation, innerWidth, theme);
+  return filterContentRows(card.id, content, representation, config?.fields?.[card.id], String(value(state?.auth?.mode, 'unknown')));
 }
 
-function cardBlock(item, state, theme, nowMs) {
-  const content = cardContent(item, state, theme, nowMs);
+function cardBlock(item, state, config, theme, nowMs) {
+  const content = cardContent(item, state, config, theme, nowMs);
   const title = styleText(item.card.title, item.card.token, theme, { bold: true });
   if (item.representation === CARD_REPRESENTATION.MINIMAL) {
-    return [`${title} ${paint('·', 'frame', theme)} ${content[0] ?? '--'}`];
+    return content.length ? [`${title} ${paint('·', 'frame', theme)} ${content[0]}`] : [title];
   }
   return [title, ...content];
 }
 
 function constrainedFrame({ state, config, width, options, cards, theme, plan }) {
   const names = cards.map((card) => card.title.replace('CURRENT ', '')).join(' · ');
-  const lines = [
+  return [
     topBorder(width, config?.preset, theme),
     summaryRow(state, config, width, options),
     `${paint('│', 'frame', theme)} ${padCells(truncateCells(names, Math.max(0, width - 4), ''), Math.max(0, width - 4))} ${paint('│', 'frame', theme)}`,
     fullBottomBorder(width, theme)
   ].slice(0, plan.budget);
-  return lines;
 }
 
 function responsiveCardFrame({
@@ -597,6 +648,7 @@ function responsiveCardFrame({
   const safeWidth = Math.max(20, Number(width) || 80);
   const safeHeight = Math.max(8, Number(height) || 24);
   const theme = config?.theme ?? 'color';
+  const background = config?.background ?? 'terminal';
   const options = { theme, cwd, nowMs, projectName, health, gitLabel, fast };
   const cards = enabledCards(config, state);
   const plan = planGrid(cards, safeWidth, safeHeight);
@@ -609,7 +661,7 @@ function responsiveCardFrame({
     let previousWidths = [];
     for (const row of plan.rows) {
       lines.push(transitionBorder(safeWidth, previousWidths, row.widths, theme));
-      const blocks = row.items.map((item) => cardBlock(item, state, theme, nowMs));
+      const blocks = row.items.map((item) => cardBlock(item, state, config, theme, nowMs));
       const blockRows = Math.max(...blocks.map((block) => block.length));
       for (let index = 0; index < blockRows; index += 1) {
         lines.push(tableRow(blocks.map((block) => block[index] ?? ''), row.widths, theme));
@@ -622,9 +674,13 @@ function responsiveCardFrame({
 
   const representations = {};
   for (const row of plan.rows) for (const item of row.items) representations[item.card.id] = item.representation;
+  const renderedLines = lines.map((line) => {
+    const clipped = truncateCells(line, safeWidth, '');
+    return applyLineBackground(padCells(clipped, safeWidth), background);
+  });
   return {
-    lines: lines.map((line) => truncateCells(line, safeWidth, '')),
-    rowCount: lines.length,
+    lines: renderedLines,
+    rowCount: renderedLines.length,
     layout: {
       laneCount: plan.columns || 1,
       columns: plan.columns,
@@ -636,6 +692,7 @@ function responsiveCardFrame({
       activeTab: 'overview',
       authMode: value(state?.auth?.mode, 'unknown'),
       theme,
+      background,
       interactive: false,
       visual: 'responsive-card-grid-v3',
       cardGrid: true,
