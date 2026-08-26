@@ -158,7 +158,7 @@ function previewTableLines(model, width, rows, mode) {
   return lines;
 }
 
-function recentBlockGeometry(frame, height) {
+function recentBlockGeometry(frame, height, telemetry) {
   const safeHeight = Math.max(16, Number(height) || 36);
   const bodyHeight = safeHeight - 3;
   if (frame.viewMode === 'operations') {
@@ -167,7 +167,7 @@ function recentBlockGeometry(frame, height) {
   }
   if (frame.viewMode === 'charts') {
     const aggregateHeight = 11;
-    const liveCount = Array.isArray(frame?.model?.rows) ? frame.model.rows.filter((row) => row.state === 'LIVE').length : 0;
+    const liveCount = Array.isArray(telemetry?.sessions) ? telemetry.sessions.length : 0;
     const maxLiveRows = Math.max(1, Math.min(liveCount || 1, Math.max(1, Math.floor(bodyHeight * 0.28) - 3)));
     const liveHeight = Math.max(4, maxLiveRows + 3);
     const rankingHeight = 7;
@@ -191,7 +191,7 @@ export function renderSessionDashboardWithPreview(options = {}) {
   const preview = options.activityPreview ?? null;
   if (width < 220 || frame.layout !== 'ultrawide' || !preview || frame.viewMode === 'table') return frame;
 
-  const geometry = recentBlockGeometry(frame, height);
+  const geometry = recentBlockGeometry(frame, height, options.telemetry);
   if (!geometry || geometry.height < 6) return frame;
 
   const leftWidth = Math.max(112, Math.min(Math.floor(width * 0.64), 150));
