@@ -4,7 +4,10 @@ import process from 'node:process';
 const steps = [
   ['Syntax', process.execPath, ['./scripts/check-syntax.mjs']],
   ['Phase 07 platform regression', process.execPath, ['--test', 'test/unit/phase7-platform.test.js']],
-  ['Phase 08 Session Manager core', process.execPath, ['--test', 'test/unit/phase8-history-core.test.js']]
+  ['Phase 08 Session Manager core', process.execPath, ['--test',
+    'test/unit/phase8-history-core.test.js',
+    'test/unit/phase8-detail-view.test.js'
+  ]]
 ];
 
 for (const [label, command, args] of steps) {
