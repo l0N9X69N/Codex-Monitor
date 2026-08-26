@@ -74,24 +74,33 @@ export class SessionActivityResolver {
   }
 
   resolve(session, evidence = {}) {
+    const nowMs = this.now();
     const previous = this.observed.get(session.id);
     const size = Number(session.sizeBytes);
     const modifiedAtMs = Number(session.modifiedAtMs);
     const grew = Boolean(previous && Number.isFinite(size) && Number.isFinite(previous.sizeBytes) && size > previous.sizeBytes);
     const processMatch = evidence.processMatch === true;
     const processKnown = evidence.processKnown === true;
+    const strongLive = processMatch || grew;
+    const lastStrongAtMs = strongLive ? nowMs : previous?.lastStrongAtMs ?? null;
 
     let state = SESSION_ACTIVITY.UNKNOWN;
-    if (processMatch || grew) {
+    if (strongLive) {
+      state = SESSION_ACTIVITY.LIVE;
+    } else if (previous?.state === SESSION_ACTIVITY.LIVE
+      && Number.isFinite(lastStrongAtMs)
+      && nowMs - lastStrongAtMs < this.staleAfterMs
+      && !(processKnown && !processMatch)) {
       state = SESSION_ACTIVITY.LIVE;
     } else if (processKnown && !processMatch) {
-      const age = Number.isFinite(modifiedAtMs) ? Math.max(0, this.now() - modifiedAtMs) : Number.POSITIVE_INFINITY;
+      const age = Number.isFinite(modifiedAtMs) ? Math.max(0, nowMs - modifiedAtMs) : Number.POSITIVE_INFINITY;
       if (age >= this.staleAfterMs) state = SESSION_ACTIVITY.ENDED;
     }
 
     this.observed.set(session.id, {
       sizeBytes: Number.isFinite(size) ? size : null,
       modifiedAtMs: Number.isFinite(modifiedAtMs) ? modifiedAtMs : null,
+      lastStrongAtMs,
       state
     });
     return state;
