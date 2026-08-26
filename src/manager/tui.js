@@ -9,6 +9,7 @@ import { MANAGER_INSPECT_TABS, renderSessionInspect } from './inspect-render.js'
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 import { ManagerTelemetrySeries } from './telemetry-series.js';
 import { nextTimelineFilter } from './timeline.js';
+import { SelectedActivityPreview } from './activity-preview.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -46,6 +47,7 @@ export async function runSessionManagerTui({
   const guard = new TerminalGuard({ stdin, stdout });
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
   const telemetrySeries = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
+  const activityPreviewReader = new SelectedActivityPreview({ fsRef });
 
   let rows = [];
   let scope = 'all';
@@ -71,10 +73,19 @@ export async function runSessionManagerTui({
   let telemetry = telemetrySeries.snapshot();
   let telemetryTimer = null;
 
+  const selectedDashboardRow = () => {
+    if (!lastFrame?.model?.rows?.length) return null;
+    const index = Math.max(0, Math.min(lastFrame.model.rows.length - 1, selectedIndex));
+    return lastFrame.model.rows[index] ?? lastFrame.model.selected ?? null;
+  };
+
   const draw = (force = false) => {
     if (done) return null;
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
+    const activityPreview = !core.selectedId && width >= 220
+      ? activityPreviewReader.read(selectedDashboardRow(), { nowMs: now() })
+      : null;
     const frame = core.selectedId && selectedDetail
       ? renderSessionInspect({
         detail: selectedDetail,
@@ -101,7 +112,8 @@ export async function runSessionManagerTui({
         selectedId,
         selectedIndex,
         viewMode,
-        telemetry
+        telemetry,
+        activityPreview
       });
 
     if (!core.selectedId && frame.model) {
@@ -227,6 +239,7 @@ export async function runSessionManagerTui({
         timelineSearching = false;
         timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
         timelineDetail = false;
+        activityPreviewReader.clear();
         rebaselineTelemetry();
         draw(true);
       } else if (action === 'tab' || action === 'right') {
@@ -273,6 +286,7 @@ export async function runSessionManagerTui({
         search = searchDraft.trim();
         selectedId = null;
         selectedIndex = 0;
+        activityPreviewReader.clear();
         rebaselineTelemetry();
       } else if (action === 'search-backspace') {
         searchDraft = [...searchDraft].slice(0, -1).join('');
@@ -296,11 +310,13 @@ export async function runSessionManagerTui({
       scope = nextManagerScope(scope);
       selectedId = null;
       selectedIndex = 0;
+      activityPreviewReader.clear();
       rebaselineTelemetry();
     } else if (action === 'sort') {
       sortBy = nextManagerSort(sortBy);
       selectedId = null;
       selectedIndex = 0;
+      activityPreviewReader.clear();
     } else if (action === 'direction') {
       direction = direction === 'desc' ? 'asc' : 'desc';
     } else if (action === 'view') {
@@ -308,9 +324,11 @@ export async function runSessionManagerTui({
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
+      activityPreviewReader.clear();
     } else if (action === 'down' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.min(lastFrame.model.rows.length - 1, selectedIndex + 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
+      activityPreviewReader.clear();
     } else if (action === 'inspect') {
       const selected = lastFrame?.model?.selected;
       if (selected) {
