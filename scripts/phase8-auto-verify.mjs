@@ -6,7 +6,8 @@ const steps = [
   ['Phase 07 platform regression', process.execPath, ['--test', 'test/unit/phase7-platform.test.js']],
   ['Phase 08 Session Manager core', process.execPath, ['--test',
     'test/unit/phase8-history-core.test.js',
-    'test/unit/phase8-detail-view.test.js'
+    'test/unit/phase8-detail-view.test.js',
+    'test/unit/phase8-lightweight-summary.test.js'
   ]]
 ];
 
