@@ -5,7 +5,7 @@ import { SessionManagerCore } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { SessionManagerRuntime } from './runtime.js';
 import { renderSessionDashboard } from './dashboard-render.js';
-import { renderSessionInspect } from './inspect-render.js';
+import { MANAGER_INSPECT_TABS, renderSessionInspect } from './inspect-render.js';
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 
 const FOCUS_ORDER = Object.freeze(['table', 'tokens', 'context', 'tools']);
@@ -16,6 +16,19 @@ function nextFocus(current, delta = 1) {
   return FOCUS_ORDER[(base + delta + FOCUS_ORDER.length) % FOCUS_ORDER.length];
 }
 
+function nextInspectTab(current, delta = 1) {
+  const index = MANAGER_INSPECT_TABS.indexOf(current);
+  const base = index < 0 ? 0 : index;
+  return MANAGER_INSPECT_TABS[(base + delta + MANAGER_INSPECT_TABS.length) % MANAGER_INSPECT_TABS.length];
+}
+
+function managerPaintMode(theme, capability) {
+  const normalized = String(theme ?? 'color').toLowerCase();
+  if (normalized === 'mono' || capability === 'mono') return 'mono';
+  if (normalized === 'matrix') return `matrix:${capability}`;
+  return capability;
+}
+
 export async function runSessionManagerTui({
   platformAdapter,
   stdin = process.stdin,
@@ -23,13 +36,15 @@ export async function runSessionManagerTui({
   fsRef,
   now = () => Date.now(),
   processRef = process,
-  colorMode = detectHistoryColorMode(),
+  colorCapability = detectHistoryColorMode(),
+  theme = 'color',
   intervalMs = 250,
   initialViewMode = 'operations'
 } = {}) {
   if (!platformAdapter) throw new Error('Session Manager requires platform adapter');
   if (!stdin?.isTTY || !stdout?.isTTY) throw new Error('Session Manager TUI requires an interactive terminal');
 
+  const colorMode = managerPaintMode(theme, colorCapability);
   const sessionsPath = platformAdapter.paths()?.sessions ?? null;
   const core = new SessionManagerCore({ sessionsPath, fsRef, now });
   const tracker = new SessionManagerTracker({ core, platformAdapter, now });
@@ -48,6 +63,7 @@ export async function runSessionManagerTui({
   let focus = 'table';
   let viewMode = initialViewMode;
   let selectedDetail = null;
+  let inspectTab = 'info';
   let done = false;
   let lastFrame = null;
 
@@ -56,7 +72,7 @@ export async function runSessionManagerTui({
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
     const frame = core.selectedId && selectedDetail
-      ? renderSessionInspect({ detail: selectedDetail, width, height, mode: colorMode })
+      ? renderSessionInspect({ detail: selectedDetail, width, height, mode: colorMode, activeTab: inspectTab })
       : renderSessionDashboard({
         rows,
         width,
@@ -136,7 +152,14 @@ export async function runSessionManagerTui({
       if (action === 'quit') {
         core.releaseSelection();
         selectedDetail = null;
+        inspectTab = 'info';
         draw(true);
+      } else if (action === 'tab' || action === 'right') {
+        inspectTab = nextInspectTab(inspectTab, 1);
+        draw(false);
+      } else if (action === 'left') {
+        inspectTab = nextInspectTab(inspectTab, -1);
+        draw(false);
       }
       return;
     }
@@ -190,11 +213,12 @@ export async function runSessionManagerTui({
       focus = nextFocus(focus, 1);
     } else if (action === 'left') {
       focus = nextFocus(focus, -1);
-    } else if (action === 'inspect') {
+    } else if (action === 'inspect' && focus === 'table') {
       const selected = lastFrame?.model?.selected;
       if (selected) {
         core.select(selected.id);
         selectedDetail = core.selectedDetail();
+        inspectTab = 'info';
       }
     }
     draw(false);
@@ -219,7 +243,7 @@ export async function runSessionManagerTui({
     stdout.write('\x1b[2J\x1b[H');
     void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
-    return { code, core, tracker, runtime, viewMode };
+    return { code, core, tracker, runtime, viewMode, theme, colorMode };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
     processRef?.removeListener?.('SIGTERM', onSignal);
