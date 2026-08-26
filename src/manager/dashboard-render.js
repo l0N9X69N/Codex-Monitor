@@ -75,23 +75,23 @@ function summaryLines(model, mode) {
     ? '--'
     : `${fmtPercent(summary.highestContextPercent)} ${summary.highestContextLabel ?? ''}`.trim();
   return [
-    `${hpaint(String(summary.live), 'live', mode)} LIVE   ${summary.ended} ENDED   ${summary.unknown} UNKNOWN`,
-    `Context peak  ${hpaint(pressure, summary.highestContextPercent >= 80 ? 'pressure' : 'text', mode)}`,
-    `Events        ${hpaint(String(summary.recentErrors), summary.recentErrors ? 'error' : 'text', mode)} errors   ${summary.recentRetries} retries   ${summary.recentCompactions} compactions`,
-    `Storage       ${fmtBytes(summary.storageBytes)} local JSONL`
+    `${hpaint(String(summary.live), 'live', mode)} ${hpaint('LIVE', 'live', mode)}   ${hpaint(String(summary.ended), 'dim', mode)} ENDED   ${hpaint(String(summary.unknown), 'secondary', mode)} UNKNOWN`,
+    `${hpaint('Context peak', 'dim', mode)}  ${hpaint(pressure, summary.highestContextPercent >= 80 ? 'pressure' : 'text', mode)}`,
+    `${hpaint('Events', 'dim', mode)}        ${hpaint(String(summary.recentErrors), summary.recentErrors ? 'error' : 'text', mode)} errors   ${summary.recentRetries} retries   ${summary.recentCompactions} compactions`,
+    `${hpaint('Storage', 'dim', mode)}       ${hpaint(fmtBytes(summary.storageBytes), 'secondary', mode)} local JSONL`
   ];
 }
 
 function liveLines(model, width, mode) {
   const live = model.rows.filter((row) => row.state === 'LIVE').slice(0, 6);
-  if (!live.length) return ['No active Codex sessions.'];
+  if (!live.length) return [hpaint('No active Codex sessions.', 'dim', mode)];
   return live.map((row) => {
     const labelWidth = Math.max(8, Math.min(22, Math.floor(width * 0.42)));
     const project = padCells(truncateCells(row.project ?? row.name ?? '--', labelWidth, '…'), labelWidth);
     const context = fmtPercent(rowContextPercent(row)).padStart(5);
     const input = fmtNum(row.tokens?.input).padStart(7);
     const tools = fmtNum(row.toolCount ?? row.observedToolCount).padStart(4);
-    return `${hpaint('●', 'live', mode)} ${project} ${context} ${input} ${tools}t`;
+    return `${hpaint('●', 'live', mode)} ${hpaint(project, 'text', mode)} ${hpaint(context, 'pressure', mode)} ${hpaint(input, 'secondary', mode)} ${hpaint(`${tools}t`, 'live', mode)}`;
   });
 }
 
@@ -105,29 +105,30 @@ function selectedPreviewLines(model, mode) {
   if (!row) return ['No session selected.'];
   const state = hpaint(row.state ?? 'UNKNOWN', stateToken(row.state), mode);
   return [
-    `${hpaint('>', 'nav', mode)} ${model.selectedIndex + 1}/${model.rows.length}  ${row.project ?? row.name ?? '--'} · ${state}`,
-    `Model      ${row.model ?? '--'}`,
-    `Context    ${fmtPercent(rowContextPercent(row))}`,
-    `Input      ${fmtNum(row.tokens?.input)}   Cache ${fmtNum(row.tokens?.cached)}`,
-    `Turns      ${fmtNum(row.turnCount ?? row.observedTurnCount)}   Tools ${fmtNum(row.toolCount ?? row.observedToolCount)}`,
-    `Size       ${fmtBytes(row.fileSizeBytes)}`,
-    'Enter      inspect selected session'
+    `${hpaint('>', 'nav', mode)} ${hpaint(`${model.selectedIndex + 1}/${model.rows.length}`, 'nav', mode)}  ${hpaint(row.project ?? row.name ?? '--', 'text', mode)} · ${state}`,
+    `${hpaint('Model', 'dim', mode)}      ${hpaint(row.model ?? '--', 'secondary', mode)}`,
+    `${hpaint('Context', 'dim', mode)}    ${hpaint(fmtPercent(rowContextPercent(row)), 'pressure', mode)}`,
+    `${hpaint('Input', 'dim', mode)}      ${hpaint(fmtNum(row.tokens?.input), 'secondary', mode)}   ${hpaint('Cache', 'dim', mode)} ${hpaint(fmtNum(row.tokens?.cached), 'secondary', mode)}`,
+    `${hpaint('Turns', 'dim', mode)}      ${hpaint(fmtNum(row.turnCount ?? row.observedTurnCount), 'text', mode)}   ${hpaint('Tools', 'dim', mode)} ${hpaint(fmtNum(row.toolCount ?? row.observedToolCount), 'live', mode)}`,
+    `${hpaint('Size', 'dim', mode)}       ${hpaint(fmtBytes(row.fileSizeBytes), 'text', mode)}`,
+    `${hpaint('Enter', 'nav', mode)}      inspect selected session`
   ];
 }
 
-function chartLines(items, width, formatter, mode) {
-  if (!items.length) return ['No evidenced data yet.'];
+function chartLines(items, width, formatter, mode, token = 'nav') {
+  if (!items.length) return [hpaint('No evidenced data yet.', 'dim', mode)];
   const max = Math.max(...items.map((item) => Number(item.value) || 0), 1);
   const labelWidth = Math.max(8, Math.min(18, Math.floor(width * 0.34)));
   const valueWidth = 7;
-  const barWidth = Math.max(4, width - labelWidth - valueWidth - 3);
+  const barWidth = Math.max(5, width - labelWidth - valueWidth - 5);
   return items.map((item) => {
     const ratio = Math.max(0, Math.min(1, Number(item.value) / max));
     const filled = Math.max(item.value > 0 ? 1 : 0, Math.round(barWidth * ratio));
-    const bar = `${'█'.repeat(Math.min(barWidth, filled))}${'░'.repeat(Math.max(0, barWidth - filled))}`;
-    const label = truncateCells(item.label, labelWidth, '…');
-    const token = item.state === 'LIVE' ? 'live' : 'text';
-    return `${padCells(label, labelWidth)} ${hpaint(bar, token, mode)} ${String(formatter(item.value)).padStart(valueWidth)}`;
+    const active = '━'.repeat(Math.min(barWidth, filled));
+    const track = '·'.repeat(Math.max(0, barWidth - filled));
+    const label = padCells(truncateCells(item.label, labelWidth, '…'), labelWidth);
+    const value = String(formatter(item.value)).padStart(valueWidth);
+    return `${hpaint(label, item.state === 'LIVE' ? 'live' : 'dim', mode)} ${hpaint('▕', 'dim', mode)}${hpaint(active, token, mode)}${hpaint(track, 'dim', mode)}${hpaint('▏', 'dim', mode)} ${hpaint(value, token, mode)}`;
   });
 }
 
@@ -172,16 +173,16 @@ function tableLines(model, width, rows, mode) {
   const start = Math.max(0, Math.min(selected - Math.floor(visible / 2), Math.max(0, model.rows.length - visible)));
   for (let index = start; index < Math.min(model.rows.length, start + visible); index += 1) {
     const row = model.rows[index];
+    const isSelected = index === model.selectedIndex;
     const cells = columns.map((key) => {
       const spec = COLUMN_SPECS[key];
-      let value = truncateCells(spec.value(row), spec.width, '…');
-      if (key === 'state') value = hpaint(value, stateToken(row.state), mode);
+      const raw = truncateCells(spec.value(row), spec.width, '…');
+      const value = isSelected || key !== 'state' ? raw : hpaint(raw, stateToken(row.state), mode);
       return padCells(value, spec.width);
     });
-    const isSelected = index === model.selectedIndex;
-    const marker = isSelected ? hpaint('>', 'nav', mode) : ' ';
+    const marker = isSelected ? '>' : ' ';
     const text = `${marker} ${cells.join(' ')}`;
-    output.push(isSelected ? hpaint(text, 'nav', mode) : text);
+    output.push(isSelected ? hpaint(text, 'selected', mode) : text);
   }
   return output;
 }
@@ -236,7 +237,7 @@ function renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout)
   const status = panel(summaryLines(model, mode), rightWidth, firstHeight, { title: 'CONTEXT / EVENTS', mode });
   lines.push(...joinPanels(live, status, leftWidth, firstHeight));
 
-  const tokens = panel(chartLines(model.charts.tokens, leftWidth - 2, fmtNum, mode), leftWidth, secondHeight, { title: 'TOKEN ACTIVITY', mode });
+  const tokens = panel(chartLines(model.charts.tokens, leftWidth - 2, fmtNum, mode, 'secondary'), leftWidth, secondHeight, { title: 'TOKEN ACTIVITY', mode });
   const preview = panel(selectedPreviewLines(model, mode), rightWidth, secondHeight, { title: 'SELECTED PREVIEW', mode });
   lines.push(...joinPanels(tokens, preview, leftWidth, secondHeight));
 
@@ -254,9 +255,9 @@ function renderChartsView(lines, model, safeWidth, bodyHeight, mode, layout) {
   const gap = 2;
   const chartWidth = Math.floor((safeWidth - gap) / 3);
   const widths = [chartWidth, chartWidth, safeWidth - (chartWidth * 2) - gap];
-  const token = panel(chartLines(model.charts.tokens, widths[0] - 2, fmtNum, mode), widths[0], chartHeight, { title: 'TOKEN ACTIVITY', mode });
-  const context = panel(chartLines(model.charts.context, widths[1] - 2, fmtPercent, mode), widths[1], chartHeight, { title: 'CONTEXT PRESSURE', mode });
-  const tools = panel(chartLines(model.charts.tools, widths[2] - 2, fmtNum, mode), widths[2], chartHeight, { title: 'TOOL ACTIVITY', mode });
+  const token = panel(chartLines(model.charts.tokens, widths[0] - 2, fmtNum, mode, 'secondary'), widths[0], chartHeight, { title: 'TOKEN ACTIVITY', mode });
+  const context = panel(chartLines(model.charts.context, widths[1] - 2, fmtPercent, mode, 'pressure'), widths[1], chartHeight, { title: 'CONTEXT PRESSURE', mode });
+  const tools = panel(chartLines(model.charts.tools, widths[2] - 2, fmtNum, mode, 'live'), widths[2], chartHeight, { title: 'TOOL ACTIVITY', mode });
   for (let index = 0; index < chartHeight; index += 1) lines.push(`${token[index] ?? ''} ${context[index] ?? ''} ${tools[index] ?? ''}`);
 
   const leftWidth = Math.max(34, Math.floor(safeWidth * 0.5));
@@ -286,12 +287,12 @@ export function renderSessionDashboard({
   const layout = dashboardLayoutMode(safeWidth);
   const resolvedView = resolveManagerViewMode(viewMode, layout);
   const model = buildSessionDashboardModel(rows, { scope, search, sortBy, direction, selectedId, selectedIndex });
-  const header = truncateCells(`${hpaint('CODEX // SESSION MANAGER', 'strong', mode)}  ${hpaint(`${model.summary.live} LIVE`, model.summary.live ? 'live' : 'dim', mode)}  ${model.summary.total} LOCAL  ${hpaint(resolvedView.toUpperCase(), 'secondary', mode)}  ${layout.toUpperCase()}`, safeWidth, '');
-  const queryLine = truncateCells(`Scope ${model.query.scope.toUpperCase()}  Search ${model.query.search || '--'}  Sort ${model.query.sortBy}:${model.query.direction}  View ${String(viewMode).toUpperCase()}`, safeWidth, '');
+  const header = truncateCells(`${hpaint('CODEX // SESSION MANAGER', 'strong', mode)}  ${hpaint(`${model.summary.live} LIVE`, model.summary.live ? 'live' : 'dim', mode)}  ${hpaint(`${model.summary.total} LOCAL`, 'text', mode)}  ${hpaint(resolvedView.toUpperCase(), 'secondary', mode)}  ${hpaint(layout.toUpperCase(), 'dim', mode)}`, safeWidth, '');
+  const queryLine = truncateCells(`${hpaint('Scope', 'dim', mode)} ${hpaint(model.query.scope.toUpperCase(), 'nav', mode)}  ${hpaint('Search', 'dim', mode)} ${model.query.search || '--'}  ${hpaint('Sort', 'dim', mode)} ${hpaint(`${model.query.sortBy}:${model.query.direction}`, 'secondary', mode)}  ${hpaint('View', 'dim', mode)} ${hpaint(String(viewMode).toUpperCase(), 'nav', mode)}`, safeWidth, '');
   const footerText = safeWidth < 78
     ? '↑↓ select  Enter inspect  / search  V view  Q quit'
     : '↑↓ select  Enter inspect selected  / search  F scope  S sort  D dir  V view  Q/Esc quit';
-  const footer = truncateCells(footerText, safeWidth, '');
+  const footer = truncateCells(hpaint(footerText, 'dim', mode), safeWidth, '');
   const lines = [header, queryLine];
   const bodyHeight = safeHeight - 3;
 
