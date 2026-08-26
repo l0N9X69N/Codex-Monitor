@@ -2,7 +2,7 @@
 
 **Version:** 1.1 implementation baseline  
 **Updated:** 2026-08-26  
-**Status:** Phase 06 closed; Phase 07 active  
+**Status:** Phase 06 closed; Phase 07 closed development checkpoint; Phase 08 next  
 **Scope:** Codex Monitor v1
 
 > This file is the current product/architecture source of truth. The numbered files in `docs/RoadMap/` define execution details for each phase.
@@ -151,13 +151,6 @@ Detection priority:
 3. official Codex login-status/stored-auth evidence;
 4. current-session evidence when available.
 
-Examples:
-
-```powershell
-codexm --auth api
-codexm --auth login
-```
-
 An explicit override may force the Codex login method for that launch, but Monitor must not rewrite stored Codex credentials.
 
 ---
@@ -238,14 +231,6 @@ Derived context severity:
 
 May show 5H/WEEK quota plus input/cache/output/reasoning and turn I/O.
 
-Quota remaining severity:
-
-```text
->50%    healthy
-20–50%  high
-<20%    critical
-```
-
 ### USAGE — API
 
 May show MODEL, ROUTED only with evidence, input/cache/output/reasoning and turn I/O. API mode never shows Login quota as valid telemetry.
@@ -283,7 +268,6 @@ Rules:
 - wide cards resample existing history across available width instead of stopping at a fixed 36-cell cap;
 - RAM capacity bar stays short;
 - no redundant FREE row;
-- system pressure severity: `<70 healthy`, `70–84 high`, `>=85 critical`;
 - do not mix Codex process CPU/RAM into this card.
 
 Future workspace/disk/Codex-home sizing is backlog, not part of closed Phase 06.
@@ -312,7 +296,7 @@ AUTO priority favors SYSTEM before BEAST.
 
 When six selected cards cannot fit six columns, avoid a one-card tail. Prefer balanced layouts such as `4+2`, then `3+3`, `2+2+2`, then one-column fallback as width requires.
 
-Current Phase 06/07 testing checkpoint intentionally sets the `full` preset to:
+Current testing checkpoint intentionally sets the `full` preset to:
 
 ```text
 systemMode = on
@@ -329,14 +313,7 @@ This is for easy testing. The intended release/customization default is `auto` u
 
 BEAST MODE currently exists only as an empty reserved responsive card. Runtime dog animation is not part of the closed Phase 06 checkpoint.
 
-Future direction is a geometry-aware ASCII pet:
-
-- low height -> lie/sleep;
-- medium height -> sit/stand;
-- wide/tall -> walk/run/play;
-- resize must never clip the pet or increase HUD height unexpectedly;
-- activity may influence behavior but geometry/safety wins;
-- no input interception and no telemetry collector demand.
+Future direction is a geometry-aware ASCII pet. Resize must never clip it, increase HUD height unexpectedly, intercept input, or require telemetry collectors.
 
 Existing animation assets are design material, not proof that live Beast animation is implemented.
 
@@ -364,16 +341,6 @@ dark
 
 Background styling applies only to Monitor rows and must reset before Codex content.
 
-Current CLI includes:
-
-```powershell
-codexm --preset <recommended|compact|full|custom>
-codexm --theme <color|mono|matrix>
-codexm --background <terminal|black|dark>
-codexm --lang <vi|en>
-codexm --auth <auto|api|login>
-```
-
 The polished Custom UX is future work.
 
 ---
@@ -395,9 +362,9 @@ Collectors are demand-driven and scheduled centrally. Optional telemetry must ne
 
 ---
 
-## 14. Platform architecture — Phase 07
+## 14. Platform architecture — Phase 07 checkpoint
 
-Design target:
+Supported design target:
 
 ```text
 Windows
@@ -405,7 +372,7 @@ Linux
 macOS
 ```
 
-Phase 07 platform contract:
+Canonical platform contract:
 
 ```text
 spawnPty
@@ -417,7 +384,7 @@ capabilities
 cleanup
 ```
 
-`openHistoryTerminal` is obsolete and must be removed from the platform contract because Monitor no longer owns a separate History launcher.
+`openHistoryTerminal` is obsolete and has been removed from the platform contract and Windows adapter implementation.
 
 Normalized process shape:
 
@@ -433,11 +400,19 @@ ProcessInfo {
 }
 ```
 
-Unsupported capabilities must degrade explicitly instead of crashing or fabricating data.
+Unsupported capabilities degrade explicitly instead of crashing or fabricating data.
 
-Optional platform telemetry must not block PTY/input. Windows CIM/PowerShell work is asynchronous/cached; POSIX optional command execution should follow the same non-blocking principle during Phase 07.
+Optional platform telemetry must not block PTY/input. Windows CIM/PowerShell work is asynchronous/cached; POSIX `ps`/`df` execution is asynchronous and process-tree work uses a short TTL cache.
 
-Windows must be manually verified. Linux/macOS must remain explicitly UNVERIFIED until real CI/machine evidence exists.
+Verification status at Phase 07 close:
+
+```text
+Windows  VERIFIED — development checkpoint
+Linux    UNVERIFIED PLATFORM
+macOS    UNVERIFIED PLATFORM
+```
+
+Linux/macOS must remain UNVERIFIED until real-machine/CI evidence exists. Their unverified state does not block Phase 08 development, but does block any claim of release-quality cross-platform verification.
 
 ---
 
@@ -486,13 +461,16 @@ Phase 03  Demand / scheduler / diff infrastructure   COMPLETE checkpoint
 Phase 04  Live UI / responsive / custom foundation  COMPLETE checkpoint
 Phase 05  Live UI fuzz / UX gate                     COMPLETE checkpoint
 Phase 06  Passive Live HUD completion                CLOSED by product decision
-Phase 07  Platform adapters                          ACTIVE
-Phase 08+ Session Manager / productization           PLANNED / scaffold may exist
+Phase 07  Platform adapters                          CLOSED development checkpoint
+Phase 08  Session Manager core                       NEXT
+Phase 09+ Session Manager UI / productization        PLANNED / scaffold may exist
 ```
 
 Closing a phase means new polish moves to backlog unless it exposes a correctness/integration blocker.
 
 Phase 06 backlog includes runtime Beast animation, polished Custom UX, richer SYSTEM storage metrics, trusted LiteLLM ROUTED telemetry, and non-blocking cosmetic refinements.
+
+Phase 07 release backlog includes real Linux/macOS verification and a broader terminal/Windows compatibility matrix.
 
 ---
 
