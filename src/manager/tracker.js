@@ -9,7 +9,8 @@ export class SessionManagerTracker {
     processIntervalMs = 2500,
     knownRefreshIntervalMs = 750,
     selectedTailIntervalMs = 500,
-    summaryBootstrapLimit = 8
+    summaryBootstrapLimit = 8,
+    fastRefreshLimit = 16
   } = {}) {
     if (!core) throw new Error('SessionManagerTracker requires core');
     this.core = core;
@@ -20,6 +21,7 @@ export class SessionManagerTracker {
     this.knownRefreshIntervalMs = knownRefreshIntervalMs;
     this.selectedTailIntervalMs = selectedTailIntervalMs;
     this.summaryBootstrapLimit = Math.max(0, Number(summaryBootstrapLimit) || 0);
+    this.fastRefreshLimit = Math.max(0, Number(fastRefreshLimit) || 0);
     this.lastDiscoveryAtMs = Number.NEGATIVE_INFINITY;
     this.lastProcessAtMs = Number.NEGATIVE_INFINITY;
     this.lastKnownRefreshAtMs = Number.NEGATIVE_INFINITY;
@@ -72,6 +74,16 @@ export class SessionManagerTracker {
     }
   }
 
+  fastRefreshIds() {
+    const ids = new Set();
+    if (this.core.selectedId) ids.add(this.core.selectedId);
+    for (const [sessionId] of this.processAssociations) ids.add(sessionId);
+    for (const item of this.core.index) {
+      if (item.state === 'LIVE') ids.add(item.id);
+    }
+    return ids;
+  }
+
   async tick() {
     const nowMs = this.now();
     const discoveryDue = nowMs - this.lastDiscoveryAtMs >= this.discoveryIntervalMs;
@@ -100,7 +112,11 @@ export class SessionManagerTracker {
         this.initializeSummaries();
       } else if (nowMs - this.lastKnownRefreshAtMs >= this.knownRefreshIntervalMs) {
         this.lastKnownRefreshAtMs = nowMs;
-        this.core.refreshKnown({ processEvidence: this.processEvidence });
+        this.core.refreshKnown({
+          processEvidence: this.processEvidence,
+          limit: this.fastRefreshLimit,
+          ids: this.fastRefreshIds()
+        });
         this.core.tailSummaries();
         knownRefreshed = true;
         summariesTailed = true;
