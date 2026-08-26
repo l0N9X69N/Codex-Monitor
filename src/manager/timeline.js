@@ -8,6 +8,9 @@ export const MANAGER_TIMELINE_FILTERS = Object.freeze([
   'turns'
 ]);
 
+const SEARCH_TEXT_CACHE = new WeakMap();
+const FILTER_RESULT_CACHE = new WeakMap();
+
 function lower(value) {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -44,7 +47,11 @@ function eventMatchesFilter(event, filter) {
 }
 
 function searchableText(event) {
-  return [
+  if (event && typeof event === 'object') {
+    const cached = SEARCH_TEXT_CACHE.get(event);
+    if (cached != null) return cached;
+  }
+  const value = [
     event?.category,
     event?.group,
     event?.label,
@@ -63,14 +70,35 @@ function searchableText(event) {
     event?.status,
     event?.exitCode
   ].map(lower).join('\n');
+  if (event && typeof event === 'object') SEARCH_TEXT_CACHE.set(event, value);
+  return value;
 }
 
 export function filterSessionTimeline(events = [], { filter = 'all', search = '' } = {}) {
+  const source = Array.isArray(events) ? events : [];
+  const normalizedFilter = MANAGER_TIMELINE_FILTERS.includes(lower(filter)) ? lower(filter) : 'all';
   const query = lower(search);
-  return (Array.isArray(events) ? events : [])
-    .filter(Boolean)
-    .filter((event) => eventMatchesFilter(event, filter))
-    .filter((event) => !query || searchableText(event).includes(query));
+  const cached = FILTER_RESULT_CACHE.get(source);
+  if (cached
+    && cached.length === source.length
+    && cached.filter === normalizedFilter
+    && cached.search === query) {
+    return cached.result;
+  }
+
+  const result = [];
+  for (const event of source) {
+    if (!event || !eventMatchesFilter(event, normalizedFilter)) continue;
+    if (query && !searchableText(event).includes(query)) continue;
+    result.push(event);
+  }
+  FILTER_RESULT_CACHE.set(source, {
+    length: source.length,
+    filter: normalizedFilter,
+    search: query,
+    result
+  });
+  return result;
 }
 
 export function nextTimelineFilter(filter = 'all') {
