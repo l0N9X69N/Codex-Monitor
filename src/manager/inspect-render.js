@@ -112,6 +112,18 @@ function join(left, right, leftWidth, height) {
   return lines;
 }
 
+function paintRows(rows, token, mode) {
+  return (Array.isArray(rows) ? rows : []).map((row) => hpaint(row, token, mode));
+}
+
+function timeAxis(firstAtMs, lastAtMs, width) {
+  if (finiteOrNull(firstAtMs) == null || finiteOrNull(lastAtMs) == null) return '';
+  const left = fmtTime(firstAtMs);
+  const right = fmtTime(lastAtMs);
+  const gap = Math.max(1, width - left.length - right.length);
+  return `${left}${'─'.repeat(gap)}${right}`;
+}
+
 function infoLines(detail) {
   return [
     `Project      ${detail.info?.project ?? 'UNKNOWN'}`,
@@ -142,54 +154,84 @@ function telemetryLines(detail) {
 function contextAnalyticsLines(detail, width, mode) {
   const analytics = detail.analytics;
   if (!analytics) return telemetryLines(detail);
-  const chart = contextChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const chartWidth = Math.max(12, width - 2);
+  const chart = contextChartModel(analytics, chartWidth, { ascii: mode === 'mono' && width < 60, height: width >= 60 ? 4 : 3 });
   return [
     `${hpaint('CONTEXT STREAM', 'heading', mode)}  current ${hpaint(fmtPercentValue(chart.currentPercent), 'pressure', mode)}  peak ${hpaint(fmtPercentValue(chart.peakPercent), 'pressure', mode)}  compactions ${chart.compactions}`,
-    hpaint(chart.line, 'pressure', mode),
+    ...paintRows(chart.rows, 'pressure', mode),
+    hpaint(timeAxis(chart.firstAtMs, chart.lastAtMs, chartWidth), 'dim', mode),
     '',
     ...telemetryLines(detail)
   ];
 }
 
-function tokenAnalyticsLines(detail, width, mode) {
+function tokenSummaryLines(detail, width, mode) {
   const analytics = detail.analytics;
   if (!analytics) return telemetryLines(detail).slice(0, 5);
-  const cumulative = cumulativeTokenChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
-  const perTurn = tokenIoByTurnChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const chartWidth = Math.max(12, width - 2);
+  const cumulative = cumulativeTokenChartModel(analytics, chartWidth, { ascii: mode === 'mono' && width < 60, height: 3 });
+  return [
+    `${hpaint('CUMULATIVE TOKENS', 'heading', mode)}  total ${hpaint(fmtNum(cumulative.total), 'secondary', mode)}`,
+    ...paintRows(cumulative.rows, 'secondary', mode),
+    hpaint(timeAxis(cumulative.firstAtMs, cumulative.lastAtMs, chartWidth), 'dim', mode),
+    '',
+    `Input        ${fmtNum(cumulative.input)}`,
+    `Cached       ${fmtNum(cumulative.cached)}`,
+    `Uncached     ${fmtNum(cumulative.uncachedInput)}`,
+    `Output       ${fmtNum(cumulative.output)}`,
+    `Reasoning    ${fmtNum(cumulative.reasoning)}`,
+    `Total I/O    ${fmtNum(cumulative.total)}`,
+    `Context      ${fmtPercent(detail.tokens?.contextUsed, detail.tokens?.contextWindow)}   peak ${fmtPercentValue(analytics.context?.peakPercent)}`
+  ];
+}
+
+function tokenTurnLines(detail, width, mode, maxRows = 14) {
+  const analytics = detail.analytics;
+  if (!analytics) return [];
+  const chartWidth = Math.max(12, width - 2);
+  const perTurn = tokenIoByTurnChartModel(analytics, chartWidth, { ascii: mode === 'mono' && width < 60, height: 3 });
   const turns = Array.isArray(analytics.turns?.items) ? analytics.turns.items : [];
   const lines = [
-    `${hpaint('CUMULATIVE TOKENS', 'heading', mode)}  total ${hpaint(fmtNum(cumulative.total), 'secondary', mode)}`,
-    hpaint(cumulative.line, 'secondary', mode),
-    `Input ${fmtNum(cumulative.input)}  Cached ${fmtNum(cumulative.cached)}  Uncached ${fmtNum(cumulative.uncachedInput)}  Output ${fmtNum(cumulative.output)}  Reason ${fmtNum(cumulative.reasoning)}`,
-    '',
     `${hpaint('TOKEN I/O / TURN', 'heading', mode)}  peak ${fmtNum(perTurn.peakTokens)}`,
-    hpaint(perTurn.line, 'session', mode),
+    ...paintRows(perTurn.rows, 'session', mode),
+    '',
     hpaint(' #    INPUT    CACHE   UNCACHED   OUTPUT   REASON    TOTAL', 'label', mode)
   ];
-  for (const turn of turns.slice(-8)) {
+  for (const turn of turns.slice(-Math.max(3, maxRows))) {
     lines.push(`${String(turn.index + 1).padStart(3)}  ${String(fmtNum(turn.inputTokens)).padStart(7)}  ${String(fmtNum(turn.cachedTokens)).padStart(7)}  ${String(fmtNum(turn.uncachedInputTokens)).padStart(9)}  ${String(fmtNum(turn.outputTokens)).padStart(7)}  ${String(fmtNum(turn.reasoningTokens)).padStart(7)}  ${String(fmtNum(turn.totalTokens)).padStart(7)}`);
   }
   if (!turns.length) lines.push(hpaint('No per-turn token evidence.', 'dim', mode));
-  lines.push('', `Context      ${fmtPercent(detail.tokens?.contextUsed, detail.tokens?.contextWindow)}   peak ${fmtPercentValue(analytics.context?.peakPercent)}`);
   return lines;
 }
 
-function turnTableLines(detail, width, mode) {
+function tokenAnalyticsLines(detail, width, mode) {
+  return [...tokenSummaryLines(detail, width, mode), '', ...tokenTurnLines(detail, width, mode, 8)];
+}
+
+function turnChartLines(detail, width, mode) {
   const analytics = detail.analytics;
   if (!analytics) return [
     `Turns        ${fmtNum(detail.turns?.count)}`,
     `Completed    ${fmtNum(detail.turns?.completed)}`,
     `Last turn    ${fmtDuration(detail.turns?.lastDurationMs)}`
   ];
-  const turns = Array.isArray(analytics.turns?.items) ? analytics.turns.items : [];
-  const chart = turnDurationChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
-  const lines = [
+  const chart = turnDurationChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60, height: 4 });
+  return [
     `${hpaint('TURN DURATION', 'heading', mode)}  completed ${fmtNum(analytics.turns?.completed)}  peak ${fmtDuration(chart.maxDurationMs)}`,
-    hpaint(chart.line, 'pressure', mode),
+    ...paintRows(chart.rows, 'pressure', mode),
     '',
-    hpaint(' #   START     DURATION   INPUT    OUTPUT   REASON   CTX    TOOLS', 'label', mode)
+    `Turns        ${fmtNum(detail.turns?.count)}`,
+    `Completed    ${fmtNum(detail.turns?.completed)}`,
+    `Last turn    ${fmtDuration(detail.turns?.lastDurationMs)}`
   ];
-  const visible = Math.max(3, Math.min(14, turns.length));
+}
+
+function turnTableOnlyLines(detail, mode, maxRows = 20) {
+  const analytics = detail.analytics;
+  if (!analytics) return [];
+  const turns = Array.isArray(analytics.turns?.items) ? analytics.turns.items : [];
+  const lines = [hpaint(' #   START     DURATION   INPUT    OUTPUT   REASON   CTX    TOOLS', 'label', mode)];
+  const visible = Math.max(3, Math.min(maxRows, turns.length));
   for (const turn of turns.slice(-visible)) {
     const ctx = fmtPercent(turn.contextUsed, turn.contextWindow);
     const marker = turn.completed ? ' ' : turn.incomplete ? '!' : '>';
@@ -199,28 +241,42 @@ function turnTableLines(detail, width, mode) {
   return lines;
 }
 
-function toolAnalyticsLines(detail, width, mode) {
+function turnTableLines(detail, width, mode) {
+  return [...turnChartLines(detail, width, mode), '', ...turnTableOnlyLines(detail, mode, 14)];
+}
+
+function toolSummaryLines(detail, width, mode) {
   const analytics = detail.analytics;
   if (!analytics) {
     const tools = Array.isArray(detail.tools?.byName) ? detail.tools.byName : [];
     return [`Total tools  ${fmtNum(detail.tools?.count)}`, '', ...tools.slice(0, 12).map((item) => `${String(fmtNum(item.count)).padStart(6)}  ${item.name ?? '--'}`)];
   }
-  const bars = toolShareChartModel(analytics, Math.max(8, Math.min(30, Math.floor(width * 0.35))), { ascii: mode === 'mono' && width < 60, maxItems: 8 });
-  const callsByTurn = toolCallsByTurnChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const bars = toolShareChartModel(analytics, Math.max(8, Math.min(30, Math.floor(width * 0.55))), { ascii: mode === 'mono' && width < 60, maxItems: 8 });
+  const callsByTurn = toolCallsByTurnChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60, height: 3 });
   const lines = [
     `${hpaint('TOOL CALLS / TURN', 'heading', mode)}  total ${fmtNum(bars.total)}  peak ${fmtNum(callsByTurn.peakCalls)}`,
-    hpaint(callsByTurn.line, 'live', mode),
+    ...paintRows(callsByTurn.rows, 'live', mode),
     '',
     hpaint('TOOL SHARE', 'heading', mode)
   ];
   for (const row of bars.bars) lines.push(`${String(row.label).padEnd(16).slice(0, 16)} ${row.bar} ${fmtNum(row.value)}`);
   if (!bars.bars.length) lines.push(hpaint('No tool call evidence.', 'dim', mode));
-  const events = Array.isArray(analytics.tools?.events) ? analytics.tools.events : [];
-  lines.push('', hpaint('RECENT TOOL EVENTS', 'label', mode));
-  for (const event of events.slice(-8).reverse()) {
-    lines.push(`${fmtTime(event.atMs)}  ${String(event.name ?? '--').padEnd(14).slice(0, 14)}  ${fmtDuration(event.durationMs)}${event.failed ? '  FAILED' : ''}`);
-  }
   return lines;
+}
+
+function toolEventLines(detail, maxRows = 18) {
+  const analytics = detail.analytics;
+  const events = Array.isArray(analytics?.tools?.events) ? analytics.tools.events : [];
+  const lines = [];
+  for (const event of events.slice(-Math.max(4, maxRows)).reverse()) {
+    lines.push(`${fmtTime(event.atMs)}  ${String(event.name ?? '--').padEnd(16).slice(0, 16)}  ${String(fmtDuration(event.durationMs)).padStart(7)}${event.failed ? '  FAILED' : ''}`);
+  }
+  if (!events.length) lines.push('No recent tool events.');
+  return lines;
+}
+
+function toolAnalyticsLines(detail, width, mode) {
+  return [...toolSummaryLines(detail, width, mode), '', hpaint('RECENT TOOL EVENTS', 'label', mode), ...toolEventLines(detail, 8)];
 }
 
 function errorAnalyticsLines(detail, mode) {
@@ -335,6 +391,29 @@ function eventDetailLines(event, width) {
   return lines;
 }
 
+function renderWideAnalyticsTab(detail, tab, safeWidth, bodyHeight, mode) {
+  const leftWidth = Math.max(48, Math.floor(safeWidth * 0.42));
+  const rightWidth = safeWidth - leftWidth - 1;
+  if (rightWidth < 56) return null;
+
+  if (tab === 'tokens') {
+    const left = panel(tokenSummaryLines(detail, leftWidth - 4, mode), leftWidth, bodyHeight, { title: 'TOKEN SUMMARY / CUMULATIVE', mode, active: true });
+    const right = panel(tokenTurnLines(detail, rightWidth - 4, mode, Math.max(8, bodyHeight - 9)), rightWidth, bodyHeight, { title: 'TOKEN I/O / TURN', mode });
+    return join(left, right, leftWidth, bodyHeight);
+  }
+  if (tab === 'turns') {
+    const left = panel(turnChartLines(detail, leftWidth - 4, mode), leftWidth, bodyHeight, { title: 'TURN DYNAMICS', mode, active: true });
+    const right = panel(turnTableOnlyLines(detail, mode, Math.max(10, bodyHeight - 3)), rightWidth, bodyHeight, { title: 'TURN HISTORY', mode });
+    return join(left, right, leftWidth, bodyHeight);
+  }
+  if (tab === 'tools') {
+    const left = panel(toolSummaryLines(detail, leftWidth - 4, mode), leftWidth, bodyHeight, { title: 'TOOL DYNAMICS / SHARE', mode, active: true });
+    const right = panel(toolEventLines(detail, Math.max(10, bodyHeight - 3)), rightWidth, bodyHeight, { title: 'RECENT TOOL EVENTS', mode });
+    return join(left, right, leftWidth, bodyHeight);
+  }
+  return null;
+}
+
 export function renderSessionInspect({
   detail,
   width = 120,
@@ -389,6 +468,13 @@ export function renderSessionInspect({
       const left = panel(infoLines(detail), leftWidth, bodyHeight, { title: 'IDENTITY', mode, active: true });
       const right = panel(contextAnalyticsLines(detail, rightWidth - 4, mode), rightWidth, bodyHeight, { title: 'CONTEXT / EXACT TELEMETRY', mode });
       lines.push(...join(left, right, leftWidth, bodyHeight));
+    } else if (safeWidth >= 120 && ['tokens', 'turns', 'tools'].includes(tab)) {
+      const wide = renderWideAnalyticsTab(detail, tab, safeWidth, bodyHeight, mode);
+      if (wide) lines.push(...wide);
+      else {
+        const titleByTab = { tokens: 'TOKENS / CUMULATIVE', turns: 'TURNS / DURATION', tools: 'TOOLS / SHARE' };
+        lines.push(...panel(tabLines(detail, tab, safeWidth - 4, mode), safeWidth, bodyHeight, { title: titleByTab[tab], mode, active: true }));
+      }
     } else {
       const titleByTab = {
         info: 'IDENTITY', tokens: 'TOKENS / CUMULATIVE', turns: 'TURNS / DURATION', tools: 'TOOLS / SHARE', resources: 'RESOURCES', errors: 'ERRORS / EVENTS'
