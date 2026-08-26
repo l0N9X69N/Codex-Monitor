@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { currentPlatform } from '../platform/common.js';
 
 function quoteWindowsCmdArg(value) {
   if (value === '') return '""';
@@ -45,7 +46,7 @@ export function parseCodexLoginStatus(text = '') {
 export function codexStatusSpawnPlan({
   codexPath = 'codex',
   env = process.env,
-  platform = process.platform
+  platform = currentPlatform()
 } = {}) {
   if (platform === 'win32' && /\.(cmd|bat)$/i.test(codexPath)) {
     const comspec = env.ComSpec || process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
@@ -59,7 +60,7 @@ export function runCodexLoginStatus({
   codexPath = 'codex',
   env = process.env,
   timeoutMs = 3_000,
-  platform = process.platform
+  platform = currentPlatform()
 } = {}) {
   try {
     const plan = codexStatusSpawnPlan({ codexPath, env, platform });
