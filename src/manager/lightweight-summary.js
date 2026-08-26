@@ -61,6 +61,9 @@ function freshSummary(item, { countsComplete = false } = {}) {
       contextUsed: null
     },
     turnCount: countsComplete ? 0 : null,
+    currentTurnStartedAtMs: null,
+    lastTurnCompletedAtMs: null,
+    lastTurnDurationMs: null,
     toolCount: countsComplete ? 0 : null,
     agentSpawnCount: countsComplete ? 0 : null,
     observedTurnCount: 0,
@@ -98,8 +101,17 @@ function applyEvent(summary, event, recentLimit) {
     if (event.contextWindow != null) summary.tokens.contextWindow = event.contextWindow;
     if (event.contextUsed != null) summary.tokens.contextUsed = event.contextUsed;
   } else if (event.kind === 'turn-start') {
+    summary.currentTurnStartedAtMs = atMs;
     summary.observedTurnCount += 1;
     if (summary.countsComplete) summary.turnCount = (summary.turnCount ?? 0) + 1;
+  } else if (event.kind === 'turn-complete') {
+    if (atMs != null) {
+      summary.lastTurnCompletedAtMs = atMs;
+      if (summary.currentTurnStartedAtMs != null && atMs >= summary.currentTurnStartedAtMs) {
+        summary.lastTurnDurationMs = atMs - summary.currentTurnStartedAtMs;
+      }
+    }
+    summary.currentTurnStartedAtMs = null;
   } else if (event.kind === 'tool-start') {
     summary.observedToolCount += 1;
     if (summary.countsComplete) summary.toolCount = (summary.toolCount ?? 0) + 1;
@@ -214,6 +226,7 @@ export class LightweightSessionSummaries {
       summary.turnCount = null;
       summary.toolCount = null;
       summary.agentSpawnCount = null;
+      summary.currentTurnStartedAtMs = null;
       summary.observationGap = true;
       dropLeadingPartial = start > 0;
     }
@@ -246,6 +259,7 @@ export class LightweightSessionSummaries {
     summary.tokens.contextWindow = numberOrNull(model.tokens?.contextWindow);
     summary.tokens.contextUsed = numberOrNull(model.tokens?.contextUsed);
     summary.turnCount = numberOrNull(model.turns?.count) ?? 0;
+    summary.lastTurnDurationMs = numberOrNull(model.turns?.lastDurationMs) ?? summary.lastTurnDurationMs;
     summary.toolCount = numberOrNull(model.tools?.count) ?? 0;
     summary.agentSpawnCount = agentSpawnCountFromByName(model.tools?.byName);
     summary.observedTurnCount = summary.turnCount;
@@ -293,6 +307,8 @@ export class LightweightSessionSummaries {
         contextUsed: null
       },
       turnCount: summary?.turnCount ?? null,
+      lastTurnCompletedAtMs: summary?.lastTurnCompletedAtMs ?? null,
+      lastTurnDurationMs: summary?.lastTurnDurationMs ?? null,
       toolCount: summary?.toolCount ?? null,
       agentSpawnCount: summary?.agentSpawnCount ?? null,
       countsComplete: summary?.countsComplete ?? false,
