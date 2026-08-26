@@ -29,11 +29,19 @@ function sortedToolCounts(byName = {}) {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+function normalizedValue(metric) {
+  const value = metric?.value;
+  return value === null || value === undefined || value === '' ? null : value;
+}
+
 export function createSelectedSessionDetail(meta, model) {
   if (!meta || !model) return null;
   const startedAtMs = model.info?.startedAtMs ?? meta.startedAtMs ?? null;
   const lastEventAtMs = model.info?.lastEventAtMs ?? meta.lastActivityAtMs ?? meta.modifiedAtMs ?? null;
   const toolCounts = sortedToolCounts(model.tools?.byName);
+  const normalizedRequestedModel = normalizedValue(model.normalized?.model?.requested);
+  const normalizedActualModel = normalizedValue(model.normalized?.model?.actual);
+  const normalizedReasoning = normalizedValue(model.normalized?.model?.reasoning);
 
   return {
     id: meta.id,
@@ -41,8 +49,8 @@ export function createSelectedSessionDetail(meta, model) {
     tabs: [...MANAGER_DETAIL_TABS],
     info: {
       threadId: model.info?.threadId ?? meta.threadId ?? null,
-      model: model.info?.model ?? meta.model ?? null,
-      reasoning: model.info?.reasoning ?? null,
+      model: model.info?.model ?? normalizedActualModel ?? normalizedRequestedModel ?? meta.model ?? null,
+      reasoning: model.info?.reasoning ?? normalizedReasoning ?? null,
       cwd: model.info?.cwd ?? meta.cwd ?? null,
       project: meta.project ?? null,
       startedAtMs,
