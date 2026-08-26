@@ -272,15 +272,46 @@ idle.txt
 thinking.txt
 tools.txt
 events.txt
+eat.txt
 context.txt
 motion-rest.txt
 ```
 
 The same action ID must exist conceptually in all four body states, even if a heavier dog moves slower or uses fewer hops.
 
-Existing `eat_preview.txt` + `eat.js` remain a working prototype/reference until the new body-state loader is implemented.
+`eat.txt` in each body-state folder is now the editable source for eating. `eat.js` reads those four files directly by default and can preview a single body state with `--state=normal|belly-1|belly-2|belly-max`. The old `eat_preview.txt` is retained only as the original combined reference while migration is being reviewed.
 
-## 12. ASCII rules
+## 12. Storyboard source convention
+
+Every real animation source should be preview-editable as ordered ASCII frames, not only a prose description or one representative pose.
+
+Preferred format:
+
+```text
+ACTION think.scratch-ear
+FRAME 01 — THINK
+--------------------------------------------------
+<ASCII>
+
+FRAME 02 — LIFT PAW
+--------------------------------------------------
+<ASCII>
+
+FRAME 03 — SCRATCH A
+--------------------------------------------------
+<ASCII>
+```
+
+Rules:
+
+1. An `ACTION` may contain as many frames as needed to read clearly.
+2. Keep entry and exit poses compatible with nearby behaviors where possible.
+3. Long-lived states choose whole actions from weighted pools; do not randomly jump into the middle of an action.
+4. Event animations play their full one-shot storyboard unless a higher-priority event interrupts at a safe boundary.
+5. ASCII marked `DRAFT STORYBOARD` is intentionally meant for visual review and manual correction.
+6. When the user edits a frame, the edited text becomes the visual source of truth; runtime code should consume it rather than reconstructing the dog shape.
+
+## 13. ASCII rules
 
 1. Monospace only.
 2. Keep a stable head anchor within an action unless the whole dog intentionally jumps.
