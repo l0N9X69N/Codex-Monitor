@@ -84,12 +84,23 @@ function progressBar(percent, width) {
   return `${'━'.repeat(filled)}${'─'.repeat(cells - filled)}`;
 }
 
+function resample(values, width) {
+  const count = Math.max(1, Math.floor(width));
+  if (values.length === count) return values;
+  if (values.length === 1) return Array.from({ length: count }, () => values[0]);
+  return Array.from({ length: count }, (_, index) => {
+    const position = count === 1 ? values.length - 1 : (index * (values.length - 1)) / (count - 1);
+    return values[Math.max(0, Math.min(values.length - 1, Math.round(position)))];
+  });
+}
+
 function sparkline(values, width) {
   const clean = values.map(finite).filter((item) => item != null);
-  if (clean.length < MIN_SPARKLINE_SAMPLES || width < 4) return null;
-  const source = clean.slice(-Math.max(4, width));
-  const min = Math.min(...source);
-  const max = Math.max(...source);
+  const cells = Math.max(0, Math.floor(width));
+  if (clean.length < MIN_SPARKLINE_SAMPLES || cells < 4) return null;
+  const source = resample(clean, cells);
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
   const range = max - min;
   return source.map((item) => {
     if (range <= 0.0001) return SPARK_BLOCKS[3];
@@ -272,6 +283,18 @@ function columnCountFor(width, cardCount) {
   return Math.max(1, Math.min(MAX_CARD_COLUMNS, cardCount, Math.floor(Math.max(1, width - 1) / MIN_CARD_OUTER_CELLS)));
 }
 
+function balancedColumnCountFor(width, cardCount) {
+  let columns = columnCountFor(width, cardCount);
+  if (cardCount > columns && cardCount % columns === 1 && columns > 2) columns -= 1;
+  return columns;
+}
+
+function gridRowCountFor(width, cardCount) {
+  if (cardCount <= 0) return 0;
+  const columns = balancedColumnCountFor(width, cardCount);
+  return Math.ceil(cardCount / Math.max(1, columns));
+}
+
 function representationForWidth(innerWidth) {
   if (innerWidth >= 34) return CARD_REPRESENTATION.RICH;
   if (innerWidth >= 26) return CARD_REPRESENTATION.NORMAL;
@@ -321,7 +344,7 @@ function planGrid(cards, width, height) {
   const budget = monitorBudget(height);
   if (!cards.length) return { columns: 0, rows: [], budget, frameHeight: 3, heightConstrained: false, cap: CARD_REPRESENTATION.MINIMAL };
 
-  let columns = columnCountFor(width, cards.length);
+  let columns = balancedColumnCountFor(width, cards.length);
   let minimalRows = packCards(cards, columns, width, CARD_REPRESENTATION.MINIMAL);
   while (columns < cards.length && estimatedFrameHeight(minimalRows) > budget) {
     columns += 1;
@@ -525,7 +548,9 @@ function systemContent(state, rep, width, theme) {
   const used = finite(value(state?.system?.memoryBytes));
   const total = finite(value(state?.system?.totalMemoryBytes));
   const memoryPercent = used != null && total != null && total > 0 ? (used / total) * 100 : null;
-  const graphWidth = Math.max(4, Math.min(36, width - 10));
+  const cpuPrefix = `CPU ${pct(cpu)}  `;
+  const ramPrefix = `RAM ${pct(memoryPercent)}  `;
+  const graphWidth = Math.max(4, width - Math.max(cellWidth(cpuPrefix), cellWidth(ramPrefix)));
   const cpuGraph = width >= 24 ? systemGraph(state, 'cpu', graphWidth) : null;
   const ramGraph = width >= 24 ? systemGraph(state, 'ram', graphWidth) : null;
   const cpuLine = pressureText('CPU', cpu, cpuGraph, theme);
@@ -601,17 +626,41 @@ function stripAnsiSafe(text = '') {
   return String(text).replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '');
 }
 
-function enabledCards(config, state, width) {
+function coreCards(config, state) {
   const auth = String(value(state?.auth?.mode, 'unknown'));
   const cards = [];
   if (config?.sections?.context === true && config?.metrics?.context !== false) cards.push({ id: 'context', title: 'CONTEXT', token: 'info', weight: 0.85 });
   if (config?.sections?.usage === true && config?.metrics?.usage !== false) cards.push({ id: 'usage', title: `USAGE${auth === 'login' ? ' · LOGIN' : auth === 'api' ? ' · API' : ''}`, token: 'reasoning', weight: auth === 'login' ? 1.25 : 1.15 });
   if (config?.sections?.session === true && config?.metrics?.session !== false) cards.push({ id: 'session', title: 'SESSION', token: 'healthy', weight: 1.0 });
   if (config?.sections?.activity === true && config?.metrics?.activity !== false) cards.push({ id: 'activity', title: 'CURRENT ACTIVITY', token: 'thinking', weight: 1.05 });
-  if (config?.sections?.system === true && config?.metrics?.system !== false) cards.push({ id: 'system', title: 'SYSTEM', token: 'info', weight: 0.95 });
+  return cards;
+}
+
+function optionalCardDefinitions(config) {
+  const options = [];
+  const systemMode = String(config?.systemMode ?? (config?.sections?.system === true ? 'on' : 'off'));
   const beastMode = String(config?.beastMode ?? 'off');
-  if (beastMode === 'on' || (beastMode === 'auto' && width >= BEAST_MODE_MIN_CELLS)) {
-    cards.push({ id: 'beast', title: 'BEAST MODE', token: 'tool', weight: 1.0 });
+  if (systemMode !== 'off' && config?.metrics?.system !== false) {
+    options.push({ mode: systemMode, card: { id: 'system', title: 'SYSTEM', token: 'info', weight: 0.95 } });
+  }
+  if (beastMode !== 'off') options.push({ mode: beastMode, card: { id: 'beast', title: 'BEAST MODE', token: 'tool', weight: 1.0 } });
+  return options;
+}
+
+function enabledCards(config, state, width) {
+  const cards = coreCards(config, state);
+  const options = optionalCardDefinitions(config);
+
+  for (const option of options) if (option.mode === 'on') cards.push(option.card);
+
+  let baselineRows = gridRowCountFor(width, cards.length);
+  for (const option of options) {
+    if (option.mode !== 'auto') continue;
+    const nextRows = gridRowCountFor(width, cards.length + 1);
+    if (nextRows <= baselineRows) {
+      cards.push(option.card);
+      baselineRows = nextRows;
+    }
   }
   return cards;
 }
@@ -693,6 +742,7 @@ function responsiveCardFrame({
     return applyLineBackground(padCells(clipped, safeWidth), background);
   });
   const beastVisible = cards.some((card) => card.id === 'beast');
+  const systemVisible = cards.some((card) => card.id === 'system');
   return {
     lines: renderedLines,
     rowCount: renderedLines.length,
@@ -709,14 +759,16 @@ function responsiveCardFrame({
       theme,
       background,
       interactive: false,
-      visual: 'responsive-card-grid-v3',
+      visual: 'responsive-card-grid-v4',
       cardGrid: true,
       cardCount: cards.length,
       columns: plan.columns,
       representationCap: plan.cap,
       representations,
       progressiveGraphs: true,
-      systemCard: cards.some((card) => card.id === 'system'),
+      systemMode: String(config?.systemMode ?? 'off'),
+      systemCard: systemVisible,
+      systemVisible,
       beastMode: String(config?.beastMode ?? 'off'),
       beastVisible,
       heightConstrained: plan.heightConstrained
@@ -740,5 +792,6 @@ export {
   sparkline,
   progressBar,
   columnCountFor,
+  balancedColumnCountFor,
   planGrid
 };
