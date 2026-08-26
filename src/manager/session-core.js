@@ -3,6 +3,7 @@ import path from 'node:path';
 import { HistoryEngine } from '../history/engine.js';
 import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { samePlatformPath } from '../platform/common.js';
+import { createSelectedSessionDetail } from './detail-view.js';
 
 export const SESSION_ACTIVITY = Object.freeze({
   LIVE: 'LIVE',
@@ -325,6 +326,13 @@ export class SessionManagerCore {
   }
 
   selectedModel() { return this.selectedId ? this.deep.cache.get(this.selectedId) ?? null : null; }
+
+  selectedDetail() {
+    if (!this.selectedId) return null;
+    const meta = this.index.find((item) => item.id === this.selectedId);
+    const model = this.selectedModel();
+    return createSelectedSessionDetail(meta, model);
+  }
 
   sessionMatchesCwd(item, cwd, platform) {
     return Boolean(item?.cwd && cwd && samePlatformPath(item.cwd, cwd, platform));
