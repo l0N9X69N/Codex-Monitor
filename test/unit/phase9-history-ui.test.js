@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { renderHistoryFrame } from '../../src/history/render.js';
 import { normalizeHistoryInput } from '../../src/history/input.js';
-import { detectHistoryColorMode } from '../../src/history/theme.js';
+import { detectHistoryColorMode, hpaint } from '../../src/history/theme.js';
 import { cellWidth, stripAnsi } from '../../src/ui/cell-width.js';
 import { runHistoryTui } from '../../src/history/app.js';
 
@@ -46,12 +46,15 @@ test('History input supports keyboard, mouse wheel and Storage', () => {
   assert.equal(click.x, 10);
 });
 
-test('History color capability falls back truecolor -> 256 -> 16 -> mono', () => {
+test('History/Manager color capability recognizes Windows Terminal and preserves fallbacks', () => {
   assert.equal(detectHistoryColorMode({ COLORTERM: 'truecolor', TERM: 'xterm-256color' }), 'truecolor');
+  assert.equal(detectHistoryColorMode({ WT_SESSION: 'abc' }), 'truecolor');
   assert.equal(detectHistoryColorMode({ TERM: 'xterm-256color' }), '256');
   assert.equal(detectHistoryColorMode({ TERM: 'xterm' }), '16');
   assert.equal(detectHistoryColorMode({ TERM: 'dumb' }), 'mono');
-  assert.equal(detectHistoryColorMode({ NO_COLOR: '1', TERM: 'xterm-256color' }), 'mono');
+  assert.equal(detectHistoryColorMode({ NO_COLOR: '1', WT_SESSION: 'abc', TERM: 'xterm-256color' }), 'mono');
+  assert.match(hpaint('LIVE', 'live', 'matrix:truecolor'), /\x1b\[/);
+  assert.equal(hpaint('LIVE', 'live', 'mono'), 'LIVE');
 });
 
 test('History TUI enters alternate screen and restores terminal on quit', async () => {
