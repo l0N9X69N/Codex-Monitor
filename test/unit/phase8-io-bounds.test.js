@@ -60,6 +60,30 @@ test('1000+ session discovery bounds shallow identity reads and does not retry u
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('fast known-session refresh stats only the bounded recent set plus explicit active ids', () => {
+  const root = tempDir();
+  for (let i = 0; i < 1001; i += 1) {
+    fs.writeFileSync(path.join(root, `s-${String(i).padStart(4, '0')}.jsonl`), '');
+  }
+
+  let stats = 0;
+  const fsRef = {
+    ...fs,
+    statSync(...args) { stats += 1; return fs.statSync(...args); }
+  };
+  const core = new SessionManagerCore({ sessionsPath: root, fsRef, identityEnrichLimit: 0 });
+  core.discover({ enrichIdentity: false });
+  assert.equal(core.index.length, 1001);
+
+  stats = 0;
+  const extraId = core.index[500].id;
+  core.refreshKnown({ limit: 16, ids: new Set([extraId]) });
+  assert.ok(stats <= 17, `fast refresh must stat at most 16 recent sessions plus explicit ids, got ${stats}`);
+  assert.ok(stats >= 16, `fast refresh should cover the bounded recent set, got ${stats}`);
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('non-selected sessions stay shallow while selected session alone triggers deep read', () => {
   const root = tempDir();
   for (let i = 0; i < 20; i += 1) {
