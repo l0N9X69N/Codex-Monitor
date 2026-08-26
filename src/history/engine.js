@@ -6,6 +6,8 @@ import { PROVENANCE } from '../core/provenance.js';
 import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { sanitizeDetail, sanitizeText } from '../core/sanitize.js';
 
+const HISTORY_LOAD_CHUNK_BYTES = 256 * 1024;
+
 function walkJsonl(root, fsRef = fs, limit = Number.POSITIVE_INFINITY) {
   const found = [];
   if (!root || !fsRef.existsSync(root)) return found;
@@ -281,6 +283,27 @@ function consumeText(model, text, { final = false } = {}) {
   return model;
 }
 
+function loadFileInChunks(model, filePath, fsRef = fs, chunkBytes = HISTORY_LOAD_CHUNK_BYTES) {
+  const fd = fsRef.openSync(filePath, 'r');
+  try {
+    const stat = fsRef.fstatSync(fd);
+    const buffer = Buffer.alloc(Math.max(4096, Number(chunkBytes) || HISTORY_LOAD_CHUNK_BYTES));
+    let position = 0;
+    while (position < stat.size) {
+      const length = Math.min(buffer.length, stat.size - position);
+      const read = fsRef.readSync(fd, buffer, 0, length, position);
+      if (read <= 0) break;
+      position += read;
+      consumeText(model, buffer.subarray(0, read).toString('utf8'), { final: false });
+    }
+    consumeText(model, '', { final: true });
+    model.offset = position;
+    return position;
+  } finally {
+    fsRef.closeSync(fd);
+  }
+}
+
 export class HistoryEngine {
   constructor({ sessionsPath, fsRef = fs } = {}) {
     this.sessionsPath = sessionsPath;
@@ -300,9 +323,7 @@ export class HistoryEngine {
     const filePath = this.getMetadata(id).filePath;
     const model = historicalModel(filePath);
     try {
-      const text = this.fs.readFileSync(filePath, 'utf8');
-      model.offset = Buffer.byteLength(text);
-      consumeText(model, text, { final: true });
+      loadFileInChunks(model, filePath, this.fs);
       model.complete = true;
     } catch (error) { model.errors.push({ atMs: null, detail: sanitizeDetail(error?.message ?? 'read failed') }); }
     this.cache.set(id, model);
@@ -324,15 +345,18 @@ export class HistoryEngine {
     if (stat.size === model.offset) return { changed: false, reset: false, error: null, model };
     const fd = this.fs.openSync(model.filePath, 'r');
     try {
-      const length = stat.size - model.offset;
-      const buffer = Buffer.alloc(length);
-      this.fs.readSync(fd, buffer, 0, length, model.offset);
-      model.offset = stat.size;
-      model.complete = false;
-      consumeText(model, buffer.toString('utf8'), { final: false });
+      const buffer = Buffer.alloc(Math.min(HISTORY_LOAD_CHUNK_BYTES, Math.max(1, stat.size - model.offset)));
+      while (model.offset < stat.size) {
+        const length = Math.min(buffer.length, stat.size - model.offset);
+        const read = this.fs.readSync(fd, buffer, 0, length, model.offset);
+        if (read <= 0) break;
+        model.offset += read;
+        model.complete = false;
+        consumeText(model, buffer.subarray(0, read).toString('utf8'), { final: false });
+      }
       return { changed: true, reset: false, error: null, model };
     } finally { this.fs.closeSync(fd); }
   }
 }
 
-export { walkJsonl as discoverHistoryFiles, consumeText as consumeHistoryText };
+export { walkJsonl as discoverHistoryFiles, consumeText as consumeHistoryText, loadFileInChunks as loadHistoryFileInChunks, HISTORY_LOAD_CHUNK_BYTES };
