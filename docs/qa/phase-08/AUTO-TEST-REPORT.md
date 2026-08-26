@@ -2,20 +2,27 @@
 
 ## Trạng thái
 
-**WAITING USER RUN**
+**WAITING USER RUN — new Session Manager core checkpoint**
+
+Run:
 
 ```powershell
-.\scripts\phase6-9-verify.ps1
+npm run verify:phase8
 ```
 
-Coverage:
-- 1000+ fake sessions discover/stat without deep parse;
-- selected parse only;
-- historical normalized provenance;
-- partial append + complete append + no duplicate;
-- truncate/rotation reload;
-- evidence-only historical Resources;
-- no DB/SQLite/CSV created;
-- `--history` Monitor-owned, `-- --history` forwarded.
+Coverage hiện tại:
 
-Phase 08 chỉ PASS sau auto xanh và manual session-folder/live-tail thật.
+- `--manager` là Monitor-owned và không spawn Codex;
+- `--history` được forward cho official Codex;
+- 1000+ session metadata discovery không deep parse;
+- mtime-only không claim LIVE;
+- file growth/process-match là strong LIVE evidence;
+- multi-session growth độc lập;
+- selected-session-only deep parse;
+- historical provenance;
+- partial append/no duplicate/truncate/external delete;
+- deterministic All/Live/Ended/Search/Sort;
+- no SQLite/CSV/history DB created;
+- Phase 07 platform regression.
+
+PASS ở checkpoint này chưa đóng Phase 08. Real multi-session LIVE/ENDED correlation và performance manual gate vẫn còn phải làm.
