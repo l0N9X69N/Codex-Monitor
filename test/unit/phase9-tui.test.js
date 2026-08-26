@@ -105,7 +105,7 @@ test('Manager TUI switches view at runtime, ignores unknown input and restores t
     stdin,
     stdout,
     processRef,
-    colorMode: 'mono',
+    colorCapability: 'mono',
     intervalMs: 50,
     initialViewMode: 'operations'
   });
@@ -127,5 +127,45 @@ test('Manager TUI switches view at runtime, ignores unknown input and restores t
   assert.equal(adapter.calls.some((call) => call.name === 'spawnPty'), false);
   assert.equal(adapter.calls.filter((call) => call.name === 'cleanup').length, 1);
 
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('Enter on a chart does not inspect; table Enter opens inspect and inspect tabs navigate', async () => {
+  const root = tempDir();
+  fs.writeFileSync(path.join(root, 'one.jsonl'), sessionLine());
+  const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
+  const { stdin, stdout } = fakeTerminal();
+  const processRef = new EventEmitter();
+
+  const running = runSessionManagerTui({
+    platformAdapter: adapter,
+    stdin,
+    stdout,
+    processRef,
+    colorCapability: 'mono',
+    intervalMs: 50,
+    initialViewMode: 'operations'
+  });
+
+  setImmediate(() => {
+    stdin.emit('data', Buffer.from('\t'));
+    stdin.emit('data', Buffer.from('\r'));
+    assert.doesNotMatch(stdout.output, /SESSION INSPECT/);
+    stdin.emit('data', Buffer.from('\x1b[D'));
+    stdin.emit('data', Buffer.from('\r'));
+    setImmediate(() => {
+      stdin.emit('data', Buffer.from('\t'));
+      setImmediate(() => {
+        stdin.emit('data', Buffer.from('q'));
+        setImmediate(() => stdin.emit('data', Buffer.from('q')));
+      });
+    });
+  });
+
+  const result = await running;
+  assert.equal(result.code, 0);
+  assert.match(stdout.output, /SESSION INSPECT/);
+  assert.match(stdout.output, /TOKENS/);
+  assert.equal(stdin.isRaw, false);
   fs.rmSync(root, { recursive: true, force: true });
 });
