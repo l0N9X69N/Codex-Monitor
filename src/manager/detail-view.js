@@ -8,7 +8,11 @@ export const MANAGER_DETAIL_TABS = Object.freeze([
 ]);
 
 function nullableNumber(value) {
-  return Number.isFinite(Number(value)) ? Number(value) : null;
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  if (typeof value === 'boolean') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function durationMs(startedAtMs, lastEventAtMs) {
