@@ -139,7 +139,10 @@ export class SessionManagerRuntime {
   stop() {
     if (!this.running) return false;
     this.running = false;
-    this.timer = null;
+    if (this.timer != null) {
+      this.clearTimeoutRef(this.timer);
+      this.timer = null;
+    }
     const resolve = this.stopResolve;
     this.stopResolve = null;
     resolve?.();
