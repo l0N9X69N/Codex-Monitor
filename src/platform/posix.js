@@ -1,8 +1,40 @@
-import { spawn, execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import os from 'node:os';
 import { spawnCodexPty } from './pty.js';
 import { commonPaths, memorySnapshot, normalizeProcessRecord } from './common.js';
 import { normalizeCapabilities, unsupportedResult } from './contract.js';
+
+function execFileText(file, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, {
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      ...options
+    }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(String(stdout ?? ''));
+    });
+  });
+}
+
+function createAsyncCache(loader, ttlMs) {
+  let cached = null;
+  let cachedAt = 0;
+  let inFlight = null;
+  return async (...args) => {
+    const now = Date.now();
+    if (cached !== null && now - cachedAt < ttlMs) return cached;
+    if (inFlight) return inFlight;
+    inFlight = Promise.resolve(loader(...args))
+      .then((value) => {
+        cached = value;
+        cachedAt = Date.now();
+        return value;
+      })
+      .finally(() => { inFlight = null; });
+    return inFlight;
+  };
+}
 
 function elapsedToMs(value) {
   const text = String(value ?? '').trim();
@@ -39,22 +71,28 @@ function parsePs(text) {
   }).filter(Boolean);
 }
 
-function spawnChecked(file, args, { cwd, env }) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const child = spawn(file, args, { cwd, env, detached: true, stdio: 'ignore' });
-    const finish = (ok) => {
-      if (settled) return;
-      settled = true;
-      if (ok) child.unref();
-      resolve(ok ? { ok: true, launcher: file } : null);
-    };
-    child.once('spawn', () => finish(true));
-    child.once('error', () => finish(false));
-  });
+function parseDf(text, fallbackPath) {
+  const line = String(text ?? '').trim().split(/\r?\n/).at(-1) ?? '';
+  const fields = line.trim().split(/\s+/);
+  const totalKb = Number(fields[1]);
+  const freeKb = Number(fields[3]);
+  const mountPath = fields.length >= 6 ? fields.slice(5).join(' ') : fallbackPath;
+  return {
+    path: mountPath || fallbackPath,
+    totalBytes: Number.isFinite(totalKb) ? totalKb * 1024 : null,
+    freeBytes: Number.isFinite(freeKb) ? freeKb * 1024 : null
+  };
 }
 
-export function createPosixMethods({ platform, env = process.env, terminalLaunchers = [] } = {}) {
+export function createPosixMethods({ platform, env = process.env } = {}) {
+  const getCachedProcessTree = createAsyncCache(async () => {
+    const output = await execFileText('ps', ['-axo', 'pid=,ppid=,comm=,%cpu=,rss=,etime=,args='], {
+      timeout: 2500,
+      env
+    });
+    return parsePs(output);
+  }, 1200);
+
   return {
     async spawnPty(options) { return spawnCodexPty({ ...options, platform }); },
     async getSystemUsage() {
@@ -65,35 +103,19 @@ export function createPosixMethods({ platform, env = process.env, terminalLaunch
       return { cpuPercent, memoryBytes: memory.usedBytes, totalMemoryBytes: memory.totalBytes, freeMemoryBytes: memory.freeBytes };
     },
     async getProcessTree() {
-      try {
-        const output = execFileSync('ps', ['-axo', 'pid=,ppid=,comm=,%cpu=,rss=,etime=,args='], { encoding: 'utf8', timeout: 2500, stdio: ['ignore', 'pipe', 'ignore'] });
-        return parsePs(output);
-      } catch (error) { return unsupportedResult('processTree', error?.message ?? 'ps failed'); }
+      try { return await getCachedProcessTree(); }
+      catch (error) { return unsupportedResult('processTree', error?.message ?? 'ps failed'); }
     },
     async getDiskInfo(cwd = process.cwd()) {
       try {
-        const output = execFileSync('df', ['-kP', cwd], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
-        const line = output.trim().split(/\r?\n/).at(-1) ?? '';
-        const fields = line.trim().split(/\s+/);
-        const totalKb = Number(fields[1]);
-        const freeKb = Number(fields[3]);
-        return { path: cwd, totalBytes: Number.isFinite(totalKb) ? totalKb * 1024 : null, freeBytes: Number.isFinite(freeKb) ? freeKb * 1024 : null };
+        const output = await execFileText('df', ['-kP', cwd], { timeout: 2000, env });
+        return parseDf(output, cwd);
       } catch (error) { return unsupportedResult('diskInfo', error?.message ?? 'df failed'); }
     },
-    async openHistoryTerminal({ command = 'codexm', args = ['--history'], cwd = process.cwd() } = {}) {
-      for (const launcher of terminalLaunchers) {
-        try {
-          const spec = launcher({ command, args, cwd });
-          const result = await spawnChecked(spec.file, spec.args, { cwd, env });
-          if (result) return result;
-        } catch {}
-      }
-      return { ok: false, error: 'could not open a supported terminal launcher' };
-    },
     paths() { return commonPaths({ env }); },
-    capabilities() { return normalizeCapabilities({ pty: true, systemUsage: true, processTree: true, diskInfo: true, historyTerminal: terminalLaunchers.length > 0, mouse: true, truecolor: null }); },
+    capabilities() { return normalizeCapabilities({ pty: true, systemUsage: true, processTree: true, diskInfo: true, mouse: true, truecolor: null, caseInsensitivePaths: platform === 'darwin' }); },
     async cleanup() { return true; }
   };
 }
 
-export { elapsedToMs, parsePs };
+export { elapsedToMs, parsePs, parseDf, execFileText };
