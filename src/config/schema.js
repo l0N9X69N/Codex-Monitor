@@ -3,8 +3,9 @@ const VALID = Object.freeze({
   presets: new Set(['recommended', 'compact', 'full', 'custom']),
   themes: new Set(['color', 'mono', 'matrix']),
   backgrounds: new Set(['terminal', 'black', 'dark']),
+  beastModes: new Set(['off', 'auto', 'on']),
   header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']),
-  sections: new Set(['context', 'usage', 'session', 'activity', 'system', 'beast']),
+  sections: new Set(['context', 'usage', 'session', 'activity', 'system']),
   metrics: new Set([
     'activity', 'model', 'reasoning', 'project', 'context', 'usage', 'quota', 'session',
     'health', 'freshness', 'system', 'tools', 'gitBranch', 'gitDiff', 'gitAheadBehind'
@@ -24,30 +25,33 @@ export const DEFAULT_FIELD_VISIBILITY = Object.freeze({
 
 const PRESET_DEFINITIONS = Object.freeze({
   recommended: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false, beast: false }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: true, project: true, context: true, usage: true,
       quota: true, session: true, health: true, freshness: true, system: false, tools: true,
       gitBranch: false, gitDiff: false, gitAheadBehind: false
     }),
+    beastMode: 'off',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project'])
   }),
   compact: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false, beast: false }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: false, project: true, context: true, usage: true,
       quota: true, session: true, health: false, freshness: true, system: false, tools: true,
       gitBranch: false, gitDiff: false, gitAheadBehind: false
     }),
+    beastMode: 'off',
     header: Object.freeze(['activity', 'model', 'project'])
   }),
   full: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: true, beast: true }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: true }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: true, project: true, context: true, usage: true,
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: true, gitDiff: true, gitAheadBehind: true
     }),
+    beastMode: 'auto',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project', 'git'])
   })
 });
@@ -78,12 +82,25 @@ function uniqueValid(values, valid, fallback = []) {
   return [...new Set(source.filter((value) => valid.has(value)))];
 }
 
+function normalizeBeastMode(input = {}, fallback = 'off') {
+  const direct = String(input?.beastMode ?? '').trim().toLowerCase();
+  if (VALID.beastModes.has(direct)) return direct;
+
+  // Backward compatibility for the brief boolean sections.beast contract.
+  // true used to mean opportunistic ultrawide rendering, which maps to auto.
+  if (input?.sections?.beast === true) return 'auto';
+  if (input?.sections?.beast === false) return 'off';
+
+  return VALID.beastModes.has(fallback) ? fallback : 'off';
+}
+
 export const DEFAULT_CONFIG = Object.freeze({
   configVersion: 2,
   language: 'vi',
   preset: 'recommended',
   theme: 'color',
   background: 'terminal',
+  beastMode: 'off',
   layout: 'auto',
   sections: PRESET_DEFINITIONS.recommended.sections,
   metrics: PRESET_DEFINITIONS.recommended.metrics,
@@ -101,6 +118,7 @@ export function configForPreset(preset = 'recommended', base = DEFAULT_CONFIG) {
   if (presetDefinition) {
     next.sections = clone(presetDefinition.sections);
     next.metrics = clone(presetDefinition.metrics);
+    next.beastMode = presetDefinition.beastMode;
     next.header = [...presetDefinition.header];
   }
   return next;
@@ -115,6 +133,7 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     preset: requestedPreset,
     theme: VALID.themes.has(input?.theme) ? input.theme : presetBase.theme,
     background: VALID.backgrounds.has(input?.background) ? input.background : presetBase.background,
+    beastMode: normalizeBeastMode(input, presetBase.beastMode),
     layout: 'auto',
     sections: booleanMap(input?.sections, [...VALID.sections], presetBase.sections),
     metrics: booleanMap(input?.metrics, [...VALID.metrics], presetBase.metrics),
