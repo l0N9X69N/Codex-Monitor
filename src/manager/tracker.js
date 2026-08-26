@@ -36,14 +36,14 @@ export class SessionManagerTracker {
     try {
       const value = await this.platformAdapter.getProcessTree();
       if (Array.isArray(value)) {
-        this.processEvidence = buildProcessEvidence(value);
+        this.processEvidence = buildProcessEvidence(value, { nowMs });
         this.lastProcessError = null;
       } else {
-        this.processEvidence = buildProcessEvidence(null);
+        this.processEvidence = buildProcessEvidence(null, { nowMs });
         this.lastProcessError = value?.detail ?? null;
       }
     } catch (error) {
-      this.processEvidence = buildProcessEvidence(null);
+      this.processEvidence = buildProcessEvidence(null, { nowMs });
       this.lastProcessError = error?.message ?? 'process query failed';
     }
     return true;
@@ -93,6 +93,7 @@ export class SessionManagerTracker {
       rows: this.core.rows(),
       selected: this.core.selectedModel(),
       selectedDetail: this.core.selectedDetail(),
+      processDiagnostics: this.processEvidence.diagnostics ?? null,
       processError: this.lastProcessError
     };
   }
