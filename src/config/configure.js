@@ -41,6 +41,9 @@ export async function configureMonitor({
         config.sections[section] = yesNo(answer, config.sections[section]);
       }
 
+      const beastMode = (await rl.question(`Beast Mode [off/auto/on] (${config.beastMode}): `)).trim().toLowerCase();
+      if (CONFIG_VALUES.beastModes.has(beastMode)) config.beastMode = beastMode;
+
       const enabledMetrics = Object.entries(config.metrics).filter(([, enabled]) => enabled).map(([key]) => key);
       const metrics = await rl.question(`Metrics comma-separated (${enabledMetrics.join(',')}): `);
       if (metrics.trim()) {
