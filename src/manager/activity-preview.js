@@ -3,6 +3,7 @@ import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { timelineCategoryForTool } from './timeline.js';
 
 export const DEFAULT_ACTIVITY_PREVIEW_BYTES = 512 * 1024;
+export const DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_ACTIVITY_PREVIEW_EVENTS = 32;
 export const DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS = 1000;
 
@@ -147,11 +148,14 @@ export class SelectedActivityPreview {
   constructor({
     fsRef = fs,
     maxBytes = DEFAULT_ACTIVITY_PREVIEW_BYTES,
+    maxBackfillBytes = null,
     maxEvents = DEFAULT_ACTIVITY_PREVIEW_EVENTS,
     refreshIntervalMs = DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS
   } = {}) {
     this.fs = fsRef;
     this.maxBytes = Math.max(16 * 1024, Number(maxBytes) || DEFAULT_ACTIVITY_PREVIEW_BYTES);
+    const derivedBackfill = Math.min(DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES, this.maxBytes * 8);
+    this.maxBackfillBytes = Math.max(this.maxBytes, Number(maxBackfillBytes) || derivedBackfill);
     this.maxEvents = Math.max(4, Number(maxEvents) || DEFAULT_ACTIVITY_PREVIEW_EVENTS);
     this.refreshIntervalMs = Math.max(250, Number(refreshIntervalMs) || DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS);
     this.cached = null;
@@ -179,6 +183,7 @@ export class SelectedActivityPreview {
       offset: size,
       sourceBytes: extras.sourceBytes ?? 0,
       lastReadBytes: extras.lastReadBytes ?? 0,
+      backfillBytes: extras.backfillBytes ?? 0,
       targetEvents: extras.targetEvents ?? this.maxEvents,
       truncated: extras.truncated ?? false,
       gap: extras.gap ?? false,
@@ -187,15 +192,27 @@ export class SelectedActivityPreview {
     };
   }
 
-  readSegment(filePath, start, length) {
-    const fd = this.fs.openSync(filePath, 'r');
+  readSegment(filePath, start, length, fd = null) {
+    const ownedFd = fd == null ? this.fs.openSync(filePath, 'r') : null;
+    const sourceFd = fd ?? ownedFd;
     try {
       const buffer = Buffer.alloc(length);
-      const read = this.fs.readSync(fd, buffer, 0, length, start);
-      return { text: buffer.subarray(0, read).toString('utf8'), read };
+      const read = this.fs.readSync(sourceFd, buffer, 0, length, start);
+      return buffer.subarray(0, read);
     } finally {
-      this.fs.closeSync(fd);
+      if (ownedFd != null) this.fs.closeSync(ownedFd);
     }
+  }
+
+  parseBuffers(buffers, start, target) {
+    const state = createAccumulator();
+    const events = [];
+    const text = Buffer.concat(buffers).toString('utf8');
+    consumePreviewText(events, state, text, {
+      dropLeadingPartial: start > 0,
+      limit: target
+    });
+    return { events, state };
   }
 
   initialize(row, size, targetEvents) {
@@ -210,21 +227,36 @@ export class SelectedActivityPreview {
       return this.cached;
     }
 
-    const length = Math.min(size, this.maxBytes);
-    const start = Math.max(0, size - length);
+    const budget = Math.min(size, this.maxBackfillBytes);
+    let cursor = size;
+    let totalRead = 0;
+    let parsed = { events: [], state: createAccumulator() };
+    const buffers = [];
+    let fd = null;
+
     try {
-      const { text, read } = this.readSegment(row.filePath, start, length);
-      const events = [];
-      consumePreviewText(events, this.state, text, {
-        dropLeadingPartial: start > 0,
-        limit: target
-      });
+      fd = this.fs.openSync(row.filePath, 'r');
+      while (cursor > 0 && totalRead < budget) {
+        const length = Math.min(this.maxBytes, cursor, budget - totalRead);
+        const start = cursor - length;
+        const chunk = this.readSegment(row.filePath, start, length, fd);
+        if (!chunk.length) break;
+        buffers.unshift(chunk);
+        totalRead += chunk.length;
+        cursor = start;
+
+        parsed = this.parseBuffers(buffers, cursor, target);
+        if (parsed.events.length >= target || cursor === 0) break;
+      }
+
+      this.state = parsed.state;
       this.cached = this.metadata(row, size, {
-        sourceBytes: read,
-        lastReadBytes: read,
+        sourceBytes: totalRead,
+        lastReadBytes: totalRead,
+        backfillBytes: totalRead,
         targetEvents: target,
-        truncated: start > 0,
-        events
+        truncated: cursor > 0,
+        events: parsed.events
       });
     } catch (error) {
       this.cached = this.metadata(row, size, {
@@ -232,6 +264,8 @@ export class SelectedActivityPreview {
         events: [],
         error: error?.message ?? 'preview read failed'
       });
+    } finally {
+      if (fd != null) try { this.fs.closeSync(fd); } catch {}
     }
     return this.cached;
   }
@@ -258,7 +292,8 @@ export class SelectedActivityPreview {
     }
 
     try {
-      const { text, read } = this.readSegment(row.filePath, start, length);
+      const chunk = this.readSegment(row.filePath, start, length);
+      const text = chunk.toString('utf8');
       const events = Array.isArray(this.cached?.events) ? this.cached.events : [];
       while (events.length > target) events.shift();
       consumePreviewText(events, this.state, text, {
@@ -266,8 +301,9 @@ export class SelectedActivityPreview {
         limit: target
       });
       this.cached = this.metadata(row, size, {
-        sourceBytes: (finiteOrNull(this.cached?.sourceBytes) ?? 0) + read,
-        lastReadBytes: read,
+        sourceBytes: (finiteOrNull(this.cached?.sourceBytes) ?? 0) + chunk.length,
+        lastReadBytes: chunk.length,
+        backfillBytes: finiteOrNull(this.cached?.backfillBytes) ?? 0,
         targetEvents: target,
         truncated: Boolean(this.cached?.truncated || gap),
         gap: Boolean(this.cached?.gap || gap),
