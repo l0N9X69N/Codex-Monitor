@@ -2,26 +2,23 @@
 
 ## Trạng thái
 
-**IMPLEMENTED — chờ combined automated verification + user visual acceptance.**
+**CLOSED — user visual/UX acceptance recorded 2026-08-27.**
 
-## Đã làm
+## Kết quả cuối
 
-- Full-screen alternate-screen History TUI với safe enter/restore.
-- Cyberpunk/netrunner semantic theme: truecolor/256/16/mono fallback.
-- Sessions table + selected detail.
-- Detail navigation Info/Tokens/Turns/Tools/Resources/Errors.
-- Storage entry point read-only; delete/archive vẫn khóa tới Phase 11.
-- Responsive layout: stacked normal terminal, side-by-side ultrawide.
-- Keyboard: arrows, refresh, live-tail, Storage, quit.
-- Mouse SGR normalization + wheel session navigation.
-- ANSI diff rendering, không fake 30/60 FPS animation.
-- Demo gallery normal/ultrawide/storage.
+- `codexm --manager` full-screen independent Session Manager TUI.
+- Operations / Table / Charts / Auto presentation modes.
+- Session-first selection; Enter opens exact selected-session Inspect.
+- Responsive normal/wide/ultrawide layouts with table priority on short terminals.
+- LIVE telemetry: token burn, tool load, turnaround, burn share/context/tools/agents evidence.
+- Adaptive session table with MODEL/EFFORT/context/token/turn/tool/agent/storage fields where geometry allows.
+- Hot/recent/cold history tiers so old history does not receive the same refresh cost as LIVE/selected sessions.
+- Selected Activity preview is bounded, incremental, local-time and sized to visible pane rows.
+- Timeline/Audit added for selected session with scroll/filter/search/event detail and sanitized tool/message/result evidence.
+- Inspect Info/Tokens/Turns/Tools/Resources/Errors foundations retained for Phase 10 analytics.
+- No automatic session deletion; destructive storage remains Phase 11.
+- Terminal restore/input semantics and Phase 09 regression gates retained.
 
-## Exit gate còn lại
+## Handoff
 
-```powershell
-npm run demo:history
-node .\src\cli\codexm.js --history
-```
-
-User cần chốt visual direction: futuristic nhưng readable, panel có khoảng thở, restore terminal sạch.
+Phase 09 is frozen except correctness/integration regressions. New analytics work belongs to Phase 10; destructive storage work belongs to Phase 11.
