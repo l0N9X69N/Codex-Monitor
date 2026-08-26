@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**PASS — reported on local Windows checkout after lightweight global session row checkpoint.**
+**PASS — final local Windows verification reported on 2026-08-26 after bounded runtime-I/O fixes.**
 
 Run used:
 
@@ -10,33 +10,36 @@ Run used:
 npm run verify:phase8
 ```
 
-Coverage hiện tại:
+Coverage cuối phase:
 
 - `--manager` là Monitor-owned và không spawn Codex;
 - `--history` được forward cho official Codex;
+- persistent Session Manager runtime stays alive until stop;
+- process association persists across polls;
+- mapped root disappearance becomes session-specific negative evidence;
+- nearest-start correlation remains one-to-one and exact thread evidence wins;
+- Windows process tree collection remains lightweight enough for correlation;
 - 1000+ session discovery không full-read/deep-parse session bodies;
-- bounded identity probe lấy thread/cwd/project/model mà không tạo deep-cache entry;
+- identity probing bị giới hạn vào recent set;
+- unchanged empty/malformed identity probes không bị reopen mỗi fast refresh;
+- fast known-session refresh không stat toàn bộ 1000+ session set;
+- full discovery cadence vẫn giữ eventual truth;
 - mtime-only không claim LIVE;
-- file growth/process identity match là strong LIVE evidence;
-- process telemetry unavailable không claim ENDED;
-- LIVE evidence giữ grace window qua idle poll ngắn;
-- known-session refresh chỉ stat các file đã index, không recursive discovery mỗi tick;
-- discovery/process/known-refresh/selected-tail có cadence độc lập;
-- process collector không chạy mỗi tick;
+- file growth/process match là strong LIVE evidence;
+- process telemetry unavailable không fabricate ENDED;
+- multiple growing sessions update independently;
 - selected session mới deep parse/tail;
+- non-selected sessions không trigger additional deep reads;
 - release/chuyển selection nhả deep-cache cũ;
 - selected detail có contract ổn định cho `Info/Tokens/Turns/Tools/Resources/Errors`;
-- missing historical values giữ `null`/empty, không fabricate cost/system resources;
-- global row có state/project/model/elapsed/tokens/context/turn/tool/last activity/error/retry/compaction/file size;
-- lightweight summary bootstrap bị giới hạn byte và chỉ áp dụng cho một số session gần nhất;
-- session ngoài bootstrap chỉ bắt đầu incremental observation từ khi Manager chạy;
-- tail-only summary không fabricate total turn/tool count: count không đầy đủ giữ `null`;
-- append được aggregate theo byte offset, không duplicate; large observation gap degrade count về unknown;
-- truncate reset bounded summary an toàn;
-- selected deep model có thể upgrade lightweight row sang exact totals;
-- partial append/no duplicate/truncate/external delete;
+- missing historical values giữ `null`/unknown, không fabricate cost/system resources;
+- lightweight global row có state/project/model/elapsed/tokens/context/turn/tool/last activity/error/retry/compaction/file size;
+- lightweight bootstrap/incremental tail đều bounded;
+- incomplete turn/tool totals giữ unknown thay vì fabricate;
+- append không duplicate, large observation gap degrade về unknown;
+- truncate/external delete degrade an toàn;
 - deterministic All/Live/Ended/Search/Sort;
 - no SQLite/CSV/history DB created;
 - Phase 07 platform regression.
 
-Automated checkpoint PASS chưa tự động đóng Phase 08. Manual multi-terminal/performance acceptance vẫn là exit gate cuối.
+Final automated checkpoint: **PASS**.
