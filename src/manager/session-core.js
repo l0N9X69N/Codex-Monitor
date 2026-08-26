@@ -4,6 +4,7 @@ import { HistoryEngine } from '../history/engine.js';
 import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { samePlatformPath } from '../platform/common.js';
 import { createSelectedSessionDetail } from './detail-view.js';
+import { LightweightSessionSummaries } from './lightweight-summary.js';
 
 export const SESSION_ACTIVITY = Object.freeze({
   LIVE: 'LIVE',
@@ -227,13 +228,15 @@ export class SessionManagerCore {
     fsRef = fs,
     activityResolver = null,
     now = () => Date.now(),
-    identityBytes = DEFAULT_IDENTITY_BYTES
+    identityBytes = DEFAULT_IDENTITY_BYTES,
+    summaries = null
   } = {}) {
     this.sessionsPath = sessionsPath;
     this.fs = fsRef;
     this.now = now;
     this.identityBytes = identityBytes;
     this.activity = activityResolver ?? new SessionActivityResolver({ now });
+    this.summaries = summaries ?? new LightweightSessionSummaries({ fsRef });
     this.index = [];
     this.selectedId = null;
     this.deep = new HistoryEngine({ sessionsPath, fsRef });
@@ -254,7 +257,12 @@ export class SessionManagerCore {
       next.push(item);
     }
     const existing = new Set(next.map((item) => item.id));
-    for (const old of this.index) if (!existing.has(old.id)) this.activity.forget(old.id);
+    for (const old of this.index) {
+      if (!existing.has(old.id)) {
+        this.activity.forget(old.id);
+        this.summaries.forget(old.id);
+      }
+    }
     this.index = next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
     if (this.selectedId && !existing.has(this.selectedId)) this.releaseSelection();
     return this.index;
@@ -269,6 +277,7 @@ export class SessionManagerCore {
       });
       if (fresh.error) {
         this.activity.forget(old.id);
+        this.summaries.forget(old.id);
         if (this.selectedId === old.id) this.releaseSelection();
         continue;
       }
@@ -287,6 +296,23 @@ export class SessionManagerCore {
 
   query(options = {}) { return querySessions([...this.index], options); }
 
+  bootstrapRecentSummaries(limit = 8) {
+    const bounded = Math.max(0, Number(limit) || 0);
+    this.index.slice(0, bounded).forEach((item) => this.summaries.ensure(item, { bootstrap: true }));
+    this.index.slice(bounded).forEach((item) => this.summaries.ensure(item, { bootstrap: false }));
+    return this.rows();
+  }
+
+  tailSummaries() {
+    for (const item of this.index) this.summaries.tail(item);
+    return this.rows();
+  }
+
+  rows() {
+    const nowMs = this.now();
+    return this.index.map((item) => this.summaries.row(item, { nowMs }));
+  }
+
   select(id) {
     const meta = this.index.find((item) => item.id === id);
     if (!meta) return null;
@@ -299,6 +325,7 @@ export class SessionManagerCore {
     meta.project = model.info.cwd ? path.basename(path.resolve(model.info.cwd)) : null;
     meta.model = model.info.model;
     meta.lastActivityAtMs = model.info.lastEventAtMs ?? meta.modifiedAtMs;
+    this.summaries.adoptDeepModel(meta, model);
     return model;
   }
 
@@ -321,6 +348,7 @@ export class SessionManagerCore {
       meta.project = result.model.info.cwd ? path.basename(path.resolve(result.model.info.cwd)) : null;
       meta.model = result.model.info.model;
       meta.lastActivityAtMs = result.model.info.lastEventAtMs ?? meta.modifiedAtMs;
+      this.summaries.adoptDeepModel(meta, result.model);
     }
     return result;
   }
