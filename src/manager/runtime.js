@@ -1,0 +1,121 @@
+import { SessionManagerCore } from './session-core.js';
+import { SessionManagerTracker } from './tracker.js';
+import { sessionManagerSummaryLines } from './app.js';
+
+function snapshotSignature(result) {
+  const states = result.sessions.map((item) => `${item.id}:${item.state}`).join('|');
+  const diagnostics = result.processDiagnostics ?? {};
+  return [
+    states,
+    diagnostics.codexProcessCount,
+    diagnostics.codexRootCount,
+    diagnostics.mappedSessionCount,
+    diagnostics.exactMatchCount,
+    diagnostics.stickyMatchCount,
+    diagnostics.startMatchCount,
+    diagnostics.missingAssociationCount,
+    result.processError ?? ''
+  ].join('::');
+}
+
+export class SessionManagerRuntime {
+  constructor({
+    tracker,
+    onSnapshot = null,
+    intervalMs = 250,
+    setTimeoutRef = setTimeout,
+    clearTimeoutRef = clearTimeout
+  } = {}) {
+    if (!tracker) throw new Error('SessionManagerRuntime requires tracker');
+    this.tracker = tracker;
+    this.onSnapshot = typeof onSnapshot === 'function' ? onSnapshot : null;
+    this.intervalMs = Math.max(50, Number(intervalMs) || 250);
+    this.setTimeoutRef = setTimeoutRef;
+    this.clearTimeoutRef = clearTimeoutRef;
+    this.running = false;
+    this.timer = null;
+    this.lastSignature = null;
+    this.stopResolve = null;
+    this.stopPromise = null;
+  }
+
+  async tick() {
+    const result = await this.tracker.tick();
+    const signature = snapshotSignature(result);
+    if (signature !== this.lastSignature) {
+      this.lastSignature = signature;
+      await this.onSnapshot?.(result);
+    }
+    return result;
+  }
+
+  scheduleNext() {
+    if (!this.running) return;
+    this.timer = this.setTimeoutRef(async () => {
+      this.timer = null;
+      if (!this.running) return;
+      try { await this.tick(); } catch {}
+      this.scheduleNext();
+    }, this.intervalMs);
+  }
+
+  async start() {
+    if (this.running) return this.stopPromise;
+    this.running = true;
+    this.stopPromise = new Promise((resolve) => { this.stopResolve = resolve; });
+    await this.tick();
+    this.scheduleNext();
+    return this.stopPromise;
+  }
+
+  stop() {
+    if (!this.running) return false;
+    this.running = false;
+    if (this.timer != null) {
+      this.clearTimeoutRef(this.timer);
+      this.timer = null;
+    }
+    const resolve = this.stopResolve;
+    this.stopResolve = null;
+    resolve?.();
+    return true;
+  }
+}
+
+export async function runSessionManagerRuntime({
+  platformAdapter,
+  stdout = process.stdout,
+  fsRef,
+  now = () => Date.now(),
+  processRef = process,
+  intervalMs = 250
+} = {}) {
+  if (!platformAdapter) throw new Error('Session Manager requires platform adapter');
+  const sessionsPath = platformAdapter.paths()?.sessions ?? null;
+  const core = new SessionManagerCore({ sessionsPath, fsRef, now });
+  const tracker = new SessionManagerTracker({ core, platformAdapter, now });
+  const runtime = new SessionManagerRuntime({
+    tracker,
+    intervalMs,
+    onSnapshot(result) {
+      stdout.write(`${sessionManagerSummaryLines(result.sessions, {
+        ...(result.processDiagnostics ?? {}),
+        processError: result.processError ?? null
+      }).join('\n')}\n`);
+    }
+  });
+
+  const stop = () => runtime.stop();
+  processRef?.once?.('SIGINT', stop);
+  processRef?.once?.('SIGTERM', stop);
+  try {
+    await runtime.start();
+  } finally {
+    processRef?.removeListener?.('SIGINT', stop);
+    processRef?.removeListener?.('SIGTERM', stop);
+    await platformAdapter.cleanup?.();
+  }
+  return { code: 0, core, tracker, runtime };
+}
+
+export { snapshotSignature as sessionManagerSnapshotSignature };
