@@ -1,5 +1,6 @@
 const SORT_FIELDS = Object.freeze(['lastActivity', 'context', 'input', 'tools', 'size', 'state', 'project', 'model']);
 const SCOPES = Object.freeze(['all', 'live', 'ended']);
+const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'auto']);
 
 export function nextManagerScope(scope = 'all') {
   const index = SCOPES.indexOf(String(scope).toLowerCase());
@@ -9,6 +10,11 @@ export function nextManagerScope(scope = 'all') {
 export function nextManagerSort(sortBy = 'lastActivity') {
   const index = SORT_FIELDS.indexOf(String(sortBy));
   return SORT_FIELDS[(index < 0 ? 0 : index + 1) % SORT_FIELDS.length];
+}
+
+export function nextManagerView(view = 'operations') {
+  const index = VIEW_MODES.indexOf(String(view).toLowerCase());
+  return VIEW_MODES[(index < 0 ? 0 : index + 1) % VIEW_MODES.length];
 }
 
 export function normalizeManagerInput(data, { searching = false } = {}) {
@@ -52,7 +58,12 @@ export function normalizeManagerInput(data, { searching = false } = {}) {
   if (text.toLowerCase() === 'f') return 'filter';
   if (text.toLowerCase() === 's') return 'sort';
   if (text.toLowerCase() === 'd') return 'direction';
+  if (text.toLowerCase() === 'v') return 'view';
   return null;
 }
 
-export { SORT_FIELDS as MANAGER_SORT_FIELDS, SCOPES as MANAGER_SCOPES };
+export {
+  SORT_FIELDS as MANAGER_SORT_FIELDS,
+  SCOPES as MANAGER_SCOPES,
+  VIEW_MODES as MANAGER_VIEW_MODES
+};
