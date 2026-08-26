@@ -50,6 +50,8 @@ test('Manager input normalizes navigation, search, filters, sorting, views and m
   assert.equal(normalizeManagerInput('d'), 'direction');
   assert.equal(normalizeManagerInput('V'), 'view');
   assert.equal(normalizeManagerInput('\r'), 'inspect');
+  assert.equal(normalizeManagerInput('\n'), 'inspect');
+  assert.equal(normalizeManagerInput('\r\n'), 'inspect');
   assert.equal(normalizeManagerInput('q'), 'quit');
   assert.equal(normalizeManagerInput('!'), null);
   assert.equal(normalizeManagerInput('\x1b[<64;3;4M'), 'up');
@@ -57,6 +59,7 @@ test('Manager input normalizes navigation, search, filters, sorting, views and m
   assert.deepEqual(normalizeManagerInput('abc', { searching: true }), { action: 'search-text', text: 'abc' });
   assert.equal(normalizeManagerInput('\x7f', { searching: true }), 'search-backspace');
   assert.equal(normalizeManagerInput('\r', { searching: true }), 'search-accept');
+  assert.equal(normalizeManagerInput('\r\n', { searching: true }), 'search-accept');
   assert.equal(normalizeManagerInput('\x1b', { searching: true }), 'search-cancel');
   assert.equal(nextManagerScope('all'), 'live');
   assert.equal(nextManagerScope('live'), 'ended');
@@ -150,7 +153,7 @@ test('Dashboard Enter inspects selected session while inspect tabs own Tab and a
   setImmediate(() => {
     stdin.emit('data', Buffer.from('\t'));
     stdin.emit('data', Buffer.from('\x1b[C'));
-    stdin.emit('data', Buffer.from('\r'));
+    stdin.emit('data', Buffer.from('\r\n'));
     setImmediate(() => {
       stdin.emit('data', Buffer.from('\t'));
       setImmediate(() => {
