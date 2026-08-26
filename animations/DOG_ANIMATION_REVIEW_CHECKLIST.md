@@ -295,16 +295,16 @@
 
 ## 3.1 `_BASE.txt`
 
-- [ ] Canonical belly-2 silhouette.
-- [ ] Head anchor.
-- [ ] Body width/depth.
-- [ ] Belly curve.
-- [ ] Legs dưới body.
-- [ ] Tail root.
-- [ ] Tail neutral/up/down.
-- [ ] Blink.
-- [ ] Ground contact.
-- [ ] Chốt `belly-2/_BASE.txt`.
+- [x] Canonical belly-2 silhouette.
+- [x] Head anchor.
+- [x] Body width/depth.
+- [x] Belly curve.
+- [x] Legs dưới body.
+- [x] Tail root.
+- [x] Tail neutral/up/down.
+- [x] Blink.
+- [x] Ground contact.
+- [x] Chốt `belly-2/_BASE.txt`.
 
 ## 3.2 `idle.txt`
 
@@ -393,16 +393,16 @@
 
 ## 4.1 `_BASE.txt`
 
-- [ ] Canonical belly-max silhouette.
-- [ ] Head anchor.
-- [ ] Maximum body width hợp lý.
-- [ ] Belly curve/readability.
-- [ ] Legs vẫn nhìn rõ bên dưới.
-- [ ] Tail root không bị body nuốt mất.
-- [ ] Tail neutral/up/down.
-- [ ] Blink.
-- [ ] Ground contact.
-- [ ] Chốt `belly-max/_BASE.txt`.
+- [x] Canonical belly-max silhouette.
+- [x] Head anchor.
+- [x] Maximum body width hợp lý.
+- [x] Belly curve/readability.
+- [x] Legs vẫn nhìn rõ bên dưới.
+- [x] Tail root không bị body nuốt mất.
+- [x] Tail neutral/up/down.
+- [x] Blink.
+- [x] Ground contact.
+- [x] Chốt `belly-max/_BASE.txt`.
 
 ## 4.2 `idle.txt`
 
@@ -686,4 +686,16 @@ YYYY-MM-DD
 - Action: Final visual review
 - Decision: BELLY-1 BASE visually approved/frozen.
 - Cần quay lại: No quay lai; belly-2 and belly-max bases remain pending.
+
+2026-08-26
+- File: animations/belly-2/_BASE.txt
+- Action: Final visual review
+- Decision: BELLY-2 BASE visually approved/frozen.
+- Cần quay lại: No quay lai; belly-max base remains pending.
+
+2026-08-26
+- File: animations/belly-max/_BASE.txt
+- Action: Final visual review
+- Decision: BELLY-MAX BASE visually approved/frozen.
+- Cần quay lại: No quay lai; all four canonical base bodies are approved.
 ```

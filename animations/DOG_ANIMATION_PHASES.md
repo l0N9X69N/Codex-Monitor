@@ -117,7 +117,7 @@ Phase 1 PASS khi:
 
 ## Status
 
-- [ ] PASS
+- [x] PASS
 
 ---
 
@@ -713,11 +713,11 @@ Phase 13 PASS khi:
 # Current Phase
 
 ```text
-CURRENT PHASE: 1 — Canonical Base Bodies
+CURRENT PHASE: 2 — Idle / Living Behavior
 
 Current target:
-animations/normal/_BASE.txt
+animations/normal/idle.txt
 
 Rule:
-Do not move to Phase 2 until all four `_BASE.txt` files are visually approved and frozen.
+Phase 1 canonical base bodies are approved and frozen. Begin Phase 2 work only after explicit task instruction.
 ```
