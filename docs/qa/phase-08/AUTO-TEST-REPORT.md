@@ -2,9 +2,9 @@
 
 ## Trạng thái
 
-**WAITING USER RUN — lightweight global session row checkpoint**
+**PASS — reported on local Windows checkout after lightweight global session row checkpoint.**
 
-Run:
+Run used:
 
 ```powershell
 npm run verify:phase8
@@ -39,4 +39,4 @@ Coverage hiện tại:
 - no SQLite/CSV/history DB created;
 - Phase 07 platform regression.
 
-PASS checkpoint này chưa đóng Phase 08. Sau checkpoint global-row còn manual multi-terminal/performance acceptance và final roadmap/QA close gate.
+Automated checkpoint PASS chưa tự động đóng Phase 08. Manual multi-terminal/performance acceptance vẫn là exit gate cuối.
