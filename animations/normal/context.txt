@@ -1,25 +1,73 @@
 BODY: normal
 GROUP: CONTEXT / RESET
-STATUS: DRAFT KEYFRAMES
+STATUS: DRAFT STORYBOARD
 
 ACTION context.eat
-Purpose: context crosses normal -> belly-1 threshold.
-Use the validated working prototype in `../eat_preview.txt` as source-of-truth for detailed eating frames until split migration is finished.
-Core beat:
-stand -> blink -> food appears -> happy hop -> food closer -> nom -> chew -> gulp -> transition to belly-1.
+See `eat.txt` for the full validated frame sequence.
 
-Neutral start:
+ACTION context.poop-slim
+Normal is already the thinnest body. Do not shrink further.
+
+FRAME 01 — LOOK BACK
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*    /`
+        \\"--\\
+
+FRAME 02 — RELIEF / RESET REACTION
+--------------------------------------------------
+             __
+       \\(___()'`;
+        /*    /`
+       //"--\\
+
+FRAME 03 — NORMAL
+--------------------------------------------------
              __
         (___()'`;
         /*    /`
         \\"--\\
 
-ACTION context.poop-slim
-Normal cannot become thinner. If context reduction occurs while already normal, play only a tiny relief/reset reaction or skip poop animation.
-
 ACTION reset.wake-stretch
-If sleeping: ear twitch -> eyes open -> head up -> stretch -> shake -> stand.
-If awake: shake -> stretch -> stand.
-Reset energy to 100.
+FRAME 01 — SLEEP
+--------------------------------------------------
+          z
+       (___()_`;
+       /     /`
+      /__   /_
 
-Important: ordinary running must NEVER change bodyState.
+FRAME 02 — EAR TWITCH
+--------------------------------------------------
+          z
+      /(___()_`;
+       /     /`
+      /__   /_
+
+FRAME 03 — EYES OPEN
+--------------------------------------------------
+             __
+       /(___()'`;
+        /     /`
+       /__   /_
+
+FRAME 04 — STRETCH
+--------------------------------------------------
+             __
+     /(___()'`;
+      /*      /`
+     //"----\\
+
+FRAME 05 — SHAKE
+--------------------------------------------------
+          ~  __  ~
+       \\(___()'`;
+        /*    /`
+       //"--\\
+
+FRAME 06 — STAND
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\

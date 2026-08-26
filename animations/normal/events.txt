@@ -1,28 +1,120 @@
 BODY: normal
-GROUP: WAIT / STREAM / SUCCESS / ERROR / RATE LIMIT
-STATUS: DRAFT KEYFRAMES
-
-ACTION stream.trot / stream.wag-walk
-Calm forward motion, slower than tool.run. Tail alternates `/(` and `\(`; occasional blink.
+GROUP: EVENTS / WAIT / SUCCESS / ERROR
+STATUS: DRAFT STORYBOARD
 
 ACTION wait.sit-look
-Rough sitting candidate:
+FRAME 01 — STAND
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+FRAME 02 — SIT DOWN
+--------------------------------------------------
              __
         (___()'`;
         /     /`
        /  __/
       //-\\
-DRAFT: anatomy needs preview refinement. Behavior: sit -> blink -> head tilt -> wag once.
 
-ACTION wait.paw-tap
-From sit, one front paw lifts/taps every few seconds; do not loop rapidly.
+FRAME 03 — LOOK / BLINK
+--------------------------------------------------
+             __
+       /(___()_`;
+        /     /`
+       /  __/
+      //-\\
+
+FRAME 04 — HEAD TILT
+--------------------------------------------------
+            _/
+       /(___()'`;
+        /     /`
+       /  __/
+      //-\\
+
+FRAME 05 — SIT
+--------------------------------------------------
+             __
+        (___()'`;
+        /     /`
+       /  __/
+      //-\\
 
 ACTION success.happy-hop
-Use clear `ground -> up -> ground`, 1-2 hops, fast tail wag, then return to current long-lived state.
+FRAME 01 — GROUND
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*    /`
+        \\"--\\
+
+FRAME 02 — UP
+--------------------------------------------------
+             __
+       \\(___()'`;
+        /*    /`
+       //"---^^
+
+FRAME 03 — GROUND
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*    /`
+       //"--\\
+
+FRAME 04 — FAST WAG
+--------------------------------------------------
+             __
+       \\(___()'`;
+        /*    /`
+        \\"--\\
 
 ACTION error.sad-sit
-Same sit base but tail low, slower blink. No dramatic collapse.
+FRAME 01 — EARS/TAIL DOWN
+--------------------------------------------------
+             __
+        \\___()'`;
+        /     /`
+       /  __/
+      //-\\
+
+FRAME 02 — SLOW BLINK
+--------------------------------------------------
+             __
+        \\___()_`;
+        /     /`
+       /  __/
+      //-\\
+
+FRAME 03 — SAD SIT
+--------------------------------------------------
+             __
+        \\___()'`;
+        /     /`
+       /  __/
+      //-\\
 
 ACTION rate.empty-bowl
-Look/sniff toward a tiny bowl positioned ahead of the dog, then sit/yawn if wait is long.
-Bowl candidate: `\\___/`
+FRAME 01 — NOTICE BOWL
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*    /`       \\___/
+        \\"--\\
+
+FRAME 02 — SNIFF BOWL
+--------------------------------------------------
+             __
+       \\(___()':.    \\___/
+        /*   /`
+        \\"--\\
+
+FRAME 03 — SIT BY BOWL
+--------------------------------------------------
+             __
+        (___()'`;
+        /     /`       \\___/
+       /  __/
+      //-\\

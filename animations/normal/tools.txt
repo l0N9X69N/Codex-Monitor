@@ -1,35 +1,104 @@
 BODY: normal
 GROUP: TOOL ACTIVITY
-STATUS: DRAFT KEYFRAMES
+STATUS: DRAFT STORYBOARD
 
-ACTION tool.tail-chase (generic tool signature)
-A
+ACTION tool.tail-chase
+FRAME 01 — NOTICE TAIL
+--------------------------------------------------
              __
        /(___()'`;
         /*    /`
         \\"--\\
-B
+
+FRAME 02 — TURN A
+--------------------------------------------------
+             __
+      \\(___()'`;
+       /*    /`
+      //"--\\
+
+FRAME 03 — CHASE A
+--------------------------------------------------
+             __
+     /(___()'`;
+      /*    /`
+     //"--\\
+
+FRAME 04 — TURN B
+--------------------------------------------------
+             __
+      /(___()'`;
+       /*    /`
+       \\"--//
+
+FRAME 05 — CHASE B
+--------------------------------------------------
              __
        \\(___()'`;
         /*    /`
        //"--\\
-C: shift/turn body a few columns, then repeat A/B. Renderer may move X in a tiny local circle illusion.
+
+FRAME 06 — STOP
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
 
 ACTION tool.sniff-search
-For read/search/grep.
+FRAME 01 — NOSE DOWN
+--------------------------------------------------
              __
        /(___()'`;
         /*   /_.
        //"--\\
-Use nose-down walk + tiny ground dots; no frantic running.
 
-ACTION tool.run
-For shell/exec or long active tool. Use motion.run keyframes from `motion-rest.txt`.
+FRAME 02 — STEP / SNIFF
+--------------------------------------------------
+             __
+       \\(___()':.
+        /*   /`
+        \\"--//
+
+FRAME 03 — FOUND SOMETHING
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*   /`  .
+       //"--\\
+
+FRAME 04 — LOOK UP
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
 
 ACTION tool.paw-ground
-For write/edit. Rough cue: front paw taps twice while head stays forward.
+FRAME 01 — READY
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*    /`
+        \\"--\\
+
+FRAME 02 — TAP
+--------------------------------------------------
              __
        \\(___()'`;
         /*   /`
        //"--\\
-DRAFT: paw detail to refine later.
+
+FRAME 03 — TAP AGAIN
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*   /`
+        \\"--//
+
+FRAME 04 — READY
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\

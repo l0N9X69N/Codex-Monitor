@@ -1,17 +1,103 @@
 BODY: belly-1
-GROUP: WAIT / STREAM / SUCCESS / ERROR / RATE LIMIT
-STATUS: DRAFT KEYFRAMES
+GROUP: EVENTS / WAIT / SUCCESS / ERROR
+STATUS: DRAFT STORYBOARD
 
-Same semantic actions as normal:
-- stream.trot / stream.wag-walk
-- wait.sit-look / wait.paw-tap / wait.yawn-lie
-- success.happy-hop / success.spin
-- error.sad-sit / error.ears-down
-- rate.empty-bowl
+ACTION wait.sit-look
+FRAME 01 — LOWER
+--------------------------------------------------
+             __
+      \\(____()'`;
+       /      /`
+      /_    _/
+       \\__/
 
-Differences:
-- happy hop still energetic but slightly lower than normal.
-- stream gait is a comfortable trot.
-- waiting may settle into sit a little sooner.
+FRAME 02 — SIT
+--------------------------------------------------
+             __
+      /(____()'`;
+       /      /`
+      /__   _/
+       \\__/
 
-Use `_BASE.txt` silhouette as the anatomy anchor when drafting each pose.
+FRAME 03 — BLINK
+--------------------------------------------------
+             __
+      \\(____()_`;
+       /      /`
+      /__   _/
+       \\__/
+
+FRAME 04 — LOOK
+--------------------------------------------------
+            _/
+      /(____()'`;
+       /      /`
+      /__   _/
+       \\__/
+
+ACTION success.happy-hop
+FRAME 01 — GROUND
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`
+       \\_   _/
+        \\"-'\\
+
+FRAME 02 — UP
+--------------------------------------------------
+             __
+      \\(____()'`;
+       /*     /`
+       \\_   _/
+       //"--^^
+
+FRAME 03 — GROUND
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`
+       \\_   _/
+        \\"-'\\
+
+ACTION error.sad-sit
+FRAME 01 — SIT LOW
+--------------------------------------------------
+             __
+       \\____()'`;
+       /      /`
+      /__   _/
+       \\__/
+
+FRAME 02 — BLINK
+--------------------------------------------------
+             __
+       \\____()_`;
+       /      /`
+      /__   _/
+       \\__/
+
+ACTION rate.empty-bowl
+FRAME 01 — LOOK
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`      \\___/
+       \\_   _/
+        \\"-'\\
+
+FRAME 02 — SNIFF
+--------------------------------------------------
+             __
+      \\(____()':.   \\___/
+       /*     /`
+       \\_   _/
+        \\"-'\\
+
+FRAME 03 — SIT
+--------------------------------------------------
+             __
+      /(____()'`;
+       /      /`      \\___/
+      /__   _/
+       \\__/

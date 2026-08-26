@@ -1,23 +1,113 @@
 BODY: belly-1
-GROUP: MOTION + FATIGUE + SLEEP
-STATUS: DRAFT KEYFRAMES
+GROUP: MOTION / REST / SLEEP
+STATUS: DRAFT STORYBOARD
 
-motion.walk: 1 X cell/tick; alternate front/back leg emphasis.
-motion.trot: 1-2 X cells/tick.
-motion.run: shorter stride than normal, small belly bounce allowed if silhouette stays readable.
-motion.explore: selected on wide terminal.
-
-Run candidate A
+ACTION motion.walk
+FRAME 01 — WALK A
+--------------------------------------------------
              __
-     /(____()'`;
-       /*     /`__
-      //_   _/'\\
-Run candidate B
-             __
-     \\(____()'`;
+      /(____()'`;
        /*     /`
-       \_   _//^
+       \\_   _/
+       //"-'\\
 
-DRAFT: refine legs visually.
+FRAME 02 — WALK B
+--------------------------------------------------
+             __
+      \\(____()'`;
+       /*     /`
+       \\_   _/
+        \\"-'//
 
-Fatigue: same energy model. Sleep remains animated with breathe/ear-twitch/Z pulse and latches until reset.
+FRAME 03 — WALK C
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`
+       \\_   _/
+        \\"-'\\
+
+FRAME 04 — WALK D
+--------------------------------------------------
+             __
+      \\(____()'`;
+       /*     /`
+       \\_   _/
+       //"-'\\
+
+ACTION motion.run
+FRAME 01 — RUN A
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`__
+       \\_   _/
+      //"---'\\
+
+FRAME 02 — AIR
+--------------------------------------------------
+             __
+      \\(____()'`;
+       /*     /`
+       \\_   _/
+      //"---^^
+
+FRAME 03 — RUN B
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`
+       \\_   _/
+        \\"-'//
+
+ACTION sleep.lie-down
+FRAME 01 — YAWN
+--------------------------------------------------
+             __
+      /(____()'`O
+       /*     /`
+       \\_   _/
+        \\"-'\\
+
+FRAME 02 — LOWER
+--------------------------------------------------
+             __
+       (____()'`;
+       /      /`
+      /__   __/
+
+FRAME 03 — EYES CLOSE
+--------------------------------------------------
+             __
+       (____()_`;
+       /      /`
+      /__   __/
+
+ACTION sleep.breathe
+FRAME 01 — SLEEP A
+--------------------------------------------------
+          z
+       (____()_`;
+       /      /`
+      /__   __/
+
+FRAME 02 — SLEEP B
+--------------------------------------------------
+             Z
+      /(____()_`;
+       /      /`
+      /__   __/
+
+FRAME 03 — EAR TWITCH
+--------------------------------------------------
+          z
+      \\(____()_`;
+       /      /`
+      /__   __/
+
+FRAME 04 — SLEEP A
+--------------------------------------------------
+          z
+       (____()_`;
+       /      /`
+      /__   __/

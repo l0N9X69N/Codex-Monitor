@@ -1,37 +1,97 @@
 BODY: normal
 GROUP: THINKING
-STATUS: DRAFT KEYFRAMES
-
-Primary identity: curious dog. Scratch ear is the signature THINKING action.
+STATUS: DRAFT STORYBOARD
 
 ACTION think.scratch-ear
-A stand
+FRAME 01 — THINK
+--------------------------------------------------
              __
        /(___()'`;
         /*    /`
         \\"--\\
-B lift rear paw (rough)
+
+FRAME 02 — LIFT REAR PAW
+--------------------------------------------------
              __
        \\(___()'`;
         /*    /`
         \\^-\\
-C scratch pulse
+
+FRAME 03 — SCRATCH A
+--------------------------------------------------
              __
        /(___()_`;
         /*    /`
         \\^^\\
-D return to stand.
+
+FRAME 04 — SCRATCH B
+--------------------------------------------------
+             __
+       \\(___()'`;
+        /*    /`
+        \\^-\\
+
+FRAME 05 — SCRATCH A
+--------------------------------------------------
+             __
+       /(___()_`;
+        /*    /`
+        \\^^\\
+
+FRAME 06 — PAW DOWN
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
 
 ACTION think.head-tilt
-Keep body fixed; alter only head/ear line if possible. Candidate:
+FRAME 01 — CENTER
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
+
+FRAME 02 — TILT
+--------------------------------------------------
             _/
        /(___()'`;
         /*    /`
         \\"--\\
-DRAFT: refine after visual test; do not distort muzzle.
+
+FRAME 03 — BLINK TILT
+--------------------------------------------------
+            _/
+       \\(___()_`;
+        /*    /`
+        \\"--\\
+
+FRAME 04 — CENTER
+--------------------------------------------------
+             __
+        (___()'`;
+        /*    /`
+        \\"--\\
 
 ACTION think.pace
-walk 2-4 cells -> stop -> head tilt -> walk back. X movement is renderer-driven.
+FRAME 01 — WALK A
+--------------------------------------------------
+             __
+       /(___()'`;
+        /*    /`
+       //"--\\
 
-ACTION think.look-up
-Small one-shot between scratch/head-tilt cycles; pair with blink or ear twitch.
+FRAME 02 — WALK B
+--------------------------------------------------
+             __
+       \\(___()'`;
+        /*    /`
+        \\"--//
+
+FRAME 03 — STOP / LOOK UP
+--------------------------------------------------
+            __
+       /(___()'`;
+        /*    /`
+        \\"--\\
