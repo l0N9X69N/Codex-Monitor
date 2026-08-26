@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSessionDashboardModel } from '../../src/manager/dashboard-model.js';
-import { dashboardLayoutMode, renderSessionDashboard } from '../../src/manager/dashboard-render.js';
+import { dashboardLayoutMode, renderSessionDashboard, resolveManagerViewMode } from '../../src/manager/dashboard-render.js';
 import { cellWidth, stripAnsi } from '../../src/ui/cell-width.js';
 
 function row(id, overrides = {}) {
@@ -60,35 +60,54 @@ test('dashboard table supports live/ended scope, search, sort and stable selecte
   assert.deepEqual(model.rows.map((item) => item.id), ['beta']);
 });
 
-test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ultrawide', () => {
+test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ultrawide across view modes', () => {
   const cases = [
     [60, 22, 'narrow'],
     [100, 30, 'normal'],
     [140, 36, 'wide'],
     [200, 44, 'ultrawide']
   ];
-  for (const [width, height, expectedLayout] of cases) {
-    const frame = renderSessionDashboard({ rows, width, height, mode: 'mono' });
-    assert.equal(frame.layout, expectedLayout);
-    assert.equal(dashboardLayoutMode(width), expectedLayout);
-    assert.ok(frame.lines.length <= height);
-    assert.ok(frame.lines.every((line) => cellWidth(line) <= width), `${expectedLayout} must not overflow`);
-    const text = stripAnsi(frame.lines.join('\n'));
-    assert.match(text, /SESSION MANAGER/);
-    assert.match(text, /SESSIONS/);
+  for (const viewMode of ['operations', 'table', 'charts', 'auto']) {
+    for (const [width, height, expectedLayout] of cases) {
+      const frame = renderSessionDashboard({ rows, width, height, mode: 'mono', viewMode });
+      assert.equal(frame.layout, expectedLayout);
+      assert.equal(dashboardLayoutMode(width), expectedLayout);
+      assert.ok(frame.lines.length <= height);
+      assert.ok(frame.lines.every((line) => cellWidth(line) <= width), `${viewMode}/${expectedLayout} must not overflow`);
+      assert.match(stripAnsi(frame.lines.join('\n')), /SESSION MANAGER/);
+    }
   }
 });
 
-test('wide dashboard exposes all three primary evidence charts while narrow prioritizes summary/table', () => {
-  const wide = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 36, mode: 'mono' }).lines.join('\n'));
-  assert.match(wide, /TOKEN ACTIVITY/);
-  assert.match(wide, /CONTEXT PRESSURE/);
-  assert.match(wide, /TOOL ACTIVITY/);
+test('operations view prioritizes LIVE and selected preview instead of telemetry wall', () => {
+  const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'operations' }).lines.join('\n'));
+  assert.match(text, /LIVE SESSIONS/);
+  assert.match(text, /SELECTED PREVIEW/);
+  assert.match(text, /TOKEN ACTIVITY/);
+  assert.match(text, /RECENT \/ SESSIONS/);
+  assert.doesNotMatch(text, /TOOL ACTIVITY/);
+});
 
-  const narrow = stripAnsi(renderSessionDashboard({ rows, width: 60, height: 22, mode: 'mono' }).lines.join('\n'));
-  assert.match(narrow, /LIVE SESSIONS/);
-  assert.match(narrow, /SESSIONS/);
-  assert.doesNotMatch(narrow, /TOKEN ACTIVITY/);
+test('charts view exposes boxed primary charts while table view keeps charts secondary', () => {
+  const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'charts' }).lines.join('\n'));
+  assert.match(charts, /TOKEN ACTIVITY/);
+  assert.match(charts, /CONTEXT PRESSURE/);
+  assert.match(charts, /TOOL ACTIVITY/);
+  assert.match(charts, /SELECTED \/ EVENTS/);
+
+  const table = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 36, mode: 'mono', viewMode: 'table' }).lines.join('\n'));
+  assert.match(table, /SESSION INDEX/);
+  assert.match(table, /SESSIONS/);
+  assert.doesNotMatch(table, /TOKEN ACTIVITY/);
+  assert.doesNotMatch(table, /TOOL ACTIVITY/);
+});
+
+test('auto view resolves from terminal geometry without changing data semantics', () => {
+  assert.equal(resolveManagerViewMode('auto', 'narrow'), 'table');
+  assert.equal(resolveManagerViewMode('auto', 'normal'), 'operations');
+  assert.equal(resolveManagerViewMode('auto', 'wide'), 'operations');
+  assert.equal(resolveManagerViewMode('auto', 'ultrawide'), 'charts');
+  assert.equal(resolveManagerViewMode('operations', 'ultrawide'), 'operations');
 });
 
 test('empty and unmatched dashboard states render safely', () => {
