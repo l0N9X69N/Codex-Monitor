@@ -601,7 +601,10 @@ function enabledCards(config, state, width) {
   if (config?.sections?.session === true && config?.metrics?.session !== false) cards.push({ id: 'session', title: 'SESSION', token: 'healthy', weight: 1.0 });
   if (config?.sections?.activity === true && config?.metrics?.activity !== false) cards.push({ id: 'activity', title: 'CURRENT ACTIVITY', token: 'thinking', weight: 1.05 });
   if (config?.sections?.system === true && config?.metrics?.system !== false) cards.push({ id: 'system', title: 'SYSTEM', token: 'info', weight: 0.95 });
-  if (config?.sections?.beast === true && width >= BEAST_MODE_MIN_CELLS) cards.push({ id: 'beast', title: 'BEAST MODE', token: 'tool', weight: 1.0 });
+  const beastMode = String(config?.beastMode ?? 'off');
+  if (beastMode === 'on' || (beastMode === 'auto' && width >= BEAST_MODE_MIN_CELLS)) {
+    cards.push({ id: 'beast', title: 'BEAST MODE', token: 'tool', weight: 1.0 });
+  }
   return cards;
 }
 
@@ -681,6 +684,7 @@ function responsiveCardFrame({
     const clipped = truncateCells(line, safeWidth, '');
     return applyLineBackground(padCells(clipped, safeWidth), background);
   });
+  const beastVisible = cards.some((card) => card.id === 'beast');
   return {
     lines: renderedLines,
     rowCount: renderedLines.length,
@@ -705,7 +709,8 @@ function responsiveCardFrame({
       representations,
       progressiveGraphs: true,
       systemCard: cards.some((card) => card.id === 'system'),
-      beastMode: cards.some((card) => card.id === 'beast'),
+      beastMode: String(config?.beastMode ?? 'off'),
+      beastVisible,
       heightConstrained: plan.heightConstrained
     }
   };
