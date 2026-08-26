@@ -50,12 +50,14 @@ function detailFixture() {
       durationMs: contextPoints.at(-1).atMs - contextPoints[0].atMs,
       cwd: 'C:/repo', fileSizeBytes: 4_800_000, parsedLines: 405
     },
-    tokens: { input: 5_400_000, cached: 5_200_000, output: 12_500, reasoning: 3_800, contextUsed: 213_200, contextWindow: 258_400 },
+    // Keep the fixture just below the 82.5% rounding boundary while preserving
+    // the same compact 213.2k display used by the real-session visual sample.
+    tokens: { input: 5_400_000, cached: 5_200_000, output: 12_500, reasoning: 3_800, contextUsed: 213_150, contextWindow: 258_400 },
     turns: { count: 13, completed: 11, lastDurationMs: 19_000 },
     tools: { count: 30, byName: [{ name: 'exec', count: 30 }] },
     timeline: [], resources: { evidence: [] }, errors: [],
     analytics: {
-      context: { points: contextPoints, compactions: [], currentUsed: 213_200, currentWindow: 258_400, peakPercent: 82 },
+      context: { points: contextPoints, compactions: [], currentUsed: 213_150, currentWindow: 258_400, peakPercent: 82 },
       tokens: { input: 5_400_000, cached: 5_200_000, uncachedInput: 200_000, output: 12_500, reasoning: 3_800, total: 5_412_500, points: tokenPoints },
       turns: { completed: 11, items: turns },
       tools: { total: 30, byName: [{ name: 'exec', count: 30 }], events: toolEvents },
