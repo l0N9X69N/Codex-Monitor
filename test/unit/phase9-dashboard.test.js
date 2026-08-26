@@ -32,7 +32,7 @@ function row(id, overrides = {}) {
 const rows = [
   row('alpha', { state: 'LIVE', project: 'alpha', threadId: 'thread-alpha', lastActivityAtMs: 3000, tokens: { input: 1000, cached: 500, output: 200, reasoning: 50, contextUsed: 180_000, contextWindow: 200_000 }, toolCount: 6, recentRetries: [{ atMs: 1 }] }),
   row('beta', { state: 'ENDED', project: 'beta', threadId: 'thread-beta', lastActivityAtMs: 1000, tokens: { input: 400, cached: 10, output: 50, reasoning: 0, contextUsed: 100_000, contextWindow: 200_000 }, toolCount: 2, recentErrors: [{ atMs: 1 }] }),
-  row('gamma', { state: 'LIVE', project: 'gamma', threadId: 'thread-gamma', lastActivityAtMs: 2000, tokens: { input: 50, cached: 0, output: 10, reasoning: 0, contextUsed: 40_000, contextWindow: 200_000 }, toolCount: null, observedToolCount: 3, recentCompactions: [{ atMs: 1 }] })
+  row('gamma', { state: 'LIVE', project: 'gamma', threadId: 'thread-gamma', lastActivityAtMs: 2000, tokens: { input: 50, cached: 0, output: 10, reasoning: 0, contextUsed: 40_000, contextWindow: 200_000 }, toolCount: 3, observedToolCount: 3, recentCompactions: [{ atMs: 1 }] })
 ];
 
 test('dashboard model summarizes evidence and ranks primary charts without fabricating values', () => {
@@ -75,36 +75,42 @@ test('charts obey current scope and search instead of leaking hidden sessions', 
   assert.equal(none.charts.tools.length, 0);
 });
 
-test('rolling telemetry derives rates only from comparable live-session deltas and resets when scope changes', () => {
+test('rolling telemetry retains aggregate and per-live-session rates', () => {
   const series = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
   let snapshot = series.sample(rows, { scope: 'live', atMs: 1000 });
   assert.equal(snapshot.samples.length, 1);
   assert.equal(snapshot.latest.tokenRate, null);
   assert.equal(Math.round(snapshot.latest.contextPeak), 90);
   assert.equal(snapshot.latest.activeCount, 2);
+  assert.equal(snapshot.sessions.length, 2);
 
-  const grown = rows.map((item) => item.id === 'alpha'
-    ? { ...item, tokens: { ...item.tokens, input: item.tokens.input + 600 }, toolCount: item.toolCount + 2 }
-    : item);
+  const grown = rows.map((item) => {
+    if (item.id === 'alpha') return { ...item, tokens: { ...item.tokens, input: item.tokens.input + 600 }, toolCount: item.toolCount + 2 };
+    if (item.id === 'gamma') return { ...item, tokens: { ...item.tokens, input: item.tokens.input + 100 }, toolCount: item.toolCount + 1 };
+    return item;
+  });
   snapshot = series.sample(grown, { scope: 'live', atMs: 2000 });
-  assert.equal(Math.round(snapshot.latest.tokenRate), 36_000);
-  assert.equal(Math.round(snapshot.latest.toolRate), 120);
+  assert.equal(Math.round(snapshot.latest.tokenRate), 42_000);
+  assert.equal(Math.round(snapshot.latest.toolRate), 180);
   assert.equal(Math.round(snapshot.latest.contextPeak), 90);
+  assert.equal(snapshot.sessions.length, 2);
+  const alpha = snapshot.sessions.find((item) => item.id === 'alpha');
+  const gamma = snapshot.sessions.find((item) => item.id === 'gamma');
+  assert.equal(Math.round(alpha.latest.tokenRate), 36_000);
+  assert.equal(Math.round(gamma.latest.tokenRate), 6_000);
+  assert.equal(Math.round(alpha.latest.toolRate), 120);
+  assert.equal(Math.round(gamma.latest.toolRate), 60);
 
   snapshot = series.sample(grown, { scope: 'ended', atMs: 3000 });
   assert.equal(snapshot.samples.length, 1);
   assert.equal(snapshot.latest.tokenRate, null);
   assert.equal(snapshot.latest.contextPeak, null);
   assert.equal(snapshot.latest.activeCount, 0);
+  assert.equal(snapshot.sessions.length, 0);
 });
 
 test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ultrawide across view modes', () => {
-  const cases = [
-    [60, 22, 'narrow'],
-    [100, 30, 'normal'],
-    [140, 36, 'wide'],
-    [200, 44, 'ultrawide']
-  ];
+  const cases = [[60, 22, 'narrow'], [100, 30, 'normal'], [140, 36, 'wide'], [200, 44, 'ultrawide']];
   for (const viewMode of ['operations', 'table', 'charts', 'auto']) {
     for (const [width, height, expectedLayout] of cases) {
       const frame = renderSessionDashboard({ rows, width, height, mode: 'mono', viewMode });
@@ -117,49 +123,65 @@ test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ul
   }
 });
 
-test('operations view prioritizes current state, rolling motion, selected session and recent sessions', () => {
-  const telemetry = {
-    sampleCount: 2,
-    latest: { activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 },
+function telemetryFixture() {
+  return {
+    sampleCount: 3,
+    latest: { activeCount: 2, tokenRate: 600, contextPeak: 80, toolRate: 3 },
     samples: [
       { atMs: 1, activeCount: 2, tokenRate: 0, contextPeak: 20, toolRate: 0 },
-      { atMs: 2, activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 }
+      { atMs: 2, activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 6 },
+      { atMs: 3, activeCount: 2, tokenRate: 600, contextPeak: 80, toolRate: 3 }
+    ],
+    sessions: [
+      {
+        id: 'alpha', project: 'alpha', threadId: 'thread-alpha', active: true,
+        latest: { tokenRate: 500, context: 80, toolRate: 2 },
+        samples: [
+          { atMs: 1, tokenRate: 0, context: 20, toolRate: 0 },
+          { atMs: 2, tokenRate: 900, context: 45, toolRate: 4 },
+          { atMs: 3, tokenRate: 500, context: 80, toolRate: 2 }
+        ]
+      },
+      {
+        id: 'gamma', project: 'gamma', threadId: 'thread-gamma', active: true,
+        latest: { tokenRate: 100, context: 20, toolRate: 1 },
+        samples: [
+          { atMs: 1, tokenRate: 0, context: 20, toolRate: 0 },
+          { atMs: 2, tokenRate: 300, context: 20, toolRate: 2 },
+          { atMs: 3, tokenRate: 100, context: 20, toolRate: 1 }
+        ]
+      }
     ]
   };
-  const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'operations', telemetry }).lines.join('\n'));
+}
+
+test('operations view prioritizes current state, semantic telemetry, selected session and recent sessions', () => {
+  const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'operations', telemetry: telemetryFixture() }).lines.join('\n'));
   assert.match(text, /CURRENT \/ LIVE/);
   assert.match(text, /STATUS \/ EVENTS/);
-  assert.match(text, /ROLLING 60s/);
-  assert.match(text, /TOKEN RATE/);
+  assert.match(text, /LIVE TELEMETRY · 60s/);
+  assert.match(text, /TOKEN/);
+  assert.match(text, /TOOLS/);
+  assert.match(text, /CTX/);
   assert.match(text, /SELECTED SESSION/);
   assert.match(text, /RECENT SESSIONS/);
 });
 
-test('charts view uses compact rolling strips with ranking context instead of giant area plots', () => {
-  const telemetry = {
-    sampleCount: 3,
-    latest: { activeCount: 2, tokenRate: 600, contextPeak: 80, toolRate: 0 },
-    samples: [
-      { atMs: 1, activeCount: 2, tokenRate: 0, contextPeak: 20, toolRate: 0 },
-      { atMs: 2, activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 },
-      { atMs: 3, activeCount: 2, tokenRate: 600, contextPeak: 80, toolRate: 0 }
-    ]
-  };
-  const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'charts', telemetry }).lines.join('\n'));
-  assert.match(charts, /LIVE TELEMETRY · ROLLING 60s/);
-  assert.match(charts, /TOKEN RATE/);
-  assert.match(charts, /CONTEXT/);
-  assert.match(charts, /TOOL RATE/);
-  assert.match(charts, /TOP TOKEN SESSIONS/);
-  assert.match(charts, /TOP CONTEXT/);
-  assert.match(charts, /−60s/);
+test('charts view uses semantic aggregate motion and per-live-session telemetry rows', () => {
+  const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 44, mode: 'mono', viewMode: 'charts', telemetry: telemetryFixture() }).lines.join('\n'));
+  assert.match(charts, /SYSTEM MOTION · LIVE ONLY · ROLLING 60s/);
+  assert.match(charts, /LIVE SESSIONS · TOKEN SPARK \/ RATE \/ CONTEXT \/ TOOLS/);
+  assert.match(charts, /alpha/);
+  assert.match(charts, /gamma/);
+  assert.match(charts, /TOP TOKEN TOTAL · current scope/);
+  assert.match(charts, /TOP CONTEXT · current scope/);
   assert.match(charts, /RECENT \/ SELECT/);
-  assert.doesNotMatch(charts, /SCALE\s+0–/);
+  assert.doesNotMatch(charts, /TOKEN RATE · ROLLING 60s/);
 
   const table = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 36, mode: 'mono', viewMode: 'table' }).lines.join('\n'));
   assert.match(table, /SESSION INDEX/);
   assert.match(table, /SESSION/);
-  assert.doesNotMatch(table, /LIVE TELEMETRY/);
+  assert.doesNotMatch(table, /SYSTEM MOTION/);
 });
 
 test('auto view resolves from terminal geometry without changing data semantics', () => {
