@@ -10,16 +10,6 @@ function finiteOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function maxMetric(rows, metric) {
-  let max = null;
-  for (const row of rows) {
-    const value = finiteOrNull(metric(row));
-    if (value == null) continue;
-    max = max == null ? value : Math.max(max, value);
-  }
-  return max;
-}
-
 function visibleModel(rows, { scope = 'all', search = '' } = {}) {
   return buildSessionDashboardModel(rows, {
     scope,
@@ -49,24 +39,21 @@ function baselineFor(model, atMs) {
     key: `${model.query.scope}\u0000${model.query.search}`,
     atMs,
     tokenById: metricMap(active, rowTokenActivity),
-    toolById: metricMap(active, rowToolActivity),
-    activeCount: active.length
+    toolById: metricMap(active, rowToolActivity)
   };
 }
 
-function safeDelta(previous, next) {
-  let total = 0;
-  let compared = 0;
-  for (const [id, value] of next) {
-    const before = previous.get(id);
-    if (!Number.isFinite(before) || !Number.isFinite(value)) continue;
-    // Counter resets / newly hydrated counters are re-baselined instead of
-    // being turned into a fake negative or cross-session spike.
-    if (value < before) continue;
-    total += value - before;
-    compared += 1;
-  }
-  return compared ? total : null;
+function rateForId(previous, next, id, elapsedMs) {
+  const before = previous.get(id);
+  const after = next.get(id);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || elapsedMs <= 0) return null;
+  if (after < before) return null;
+  return (after - before) * (60_000 / elapsedMs);
+}
+
+function sumKnown(values) {
+  const known = values.filter((value) => Number.isFinite(value));
+  return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 }
 
 export class ManagerTelemetrySeries {
@@ -75,16 +62,21 @@ export class ManagerTelemetrySeries {
     this.maxSamples = Math.max(2, Number(maxSamples) || 60);
     this.samples = [];
     this.previous = null;
+    this.sessionSamples = new Map();
+    this.sessionMeta = new Map();
   }
 
   reset() {
     this.samples = [];
     this.previous = null;
+    this.sessionSamples.clear();
+    this.sessionMeta.clear();
   }
 
   rebaseline(rows = [], { scope = 'all', search = '', atMs = Date.now() } = {}) {
     const model = visibleModel(rows, { scope, search });
     this.previous = baselineFor(model, Number(atMs) || 0);
+    this.markActive(liveRows(model));
     return this.snapshot();
   }
 
@@ -93,48 +85,128 @@ export class ManagerTelemetrySeries {
     const model = visibleModel(rows, { scope, search });
     const active = liveRows(model);
     const nextBaseline = baselineFor(model, nowMs);
-    const contextPeak = maxMetric(active, rowContextPercent);
 
     if (!this.previous || this.previous.key !== nextBaseline.key) {
       this.samples = [];
+      this.sessionSamples.clear();
+      this.sessionMeta.clear();
       this.previous = nextBaseline;
-      this.push({ atMs: nowMs, tokenRate: null, contextPeak, toolRate: null, activeCount: active.length });
+      this.markActive(active);
+      const sessionPoints = active.map((row) => this.pushSession(row, {
+        atMs: nowMs,
+        tokenRate: null,
+        context: finiteOrNull(rowContextPercent(row)),
+        toolRate: null
+      }));
+      this.pushAggregate({
+        atMs: nowMs,
+        tokenRate: null,
+        contextPeak: this.contextPeak(sessionPoints),
+        toolRate: null,
+        activeCount: active.length
+      });
       return this.snapshot();
     }
 
     const elapsedMs = nowMs - this.previous.atMs;
     if (elapsedMs <= 0) return this.snapshot();
 
-    const tokenDelta = safeDelta(this.previous.tokenById, nextBaseline.tokenById);
-    const toolDelta = safeDelta(this.previous.toolById, nextBaseline.toolById);
-    const tokenRate = tokenDelta == null ? null : tokenDelta * (60_000 / elapsedMs);
-    const toolRate = toolDelta == null ? null : toolDelta * (60_000 / elapsedMs);
+    this.markActive(active);
+    const sessionPoints = active.map((row) => {
+      const tokenRate = rateForId(this.previous.tokenById, nextBaseline.tokenById, row.id, elapsedMs);
+      const toolRate = rateForId(this.previous.toolById, nextBaseline.toolById, row.id, elapsedMs);
+      return this.pushSession(row, {
+        atMs: nowMs,
+        tokenRate,
+        context: finiteOrNull(rowContextPercent(row)),
+        toolRate
+      });
+    });
 
     this.previous = nextBaseline;
-    this.push({
+    this.pushAggregate({
       atMs: nowMs,
-      tokenRate,
-      contextPeak,
-      toolRate,
+      tokenRate: sumKnown(sessionPoints.map((point) => point.tokenRate)),
+      contextPeak: this.contextPeak(sessionPoints),
+      toolRate: sumKnown(sessionPoints.map((point) => point.toolRate)),
       activeCount: active.length
     });
+    this.prune(nowMs);
     return this.snapshot();
   }
 
-  push(sample) {
+  markActive(rows) {
+    const activeIds = new Set(rows.map((row) => row?.id).filter(Boolean));
+    for (const meta of this.sessionMeta.values()) meta.active = activeIds.has(meta.id);
+    for (const row of rows) {
+      if (!row?.id) continue;
+      const previous = this.sessionMeta.get(row.id) ?? {};
+      this.sessionMeta.set(row.id, {
+        ...previous,
+        id: row.id,
+        project: row.project ?? row.name ?? 'session',
+        threadId: row.threadId ?? row.name ?? row.id,
+        model: row.model ?? '--',
+        active: true
+      });
+    }
+  }
+
+  pushAggregate(sample) {
     this.samples.push(sample);
-    const cutoff = sample.atMs - this.windowMs;
-    while (this.samples.length && this.samples[0].atMs < cutoff) this.samples.shift();
     while (this.samples.length > this.maxSamples) this.samples.shift();
+  }
+
+  pushSession(row, point) {
+    const list = this.sessionSamples.get(row.id) ?? [];
+    list.push(point);
+    while (list.length > this.maxSamples) list.shift();
+    this.sessionSamples.set(row.id, list);
+    return point;
+  }
+
+  contextPeak(points) {
+    const known = points.map((point) => point.context).filter((value) => Number.isFinite(value));
+    return known.length ? Math.max(...known) : null;
+  }
+
+  prune(nowMs) {
+    const cutoff = nowMs - this.windowMs;
+    while (this.samples.length && this.samples[0].atMs < cutoff) this.samples.shift();
+    for (const [id, list] of this.sessionSamples) {
+      while (list.length && list[0].atMs < cutoff) list.shift();
+      if (!list.length && !this.sessionMeta.get(id)?.active) {
+        this.sessionSamples.delete(id);
+        this.sessionMeta.delete(id);
+      }
+    }
   }
 
   snapshot() {
     const samples = this.samples.map((sample) => ({ ...sample }));
+    const sessions = [...this.sessionMeta.values()]
+      .filter((meta) => meta.active)
+      .map((meta) => {
+        const sessionSamples = (this.sessionSamples.get(meta.id) ?? []).map((sample) => ({ ...sample }));
+        return {
+          ...meta,
+          samples: sessionSamples,
+          latest: sessionSamples.at(-1) ?? null
+        };
+      })
+      .sort((a, b) => {
+        const ar = Number(a.latest?.tokenRate);
+        const br = Number(b.latest?.tokenRate);
+        if (Number.isFinite(ar) || Number.isFinite(br)) return (Number.isFinite(br) ? br : -1) - (Number.isFinite(ar) ? ar : -1);
+        return String(a.project).localeCompare(String(b.project));
+      });
+
     return {
       windowMs: this.windowMs,
       sampleCount: samples.length,
       samples,
-      latest: samples.at(-1) ?? null
+      latest: samples.at(-1) ?? null,
+      sessions
     };
   }
 }
