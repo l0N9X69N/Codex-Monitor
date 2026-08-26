@@ -7,10 +7,19 @@ function finiteOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function two(value) {
+  return String(value).padStart(2, '0');
+}
+
 function fmtTime(ms) {
   const n = finiteOrNull(ms);
   if (n == null) return '--:--:--';
-  try { return new Date(n).toISOString().slice(11, 19); } catch { return '--:--:--'; }
+  try {
+    const date = new Date(n);
+    return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+  } catch {
+    return '--:--:--';
+  }
 }
 
 function fmtDuration(ms) {
