@@ -3,15 +3,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HistoryEngine } from '../../src/history/engine.js';
 import { parseMonitorArgs } from '../../src/cli/args.js';
 import { PROVENANCE } from '../../src/core/provenance.js';
+import { createFakePlatformAdapter } from '../../src/platform/fake.js';
+import { HistoryEngine } from '../../src/history/engine.js';
+import { runSessionManager } from '../../src/manager/app.js';
+import {
+  SessionActivityResolver,
+  SessionManagerCore,
+  SESSION_ACTIVITY,
+  querySessions
+} from '../../src/manager/session-core.js';
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-p8-')); }
 function line(obj) { return `${JSON.stringify(obj)}\n`; }
-function sampleSession() {
+function sampleSession({ threadId = 'thread-1', cwd = 'C:/repo', model = 'gpt-x' } = {}) {
   return [
-    line({ type: 'session_meta', timestamp: '2026-08-25T00:00:00Z', payload: { id: 'thread-1', model: 'gpt-x', reasoning_effort: 'medium', cwd: 'C:/repo' } }),
+    line({ type: 'session_meta', timestamp: '2026-08-25T00:00:00Z', payload: { id: threadId, model, reasoning_effort: 'medium', cwd } }),
     line({ type: 'turn_started', timestamp: '2026-08-25T00:00:01Z', payload: { id: 'turn-1' } }),
     line({ type: 'exec_command_begin', timestamp: '2026-08-25T00:00:02Z', payload: { call_id: 'c1', name: 'shell' } }),
     line({ type: 'exec_command_end', timestamp: '2026-08-25T00:00:03Z', payload: { call_id: 'c1' } }),
@@ -20,80 +28,177 @@ function sampleSession() {
   ].join('');
 }
 
-test('History discovery of 1000+ sessions stats metadata but does not deep parse', () => {
+function captureStream() {
+  let text = '';
+  return { stream: { write(value) { text += String(value); return true; } }, text: () => text };
+}
+
+test('--manager is Monitor-owned while --history is forwarded to official Codex', () => {
+  const manager = parseMonitorArgs(['--manager']);
+  const history = parseMonitorArgs(['--history']);
+  const explicit = parseMonitorArgs(['--', '--history']);
+  assert.equal(manager.action, 'manager');
+  assert.deepEqual(manager.codexArgs, []);
+  assert.equal(history.action, 'run');
+  assert.deepEqual(history.codexArgs, ['--history']);
+  assert.equal(explicit.action, 'run');
+  assert.deepEqual(explicit.codexArgs, ['--history']);
+});
+
+test('Session Manager entrypoint discovers local sessions without spawning Codex', async () => {
+  const root = tempDir();
+  fs.writeFileSync(path.join(root, 'one.jsonl'), sampleSession());
+  const adapter = createFakePlatformAdapter({ paths: { sessions: root } });
+  const output = captureStream();
+  const result = await runSessionManager({ platformAdapter: adapter, stdout: output.stream });
+  assert.equal(result.code, 0);
+  assert.equal(result.items.length, 1);
+  assert.match(output.text(), /Session Manager/);
+  assert.equal(adapter.calls.some((item) => item.name === 'spawnPty'), false);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('metadata discovery of 1000+ sessions does not deep parse session bodies', () => {
   const root = tempDir();
   for (let i = 0; i < 1001; i += 1) fs.writeFileSync(path.join(root, `s-${String(i).padStart(4, '0')}.jsonl`), '');
   let reads = 0;
   const fsRef = { ...fs, readFileSync: (...args) => { reads += 1; return fs.readFileSync(...args); } };
-  const engine = new HistoryEngine({ sessionsPath: root, fsRef });
-  const index = engine.discover();
+  const core = new SessionManagerCore({ sessionsPath: root, fsRef });
+  const index = core.discover();
   assert.equal(index.length, 1001);
   assert.equal(reads, 0);
   assert.ok(index.every((item) => item.parsed === false));
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('selected History session parses lazily into historical normalized model', () => {
+test('activity resolver never claims LIVE from mtime alone', () => {
+  let nowMs = 10_000;
+  const resolver = new SessionActivityResolver({ now: () => nowMs, staleAfterMs: 1000 });
+  const recent = { id: 's1', sizeBytes: 100, modifiedAtMs: 9_900 };
+  assert.equal(resolver.resolve(recent, {}), SESSION_ACTIVITY.UNKNOWN);
+  nowMs = 20_000;
+  assert.equal(resolver.resolve({ ...recent, modifiedAtMs: 19_999 }, {}), SESSION_ACTIVITY.UNKNOWN);
+});
+
+test('activity resolver accepts growth or process match as LIVE evidence and strong process absence as ENDED', () => {
+  let nowMs = 20_000;
+  const resolver = new SessionActivityResolver({ now: () => nowMs, staleAfterMs: 1000 });
+  const base = { id: 's1', sizeBytes: 100, modifiedAtMs: 10_000 };
+  assert.equal(resolver.resolve(base, {}), SESSION_ACTIVITY.UNKNOWN);
+  assert.equal(resolver.resolve({ ...base, sizeBytes: 120, modifiedAtMs: 20_000 }, {}), SESSION_ACTIVITY.LIVE);
+  assert.equal(resolver.resolve({ id: 's2', sizeBytes: 50, modifiedAtMs: 20_000 }, { processKnown: true, processMatch: true }), SESSION_ACTIVITY.LIVE);
+  nowMs = 30_000;
+  assert.equal(resolver.resolve({ id: 's3', sizeBytes: 50, modifiedAtMs: 20_000 }, { processKnown: true, processMatch: false }), SESSION_ACTIVITY.ENDED);
+});
+
+test('multiple growing sessions update independently', () => {
   const root = tempDir();
-  const file = path.join(root, 'one.jsonl');
-  fs.writeFileSync(file, sampleSession());
-  const engine = new HistoryEngine({ sessionsPath: root });
-  const [meta] = engine.discover();
-  assert.equal(meta.parsed, false);
-  const model = engine.ensureLoaded(meta.id);
-  assert.equal(meta.parsed, true);
-  assert.equal(model.info.threadId, 'thread-1');
-  assert.equal(model.tokens.input, 100);
-  assert.equal(model.tools.count, 1);
-  assert.equal(model.turns.completed, 1);
-  assert.equal(model.normalized.session.threadId.provenance.source, PROVENANCE.OFFICIAL_HISTORY);
+  const a = path.join(root, 'a.jsonl');
+  const b = path.join(root, 'b.jsonl');
+  fs.writeFileSync(a, '');
+  fs.writeFileSync(b, '');
+  const core = new SessionManagerCore({ sessionsPath: root });
+  core.discover();
+  core.refresh();
+  fs.appendFileSync(a, 'x');
+  let items = core.refresh();
+  assert.equal(items.find((item) => item.filePath === a).state, SESSION_ACTIVITY.LIVE);
+  assert.equal(items.find((item) => item.filePath === b).state, SESSION_ACTIVITY.UNKNOWN);
+  fs.appendFileSync(b, 'y');
+  items = core.refresh();
+  assert.equal(items.find((item) => item.filePath === b).state, SESSION_ACTIVITY.LIVE);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('History tail handles partial append, complete append and no duplicate', () => {
+test('only selected session is deep parsed and historical provenance is retained', () => {
+  const root = tempDir();
+  const a = path.join(root, 'a.jsonl');
+  const b = path.join(root, 'b.jsonl');
+  fs.writeFileSync(a, sampleSession({ threadId: 'thread-a', cwd: 'C:/a' }));
+  fs.writeFileSync(b, sampleSession({ threadId: 'thread-b', cwd: 'C:/b' }));
+  let reads = 0;
+  const fsRef = { ...fs, readFileSync: (...args) => { reads += 1; return fs.readFileSync(...args); } };
+  const core = new SessionManagerCore({ sessionsPath: root, fsRef });
+  const items = core.discover();
+  assert.equal(reads, 0);
+  const selected = core.select(items[0].id);
+  assert.equal(reads, 1);
+  assert.equal(selected.normalized.session.threadId.provenance.source, PROVENANCE.OFFICIAL_HISTORY);
+  assert.equal(items.filter((item) => item.parsed).length, 1);
+  assert.equal(core.deep.cache.size, 1);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('selected session tail handles partial append, complete append and no duplicate', () => {
   const root = tempDir();
   const file = path.join(root, 'grow.jsonl');
   fs.writeFileSync(file, sampleSession());
-  const engine = new HistoryEngine({ sessionsPath: root });
-  const [meta] = engine.discover();
-  const model = engine.ensureLoaded(meta.id);
+  const core = new SessionManagerCore({ sessionsPath: root });
+  const [meta] = core.discover();
+  const model = core.select(meta.id);
   const before = model.tools.count;
   const partial = JSON.stringify({ type: 'mcp_tool_call_begin', timestamp: '2026-08-25T00:00:06Z', payload: { call_id: 'm1', name: 'mcp.read' } });
   fs.appendFileSync(file, partial.slice(0, 25));
-  const first = engine.tail(meta.id);
-  assert.equal(first.changed, true);
-  assert.equal(model.tools.count, before);
+  assert.equal(core.tailSelected().model.tools.count, before);
   fs.appendFileSync(file, `${partial.slice(25)}\n`);
-  const second = engine.tail(meta.id);
-  assert.equal(second.changed, true);
-  assert.equal(model.tools.count, before + 1);
-  assert.ok(model.resources.evidence.some((item) => item.kind === 'MCP'));
-  const third = engine.tail(meta.id);
-  assert.equal(third.changed, false);
+  assert.equal(core.tailSelected().model.tools.count, before + 1);
+  assert.equal(core.tailSelected().changed, false);
   assert.equal(model.tools.count, before + 1);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('History truncation reloads safely and no database is created', () => {
+test('selected session truncation reloads safely and no database is created', () => {
   const root = tempDir();
   const file = path.join(root, 'rotate.jsonl');
   fs.writeFileSync(file, sampleSession());
-  const engine = new HistoryEngine({ sessionsPath: root });
-  const [meta] = engine.discover();
-  engine.ensureLoaded(meta.id);
+  const core = new SessionManagerCore({ sessionsPath: root });
+  const [meta] = core.discover();
+  core.select(meta.id);
   fs.writeFileSync(file, line({ type: 'session_meta', timestamp: '2026-08-25T01:00:00Z', payload: { id: 'thread-new' } }));
-  const result = engine.tail(meta.id);
+  const result = core.tailSelected();
   assert.equal(result.reset, true);
   assert.equal(result.model.info.threadId, 'thread-new');
   assert.equal(fs.readdirSync(root).some((name) => /\.(db|sqlite|csv)$/i.test(name)), false);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('--history is Monitor-owned while -- --history forwards to official Codex', () => {
-  const own = parseMonitorArgs(['--history']);
-  const forwarded = parseMonitorArgs(['--', '--history']);
-  assert.equal(own.action, 'history');
-  assert.deepEqual(own.codexArgs, []);
-  assert.equal(forwarded.action, 'run');
-  assert.deepEqual(forwarded.codexArgs, ['--history']);
+test('external delete degrades gracefully and clears missing selection on refresh', () => {
+  const root = tempDir();
+  const file = path.join(root, 'gone.jsonl');
+  fs.writeFileSync(file, sampleSession());
+  const core = new SessionManagerCore({ sessionsPath: root });
+  const [meta] = core.discover();
+  core.select(meta.id);
+  fs.rmSync(file, { force: true });
+  const tail = core.tailSelected();
+  assert.equal(tail.changed, false);
+  assert.ok(tail.error);
+  core.refresh();
+  assert.equal(core.selectedId, null);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('query model supports deterministic All/Live/Ended search and sort', () => {
+  const items = [
+    { id: 'b', project: 'Backend', state: SESSION_ACTIVITY.LIVE, modifiedAtMs: 20 },
+    { id: 'a', project: 'App', state: SESSION_ACTIVITY.ENDED, modifiedAtMs: 10 },
+    { id: 'c', project: 'Client', state: SESSION_ACTIVITY.UNKNOWN, modifiedAtMs: 30 }
+  ];
+  assert.deepEqual(querySessions([...items], { scope: 'live' }).map((item) => item.id), ['b']);
+  assert.deepEqual(querySessions([...items], { scope: 'ended' }).map((item) => item.id), ['a']);
+  assert.deepEqual(querySessions([...items], { search: 'app' }).map((item) => item.id), ['a']);
+  assert.deepEqual(querySessions([...items], { sortBy: 'project', direction: 'asc' }).map((item) => item.id), ['a', 'b', 'c']);
+});
+
+test('legacy HistoryEngine remains a selected-session parser, not the Manager discovery contract', () => {
+  const root = tempDir();
+  const file = path.join(root, 'one.jsonl');
+  fs.writeFileSync(file, sampleSession());
+  const engine = new HistoryEngine({ sessionsPath: root });
+  const [meta] = engine.discover();
+  const model = engine.ensureLoaded(meta.id);
+  assert.equal(model.info.threadId, 'thread-1');
+  assert.equal(model.tokens.input, 100);
+  assert.equal(model.tools.count, 1);
+  fs.rmSync(root, { recursive: true, force: true });
 });
