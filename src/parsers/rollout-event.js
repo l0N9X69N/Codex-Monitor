@@ -1,6 +1,8 @@
 import { sanitizeDetail, sanitizeText } from '../core/sanitize.js';
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -51,6 +53,59 @@ function modelSettingsFrom(payload) {
   };
 }
 
+function jsonObject(value) {
+  if (!value) return null;
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function auditText(value, maxLength = 1200) {
+  if (value == null) return null;
+  if (typeof value === 'string') return sanitizeText(value, { maxLength });
+  try { return sanitizeText(JSON.stringify(value), { maxLength }); } catch { return sanitizeText(String(value), { maxLength }); }
+}
+
+function messageText(payload) {
+  const direct = payload?.message ?? payload?.text ?? payload?.content;
+  if (typeof direct === 'string') return auditText(direct, 1200);
+  if (Array.isArray(direct)) {
+    const parts = direct.map((item) => {
+      if (typeof item === 'string') return item;
+      return item?.text ?? item?.content ?? item?.input_text ?? item?.output_text ?? '';
+    }).filter(Boolean);
+    return auditText(parts.join(' '), 1200);
+  }
+  return auditText(direct, 1200);
+}
+
+function toolAuditFields(payload) {
+  const rawArgs = payload?.arguments ?? payload?.args ?? payload?.input ?? payload?.parameters ?? null;
+  const args = jsonObject(rawArgs);
+  return {
+    command: auditText(payload?.command ?? payload?.cmd ?? args?.command ?? args?.cmd, 1000),
+    cwd: sanitizeText(payload?.cwd ?? payload?.workdir ?? payload?.working_directory ?? args?.cwd ?? args?.workdir ?? args?.working_directory, { maxLength: 500 }),
+    path: sanitizeText(payload?.path ?? payload?.file_path ?? payload?.filePath ?? args?.path ?? args?.file_path ?? args?.filePath, { maxLength: 500 }),
+    query: auditText(payload?.query ?? args?.query ?? args?.pattern, 500),
+    input: auditText(rawArgs, 1400)
+  };
+}
+
+function toolResultFields(payload) {
+  const result = payload?.output ?? payload?.result ?? payload?.content ?? payload?.stdout ?? payload?.response ?? null;
+  return {
+    output: auditText(result, 1800),
+    status: sanitizeText(payload?.status ?? payload?.state, { maxLength: 120 }),
+    exitCode: numberOrNull(payload?.exit_code ?? payload?.exitCode ?? payload?.code),
+    durationMs: numberOrNull(payload?.duration_ms ?? payload?.durationMs ?? payload?.elapsed_ms ?? payload?.elapsedMs)
+  };
+}
+
 export function parseRolloutObject(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const type = eventType(obj);
@@ -60,9 +115,6 @@ export function parseRolloutObject(obj) {
   const common = { type, atMs, rawType: type };
 
   if (type === 'session_meta' || type === 'session_metadata') {
-    // Current Codex persists SessionMetaLine as { payload: { meta, git } }.
-    // Older rollouts used a flatter payload. Accept both so local resume can
-    // resolve the selected thread without requiring a new turn to be appended.
     const meta = payload?.meta && typeof payload.meta === 'object' ? payload.meta : payload;
     const git = payload?.git && typeof payload.git === 'object'
       ? payload.git
@@ -79,9 +131,6 @@ export function parseRolloutObject(obj) {
     };
   }
 
-  // Modern Codex persists the effective model and reasoning effort in a
-  // turn_context item once per real user turn. This is the durable source used
-  // by Codex itself when reconstructing thread metadata on resume.
   if (type === 'turn_context' || type === 'turn_context_item') {
     const settings = modelSettingsFrom(payload);
     return {
@@ -93,24 +142,49 @@ export function parseRolloutObject(obj) {
     };
   }
 
-  // Codex can also persist/apply settings changes independently of the next
-  // turn_context (for example after /model). Accept both snake/camel payloads.
   if (type === 'thread_settings_applied' || type === 'thread_settings_changed') {
     const settings = modelSettingsFrom(payload);
     return { ...common, kind: 'model-settings', model: settings.model, reasoning: settings.reasoning };
+  }
+
+  if (type === 'user_message' || type === 'user-message') {
+    return { ...common, kind: 'message', role: 'user', detail: messageText(payload) };
+  }
+  if (type === 'agent_message' || type === 'assistant_message' || type === 'assistant-message') {
+    return { ...common, kind: 'message', role: 'assistant', detail: messageText(payload) };
+  }
+  if (type === 'message') {
+    const role = sanitizeText(payload?.role ?? obj?.role, { maxLength: 40 });
+    if (role === 'user' || role === 'assistant') return { ...common, kind: 'message', role, detail: messageText(payload) };
   }
 
   if (type === 'turn_started' || type === 'task_started') {
     return { ...common, kind: 'turn-start', turnId: sanitizeText(payload?.turn_id ?? payload?.turnId ?? payload?.id) };
   }
   if (type === 'turn_complete' || type === 'task_complete') {
-    return { ...common, kind: 'turn-complete', turnId: sanitizeText(payload?.turn_id ?? payload?.turnId ?? payload?.id), error: sanitizeDetail(payload?.error?.message ?? payload?.error ?? payload?.terminal_error ?? payload?.terminalError) };
+    return {
+      ...common,
+      kind: 'turn-complete',
+      turnId: sanitizeText(payload?.turn_id ?? payload?.turnId ?? payload?.id),
+      error: sanitizeDetail(payload?.error?.message ?? payload?.error ?? payload?.terminal_error ?? payload?.terminalError)
+    };
   }
   if (/^(exec_command|mcp_tool_call|web_search|patch_apply|image_generation)_begin$/.test(type) || ['function_call','custom_tool_call','local_shell_call','computer_call'].includes(type)) {
-    return { ...common, kind: 'tool-start', callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id ?? payload?.itemId), tool: sanitizeText(payload?.name ?? payload?.tool_name ?? payload?.toolName ?? payload?.server_name ?? payload?.serverName ?? type.replace(/_begin$/, '')) };
+    return {
+      ...common,
+      kind: 'tool-start',
+      callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id ?? payload?.itemId),
+      tool: sanitizeText(payload?.name ?? payload?.tool_name ?? payload?.toolName ?? payload?.server_name ?? payload?.serverName ?? type.replace(/_begin$/, '')),
+      ...toolAuditFields(payload)
+    };
   }
   if (/^(exec_command|mcp_tool_call|web_search|patch_apply|image_generation)_end$/.test(type) || ['function_call_output','custom_tool_call_output','local_shell_call_output','computer_call_output'].includes(type)) {
-    return { ...common, kind: 'tool-end', callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id ?? payload?.itemId) };
+    return {
+      ...common,
+      kind: 'tool-end',
+      callId: sanitizeText(payload?.call_id ?? payload?.callId ?? payload?.id ?? payload?.item_id ?? payload?.itemId),
+      ...toolResultFields(payload)
+    };
   }
   if (['exec_approval_request','apply_patch_approval_request','request_permissions','request_user_input','elicitation_request'].includes(type)) {
     return { ...common, kind: 'approval', detail: sanitizeDetail(payload?.message ?? payload?.reason ?? type) };
