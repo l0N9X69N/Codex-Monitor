@@ -1,6 +1,6 @@
 const SORT_FIELDS = Object.freeze(['lastActivity', 'context', 'input', 'tools', 'size', 'state', 'project', 'model']);
 const SCOPES = Object.freeze(['all', 'live', 'ended']);
-const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'auto']);
+const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'storage', 'auto']);
 
 export function nextManagerScope(scope = 'all') {
   const index = SCOPES.indexOf(String(scope).toLowerCase());
@@ -17,9 +17,15 @@ export function nextManagerView(view = 'operations') {
   return VIEW_MODES[(index < 0 ? 0 : index + 1) % VIEW_MODES.length];
 }
 
-export function normalizeManagerInput(data, { searching = false } = {}) {
+export function normalizeManagerInput(data, { searching = false, confirmingDelete = false } = {}) {
   const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!text) return null;
+
+  if (confirmingDelete) {
+    if (text === '\x1b' || text.toLowerCase() === 'n' || text.toLowerCase() === 'q') return 'delete-cancel';
+    if (text.toLowerCase() === 'y') return 'delete-confirm';
+    return null;
+  }
 
   if (text === '\x1b[A') return 'up';
   if (text === '\x1b[B') return 'down';
@@ -36,13 +42,7 @@ export function normalizeManagerInput(data, { searching = false } = {}) {
     const button = Number(mouse[1]);
     if (button === 64) return 'up';
     if (button === 65) return 'down';
-    return {
-      action: 'mouse',
-      button,
-      x: Number(mouse[2]),
-      y: Number(mouse[3]),
-      release: mouse[4] === 'm'
-    };
+    return { action: 'mouse', button, x: Number(mouse[2]), y: Number(mouse[3]), release: mouse[4] === 'm' };
   }
 
   const enter = /^[\r\n]+$/.test(text);
@@ -60,11 +60,16 @@ export function normalizeManagerInput(data, { searching = false } = {}) {
 
   if (text === '\x1b' || text.toLowerCase() === 'q') return 'quit';
   if (enter) return 'inspect';
+  if (text === ' ') return 'select-toggle';
   if (text === '/') return 'search';
   if (text.toLowerCase() === 'f') return 'filter';
   if (text.toLowerCase() === 's') return 'sort';
-  if (text.toLowerCase() === 'd') return 'direction';
+  if (text.toLowerCase() === 'r') return 'direction';
   if (text.toLowerCase() === 'v') return 'view';
+  if (text === 'A' || text === 'a') return 'select-all';
+  if (text === 'N' || text === 'n') return 'select-none';
+  if (text === 'I' || text === 'i') return 'select-invert';
+  if (text === 'D' || text === 'd') return 'delete-selected';
   return null;
 }
 
