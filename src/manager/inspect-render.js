@@ -4,37 +4,58 @@ import { filterSessionTimeline, MANAGER_TIMELINE_FILTERS } from './timeline.js';
 
 export const MANAGER_INSPECT_TABS = Object.freeze(['info', 'timeline', 'tokens', 'turns', 'tools', 'resources', 'errors']);
 
+function finiteOrNull(value) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function two(value) {
+  return String(value).padStart(2, '0');
+}
+
 function fmtNum(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  const n = finiteOrNull(value);
+  if (n == null) return '--';
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
   if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(Math.round(n));
 }
 
 function fmtBytes(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  const n = finiteOrNull(value);
+  if (n == null) return '--';
   if (n >= 1024 ** 2) return `${(n / (1024 ** 2)).toFixed(1)}M`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)}K`;
   return `${Math.round(n)}B`;
 }
 
 function fmtDate(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n)) return '--';
-  try { return new Date(n).toISOString().replace('T', ' ').slice(0, 19); } catch { return '--'; }
+  const n = finiteOrNull(ms);
+  if (n == null) return '--';
+  try {
+    const date = new Date(n);
+    return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+  } catch {
+    return '--';
+  }
 }
 
 function fmtTime(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n)) return '--:--:--';
-  try { return new Date(n).toISOString().slice(11, 19); } catch { return '--:--:--'; }
+  const n = finiteOrNull(ms);
+  if (n == null) return '--:--:--';
+  try {
+    const date = new Date(n);
+    return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+  } catch {
+    return '--:--:--';
+  }
 }
 
 function fmtDuration(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n < 0) return '--';
+  const n = finiteOrNull(ms);
+  if (n == null || n < 0) return '--';
   if (n < 1000) return `${Math.round(n)}ms`;
   const seconds = Math.floor(n / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -45,9 +66,9 @@ function fmtDuration(ms) {
 }
 
 function fmtPercent(used, window) {
-  const a = Number(used);
-  const b = Number(window);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return '--';
+  const a = finiteOrNull(used);
+  const b = finiteOrNull(window);
+  if (a == null || b == null || b <= 0) return '--';
   return `${Math.round(Math.max(0, Math.min(100, (a / b) * 100)))}%`;
 }
 
@@ -125,7 +146,7 @@ function tabLines(detail, tab) {
   if (tab === 'errors') {
     const errors = Array.isArray(detail.errors) ? detail.errors : [];
     return errors.length
-      ? errors.slice(-14).reverse().map((item) => `${fmtDate(item.atMs).slice(11, 19)}  ${item.detail ?? '--'}`)
+      ? errors.slice(-14).reverse().map((item) => `${fmtTime(item.atMs)}  ${item.detail ?? '--'}`)
       : ['No recorded errors in selected session.'];
   }
   return infoLines(detail);
@@ -168,7 +189,7 @@ function timelineView(detail, { filter = 'all', search = '', selectedIndex = 0, 
     const marker = absolute === resolved ? hpaint('▸', 'nav', mode) : ' ';
     const time = hpaint(fmtTime(event.atMs), 'dim', mode);
     const category = hpaint(eventCategory(event).padEnd(9), eventToken(event), mode);
-    const duration = Number.isFinite(Number(event.durationMs)) ? hpaint(` ${fmtDuration(event.durationMs)}`, 'dim', mode) : '';
+    const duration = finiteOrNull(event.durationMs) != null ? hpaint(` ${fmtDuration(event.durationMs)}`, 'dim', mode) : '';
     return `${marker} ${time}  ${category}  ${hpaint(event.label || event.tool || event.rawType || '--', eventToken(event), mode)}${duration}`;
   });
   if (!lines.length) lines.push(hpaint('No timeline events match current filter/search.', 'dim', mode));
@@ -199,9 +220,9 @@ function eventDetailLines(event, width) {
   if (event.callId) lines.push(`Call ID      ${event.callId}`);
   if (event.turnId) lines.push(`Turn ID      ${event.turnId}`);
   if (event.role) lines.push(`Role         ${event.role}`);
-  if (Number.isFinite(Number(event.durationMs))) lines.push(`Duration     ${fmtDuration(event.durationMs)}`);
+  if (finiteOrNull(event.durationMs) != null) lines.push(`Duration     ${fmtDuration(event.durationMs)}`);
   if (event.status) lines.push(`Status       ${event.status}`);
-  if (Number.isFinite(Number(event.exitCode))) lines.push(`Exit code    ${event.exitCode}`);
+  if (finiteOrNull(event.exitCode) != null) lines.push(`Exit code    ${event.exitCode}`);
   lines.push(...detailValueLines('Command', event.command, width, 4));
   lines.push(...detailValueLines('CWD', event.cwd, width, 2));
   lines.push(...detailValueLines('Path', event.path, width, 2));
