@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { createFakePlatformAdapter } from '../../src/platform/fake.js';
-import { normalizeManagerInput, nextManagerScope, nextManagerSort } from '../../src/manager/input.js';
+import { normalizeManagerInput, nextManagerScope, nextManagerSort, nextManagerView } from '../../src/manager/input.js';
 import { sessionManagerSnapshotSignature } from '../../src/manager/runtime.js';
 import { runSessionManagerTui } from '../../src/manager/tui.js';
 
@@ -38,7 +38,7 @@ function fakeTerminal() {
   return { stdin, stdout };
 }
 
-test('Manager input normalizes navigation, search, filters, sorting and mouse wheel', () => {
+test('Manager input normalizes navigation, search, filters, sorting, views and mouse wheel', () => {
   assert.equal(normalizeManagerInput('\x1b[A'), 'up');
   assert.equal(normalizeManagerInput('\x1b[B'), 'down');
   assert.equal(normalizeManagerInput('\x1b[C'), 'right');
@@ -48,6 +48,7 @@ test('Manager input normalizes navigation, search, filters, sorting and mouse wh
   assert.equal(normalizeManagerInput('f'), 'filter');
   assert.equal(normalizeManagerInput('S'), 'sort');
   assert.equal(normalizeManagerInput('d'), 'direction');
+  assert.equal(normalizeManagerInput('V'), 'view');
   assert.equal(normalizeManagerInput('\r'), 'inspect');
   assert.equal(normalizeManagerInput('q'), 'quit');
   assert.equal(normalizeManagerInput('!'), null);
@@ -61,6 +62,10 @@ test('Manager input normalizes navigation, search, filters, sorting and mouse wh
   assert.equal(nextManagerScope('live'), 'ended');
   assert.equal(nextManagerScope('ended'), 'all');
   assert.equal(nextManagerSort('lastActivity'), 'context');
+  assert.equal(nextManagerView('operations'), 'table');
+  assert.equal(nextManagerView('table'), 'charts');
+  assert.equal(nextManagerView('charts'), 'auto');
+  assert.equal(nextManagerView('auto'), 'operations');
 });
 
 test('Manager snapshot signature repaints evidenced row changes but ignores elapsed clock-only drift', () => {
@@ -88,7 +93,7 @@ test('Manager snapshot signature repaints evidenced row changes but ignores elap
   assert.notEqual(tokenChanged, first);
 });
 
-test('Manager TUI ignores unknown input and restores raw mode, mouse and cursor on quit', async () => {
+test('Manager TUI switches view at runtime, ignores unknown input and restores terminal on quit', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'one.jsonl'), sessionLine());
   const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
@@ -101,15 +106,19 @@ test('Manager TUI ignores unknown input and restores raw mode, mouse and cursor 
     stdout,
     processRef,
     colorMode: 'mono',
-    intervalMs: 50
+    intervalMs: 50,
+    initialViewMode: 'operations'
   });
   setImmediate(() => {
     stdin.emit('data', Buffer.from('!'));
+    stdin.emit('data', Buffer.from('v'));
     setImmediate(() => stdin.emit('data', Buffer.from('q')));
   });
   const result = await running;
 
   assert.equal(result.code, 0);
+  assert.equal(result.viewMode, 'table');
+  assert.match(stdout.output, /TABLE/);
   assert.match(stdout.output, /\x1b\[\?1049h/);
   assert.match(stdout.output, /\x1b\[\?1049l/);
   assert.match(stdout.output, /\x1b\[\?25h/);
