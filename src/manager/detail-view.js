@@ -34,6 +34,47 @@ function normalizedValue(metric) {
   return value === null || value === undefined || value === '' ? null : value;
 }
 
+function analyticsDetail(model) {
+  const analytics = model.analytics;
+  if (!analytics) return null;
+  const input = nullableNumber(analytics.tokens?.input);
+  const cached = nullableNumber(analytics.tokens?.cached);
+  const output = nullableNumber(analytics.tokens?.output);
+  const reasoning = nullableNumber(analytics.tokens?.reasoning);
+  const uncachedInput = input != null && cached != null ? Math.max(0, input - cached) : null;
+  const total = input != null && output != null ? input + output : null;
+  return {
+    context: {
+      currentUsed: nullableNumber(analytics.context?.currentUsed),
+      currentWindow: nullableNumber(analytics.context?.currentWindow),
+      peakUsed: nullableNumber(analytics.context?.peakUsed),
+      peakPercent: nullableNumber(analytics.context?.peakPercent),
+      points: Array.isArray(analytics.context?.points) ? analytics.context.points : [],
+      compactions: Array.isArray(analytics.context?.compactions) ? analytics.context.compactions : []
+    },
+    tokens: {
+      input,
+      cached,
+      uncachedInput,
+      output,
+      reasoning,
+      total,
+      points: Array.isArray(analytics.tokens?.points) ? analytics.tokens.points : []
+    },
+    turns: {
+      completed: nullableNumber(analytics.turns?.completed) ?? 0,
+      dropped: nullableNumber(analytics.turns?.dropped) ?? 0,
+      items: Array.isArray(analytics.turns?.items) ? analytics.turns.items : []
+    },
+    tools: {
+      total: nullableNumber(analytics.tools?.total) ?? 0,
+      byName: sortedToolCounts(analytics.tools?.byName),
+      events: Array.isArray(analytics.tools?.events) ? analytics.tools.events : []
+    },
+    signals: Array.isArray(analytics.signals) ? analytics.signals : []
+  };
+}
+
 export function createSelectedSessionDetail(meta, model) {
   if (!meta || !model) return null;
   const startedAtMs = model.info?.startedAtMs ?? meta.startedAtMs ?? null;
@@ -85,6 +126,7 @@ export function createSelectedSessionDetail(meta, model) {
         }))
         : []
     },
+    analytics: analyticsDetail(model),
     // HistoryEngine already sanitizes timeline entries. Keep the selected model's
     // array by reference so a long live session is not cloned every 250ms tick.
     timeline: Array.isArray(model.timeline) ? model.timeline : [],
