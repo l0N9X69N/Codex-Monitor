@@ -114,9 +114,9 @@ function selectedPreviewLines(model, mode) {
 function chartLines(items, width, formatter, mode, token = 'nav') {
   if (!items.length) return [hpaint('No evidenced data in current scope.', 'dim', mode)];
   const max = Math.max(...items.map((item) => Number(item.value) || 0), 1);
-  const labelWidth = Math.max(10, Math.min(24, Math.floor(width * 0.42)));
-  const valueWidth = 7;
-  const barWidth = Math.max(5, width - labelWidth - valueWidth - 5);
+  const labelWidth = Math.max(10, Math.min(26, Math.floor(width * 0.3)));
+  const valueWidth = 8;
+  const barWidth = Math.max(8, width - labelWidth - valueWidth - 5);
   return items.map((item) => {
     const ratio = Math.max(0, Math.min(1, Number(item.value) / max));
     const filled = Math.max(item.value > 0 ? 1 : 0, Math.round(barWidth * ratio));
@@ -138,23 +138,108 @@ function maxKnown(values, fallback = 1) {
   const known = values.filter(Number.isFinite);
   return known.length ? Math.max(...known, fallback) : fallback;
 }
-function spark(values, width, mode, token, fixedMax = null) {
-  const blocks = '▁▂▃▄▅▆▇█';
-  const count = Math.max(8, width);
-  const src = values.slice(-count);
-  const cols = [...Array(Math.max(0, count - src.length)).fill(null), ...src];
-  const max = fixedMax ?? maxKnown(values, 1);
-  return hpaint(cols.map((value) => {
-    if (!Number.isFinite(value)) return ' ';
-    if (value <= 0) return '▁';
-    return blocks[Math.max(0, Math.min(7, Math.round((value / Math.max(1, max)) * 7)))];
-  }).join(''), token, mode);
+function timeRange(samples, windowMs = 60_000) {
+  const times = (Array.isArray(samples) ? samples : [])
+    .map((sample) => Number(sample?.atMs))
+    .filter(Number.isFinite);
+  const latest = times.length ? Math.max(...times) : null;
+  return latest == null ? null : { start: latest - windowMs, end: latest, windowMs };
 }
-function eventTicks(values, width, mode) {
+function xForTime(atMs, range, pixelWidth) {
+  if (!range || pixelWidth <= 1) return pixelWidth - 1;
+  const ratio = (Number(atMs) - range.start) / range.windowMs;
+  return Math.max(0, Math.min(pixelWidth - 1, Math.round(ratio * (pixelWidth - 1))));
+}
+function fallbackX(index, length, pixelWidth) {
+  if (length <= 1 || pixelWidth <= 1) return pixelWidth - 1;
+  return Math.round((index / (length - 1)) * (pixelWidth - 1));
+}
+function drawLine(canvas, x0, y0, x1, y1) {
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const sx = x0 < x1 ? 1 : -1;
+  const dy = -Math.abs(y1 - y0);
+  const sy = y0 < y1 ? 1 : -1;
+  let error = dx + dy;
+  while (true) {
+    if (canvas[y]?.[x] != null) canvas[y][x] = true;
+    if (x === x1 && y === y1) break;
+    const doubled = 2 * error;
+    if (doubled >= dy) {
+      error += dy;
+      x += sx;
+    }
+    if (doubled <= dx) {
+      error += dx;
+      y += sy;
+    }
+  }
+}
+const BRAILLE_BITS = Object.freeze([
+  [0x01, 0x08],
+  [0x02, 0x10],
+  [0x04, 0x20],
+  [0x40, 0x80]
+]);
+function brailleLine(samples, key, width, rows, mode, token, fixedMax = null) {
+  const charWidth = Math.max(8, width);
+  const charRows = Math.max(1, rows);
+  const pixelWidth = charWidth * 2;
+  const pixelHeight = charRows * 4;
+  const canvas = Array.from({ length: pixelHeight }, () => Array(pixelWidth).fill(false));
+  const list = Array.isArray(samples) ? samples : [];
+  const values = valuesFrom(list, key);
+  const scaleMax = fixedMax ?? maxKnown(values, 1);
+  const range = timeRange(list);
+  const points = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const value = values[index];
+    if (!Number.isFinite(value)) continue;
+    const x = Number.isFinite(Number(list[index]?.atMs))
+      ? xForTime(list[index].atMs, range, pixelWidth)
+      : fallbackX(index, list.length, pixelWidth);
+    const ratio = Math.max(0, Math.min(1, value / Math.max(1, scaleMax)));
+    const y = (pixelHeight - 1) - Math.round(ratio * (pixelHeight - 1));
+    points.push([x, y]);
+  }
+  for (let index = 0; index < points.length; index += 1) {
+    const [x, y] = points[index];
+    canvas[y][x] = true;
+    if (index > 0) drawLine(canvas, points[index - 1][0], points[index - 1][1], x, y);
+  }
+  const output = [];
+  for (let row = 0; row < charRows; row += 1) {
+    let text = '';
+    for (let column = 0; column < charWidth; column += 1) {
+      let bits = 0;
+      for (let py = 0; py < 4; py += 1) {
+        for (let px = 0; px < 2; px += 1) {
+          if (canvas[row * 4 + py][column * 2 + px]) bits |= BRAILLE_BITS[py][px];
+        }
+      }
+      text += bits ? String.fromCharCode(0x2800 + bits) : ' ';
+    }
+    output.push(hpaint(text, token, mode));
+  }
+  return output;
+}
+function eventTimeline(samples, key, width, mode) {
   const count = Math.max(8, width);
-  const src = values.slice(-count);
-  const cols = [...Array(Math.max(0, count - src.length)).fill(null), ...src];
-  return cols.map((value) => {
+  const list = Array.isArray(samples) ? samples : [];
+  const range = timeRange(list);
+  const slots = Array(count).fill(null);
+  for (let index = 0; index < list.length; index += 1) {
+    const value = Number(list[index]?.[key]);
+    if (!Number.isFinite(value)) continue;
+    const x = Number.isFinite(Number(list[index]?.atMs))
+      ? xForTime(list[index].atMs, range, count)
+      : fallbackX(index, list.length, count);
+    slots[x] = Math.max(Number(slots[x]) || 0, value);
+  }
+  const first = slots.findIndex((value) => value != null);
+  return slots.map((value, index) => {
+    if (index < first || first < 0) return ' ';
     if (!Number.isFinite(value) || value <= 0) return hpaint('·', 'grid', mode);
     if (value >= 10) return hpaint('█', 'live', mode);
     if (value >= 3) return hpaint('┃', 'live', mode);
@@ -173,12 +258,6 @@ function timeAxis(width, mode) {
   const usable = Math.max(12, width - 9);
   return `${hpaint('−60s', 'dim', mode)}${hpaint('┈'.repeat(usable), 'grid', mode)}${hpaint('now', 'dim', mode)}`;
 }
-function metricBlock(label, current, graph, right, mode, token) {
-  return [
-    `${hpaint(label, 'heading', mode)}  ${hpaint(current, token, mode)}${right ? `  ${hpaint(right, 'dim', mode)}` : ''}`,
-    graph
-  ];
-}
 function aggregateTelemetryLines(telemetry, width, mode) {
   const samples = telemetry?.samples ?? [];
   const tokenValues = valuesFrom(samples, 'tokenRate');
@@ -188,24 +267,26 @@ function aggregateTelemetryLines(telemetry, width, mode) {
   const toolNow = latestKnown(toolValues);
   const contextNow = latestKnown(contextValues);
   const graphWidth = Math.max(18, width - 2);
-  const out = [
+  const tokenGraph = brailleLine(samples, 'tokenRate', graphWidth, 2, mode, 'secondary');
+  return [
     `${hpaint('LIVE FEED', 'label', mode)}  ${hpaint(String(telemetry?.latest?.activeCount ?? 0), 'live', mode)} active   ${hpaint('window 60s', 'dim', mode)}   ${hpaint(`samples ${telemetry?.sampleCount ?? 0}`, 'dim', mode)}`,
-    ''
+    `${hpaint('TOKEN RATE', 'heading', mode)}  ${hpaint(`${fmtNum(tokenNow)}/min`, 'secondary', mode)}  ${hpaint(`peak ${fmtNum(maxKnown(tokenValues, 0))}/m`, 'dim', mode)}`,
+    ...tokenGraph,
+    `${hpaint('TOOL EVENTS', 'heading', mode)}  ${hpaint(`${fmtNum(toolNow)}/min`, 'live', mode)}  ${hpaint(`peak ${fmtNum(maxKnown(toolValues, 0))}/m`, 'dim', mode)}`,
+    eventTimeline(samples, 'toolRate', graphWidth, mode),
+    `${hpaint('CONTEXT', 'heading', mode)}  ${hpaint(fmtPercent(contextNow), 'pressure', mode)}  ${hpaint('0% → 100%', 'dim', mode)}`,
+    gauge(contextNow, graphWidth, mode),
+    timeAxis(graphWidth, mode)
   ];
-  out.push(...metricBlock('TOKEN RATE', `${fmtNum(tokenNow)}/min`, spark(tokenValues, graphWidth, mode, 'secondary'), `peak ${fmtNum(maxKnown(tokenValues, 0))}/m`, mode, 'secondary'));
-  out.push('');
-  out.push(...metricBlock('TOOL EVENTS', `${fmtNum(toolNow)}/min`, eventTicks(toolValues, graphWidth, mode), `peak ${fmtNum(maxKnown(toolValues, 0))}/m`, mode, 'live'));
-  out.push('');
-  out.push(...metricBlock('CONTEXT', fmtPercent(contextNow), gauge(contextNow, graphWidth, mode), '0% → 100%', mode, 'pressure'));
-  out.push(timeAxis(graphWidth, mode));
-  return out;
 }
 function liveTelemetryRows(telemetry, width, mode, limit = 6) {
   const sessions = Array.isArray(telemetry?.sessions) ? telemetry.sessions.slice(0, limit) : [];
   if (!sessions.length) return [hpaint('No LIVE session telemetry yet.', 'dim', mode)];
-  const graphWidth = Math.max(10, width - 62);
+  const nameWidth = Math.max(10, Math.min(18, Math.floor(width * 0.16)));
+  const fixedWidth = 2 + nameWidth + 1 + 8 + 1 + 8 + 1 + 4 + 1 + 6;
+  const graphWidth = Math.max(12, width - fixedWidth);
   const rows = [
-    `${hpaint('PROJECT', 'label', mode).padEnd(20)} ${hpaint('SESSION', 'label', mode)} ${hpaint('TOKEN 60s', 'label', mode)} ${hpaint('RATE', 'label', mode).padStart(8)} ${hpaint('CTX', 'label', mode).padStart(4)} ${hpaint('TOOLS', 'label', mode).padStart(6)}`
+    `${padCells(hpaint('PROJECT', 'label', mode), nameWidth + 2)} ${padCells(hpaint('SESSION', 'label', mode), 8)} ${padCells(hpaint('TOKEN 60s', 'label', mode), graphWidth)} ${padCells(hpaint('RATE', 'label', mode), 8)} ${padCells(hpaint('CTX', 'label', mode), 4)} ${hpaint('TOOLS', 'label', mode)}`
   ];
   for (const session of sessions) {
     const tokenValues = valuesFrom(session.samples, 'tokenRate');
@@ -213,9 +294,10 @@ function liveTelemetryRows(telemetry, width, mode, limit = 6) {
     const tokenNow = latestKnown(tokenValues);
     const toolNow = latestKnown(toolValues);
     const ctx = session.latest?.context;
-    const name = padCells(truncateCells(session.project ?? 'session', 16, '…'), 16);
+    const name = padCells(truncateCells(session.project ?? 'session', nameWidth, '…'), nameWidth);
     const id = padCells(shortSessionId(session), 8);
-    rows.push(`${hpaint('●', 'live', mode)} ${hpaint(name, 'text', mode)} ${hpaint(id, 'session', mode)} ${spark(tokenValues, graphWidth, mode, 'secondary')} ${hpaint(`${fmtNum(tokenNow)}/m`.padStart(8), 'secondary', mode)} ${hpaint(fmtPercent(ctx).padStart(4), Number(ctx) >= 80 ? 'error' : Number(ctx) >= 60 ? 'pressure' : 'live', mode)} ${hpaint(`${fmtNum(toolNow)}/m`.padStart(6), 'live', mode)}`);
+    const tokenGraph = brailleLine(session.samples, 'tokenRate', graphWidth, 1, mode, 'secondary')[0];
+    rows.push(`${hpaint('●', 'live', mode)} ${hpaint(name, 'text', mode)} ${hpaint(id, 'session', mode)} ${tokenGraph} ${hpaint(`${fmtNum(tokenNow)}/m`.padStart(8), 'secondary', mode)} ${hpaint(fmtPercent(ctx).padStart(4), Number(ctx) >= 80 ? 'error' : Number(ctx) >= 60 ? 'pressure' : 'live', mode)} ${hpaint(`${fmtNum(toolNow)}/m`.padStart(6), 'live', mode)}`);
   }
   return rows;
 }
@@ -244,13 +326,12 @@ function fitColumns(columns, width) {
   while (selected.length > 2 && total() > width) selected.splice(selected.length - 1, 1);
   return selected;
 }
-function tableLines(model, width, rows, mode, maxDataRows = null) {
+function tableLines(model, width, rows, mode) {
   const markerWidth = 2;
   const columns = fitColumns(tableColumns(width), width - markerWidth);
   const output = [hpaint(`${' '.repeat(markerWidth)}${columns.map((key) => padCells(COLUMN_SPECS[key].title, COLUMN_SPECS[key].width)).join(' ')}`, 'label', mode)];
   if (!model.rows.length) return [...output, hpaint('No sessions match current query.', 'dim', mode)];
-  const visibleByHeight = Math.max(1, rows - 1);
-  const visible = maxDataRows == null ? visibleByHeight : Math.max(1, Math.min(visibleByHeight, maxDataRows));
+  const visible = Math.max(1, rows - 1);
   const selected = Math.max(0, model.selectedIndex);
   const start = Math.max(0, Math.min(selected - Math.floor(visible / 2), Math.max(0, model.rows.length - visible)));
   for (let index = start; index < Math.min(model.rows.length, start + visible); index += 1) {
@@ -304,7 +385,7 @@ function renderTableView(lines, model, width, bodyHeight, mode) {
 function renderOperationsView(lines, model, width, bodyHeight, mode, layout, telemetry) {
   if (layout === 'narrow') return renderTableView(lines, model, width, bodyHeight, mode);
   const topHeight = 7;
-  const middleHeight = Math.max(11, Math.min(14, Math.floor(bodyHeight * 0.38)));
+  const middleHeight = 11;
   const tableHeight = Math.max(5, bodyHeight - topHeight - middleHeight);
   const leftWidth = Math.max(34, Math.floor(width * 0.5));
   const rightWidth = width - leftWidth - 1;
@@ -320,13 +401,14 @@ function renderOperationsView(lines, model, width, bodyHeight, mode, layout, tel
     leftWidth,
     middleHeight
   ));
-  lines.push(...panel(tableLines(model, width - 2, tableHeight - 2, mode, 4), width, tableHeight, { title: tablePanelTitle('RECENT SESSIONS', model), mode }));
+  lines.push(...panel(tableLines(model, width - 2, tableHeight - 2, mode), width, tableHeight, { title: tablePanelTitle('RECENT SESSIONS', model), mode }));
 }
 function renderChartsView(lines, model, width, bodyHeight, mode, layout, telemetry) {
   if (layout === 'narrow') return renderTableView(lines, model, width, bodyHeight, mode);
-  const aggregateHeight = 12;
-  const liveHeight = Math.max(7, Math.min(10, Math.floor(bodyHeight * 0.22)));
-  const rankingHeight = Math.max(7, Math.min(9, Math.floor(bodyHeight * 0.2)));
+  const aggregateHeight = 11;
+  const liveCount = Array.isArray(telemetry?.sessions) ? telemetry.sessions.length : 0;
+  const liveHeight = Math.max(4, Math.min(8, liveCount + 3));
+  const rankingHeight = 7;
   const recentHeight = Math.max(5, bodyHeight - aggregateHeight - liveHeight - rankingHeight);
   lines.push(...panel(aggregateTelemetryLines(telemetry, width - 4, mode), width, aggregateHeight, { title: 'SYSTEM MOTION · LIVE ONLY · ROLLING 60s', mode }));
   lines.push(...panel(liveTelemetryRows(telemetry, width - 4, mode, Math.max(1, liveHeight - 3)), width, liveHeight, { title: 'LIVE SESSIONS · TOKEN / RATE / CONTEXT / TOOLS', mode }));
@@ -338,7 +420,7 @@ function renderChartsView(lines, model, width, bodyHeight, mode, layout, telemet
     leftWidth,
     rankingHeight
   ));
-  lines.push(...panel(tableLines(model, width - 2, recentHeight - 2, mode, 3), width, recentHeight, { title: tablePanelTitle('RECENT / SELECT', model), mode }));
+  lines.push(...panel(tableLines(model, width - 2, recentHeight - 2, mode), width, recentHeight, { title: tablePanelTitle('RECENT / SELECT', model), mode }));
 }
 export function renderSessionDashboard({ rows = [], width = 120, height = 36, mode = '256', scope = 'all', search = '', sortBy = 'lastActivity', direction = 'desc', selectedId = null, selectedIndex = 0, viewMode = 'operations', telemetry = null } = {}) {
   const safeWidth = Math.max(44, Number(width) || 120);
