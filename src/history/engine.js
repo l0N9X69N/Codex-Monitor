@@ -43,12 +43,14 @@ function historicalModel(filePath) {
     tools: { count: 0, byName: {}, recent: [] },
     resources: { evidence: [] },
     errors: [],
+    timeline: [],
     normalized: createNormalizedMonitorState({ runId: filePath, startedAtMs: 0 }),
     parsedLines: 0,
     rejectedLines: 0,
     offset: 0,
     remainder: '',
-    complete: false
+    complete: false,
+    _activeToolCalls: new Map()
   };
 }
 
@@ -58,6 +60,172 @@ function addResourceEvidence(model, kind, value, atMs) {
   if (model.resources.evidence.some((item) => item.kind === kind && item.value === clean)) return;
   model.resources.evidence.push({ kind, value: clean, atMs });
   if (model.resources.evidence.length > 100) model.resources.evidence.shift();
+}
+
+function lower(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isAgentSpawnTool(name) {
+  const clean = lower(name);
+  if (!clean) return false;
+  const leaf = clean.split(/[.:/\\]/).filter(Boolean).at(-1) ?? clean;
+  return leaf === 'spawn_agent';
+}
+
+function toolGroup(name, rawType = '') {
+  const tool = lower(name);
+  const type = lower(rawType);
+  if (isAgentSpawnTool(tool)) return 'agent';
+  if (type.includes('patch_apply') || tool.includes('apply_patch') || tool.includes('read_file') || tool.includes('write_file') || tool.includes('edit_file')) return 'file';
+  if (type.includes('exec_command') || type.includes('local_shell') || tool === 'shell' || tool.includes('shell') || tool.includes('exec_command')) return 'shell';
+  return 'tool';
+}
+
+function timelineLabel(event, fallback = '') {
+  return sanitizeText(
+    event?.command
+      ?? event?.path
+      ?? event?.query
+      ?? event?.detail
+      ?? event?.tool
+      ?? event?.model
+      ?? event?.turnId
+      ?? fallback,
+    { maxLength: 500 }
+  ) || fallback;
+}
+
+function pushTimeline(model, entry) {
+  if (!entry) return null;
+  const normalized = {
+    index: model.timeline.length,
+    atMs: Number.isFinite(entry.atMs) ? entry.atMs : null,
+    category: entry.category ?? 'event',
+    group: entry.group ?? entry.category ?? 'event',
+    label: sanitizeText(entry.label, { maxLength: 500 }) ?? '',
+    rawType: sanitizeText(entry.rawType, { maxLength: 120 }),
+    role: sanitizeText(entry.role, { maxLength: 40 }),
+    turnId: sanitizeText(entry.turnId, { maxLength: 100 }),
+    callId: sanitizeText(entry.callId, { maxLength: 100 }),
+    tool: sanitizeText(entry.tool, { maxLength: 120 }),
+    detail: sanitizeText(entry.detail, { maxLength: 1200 }),
+    command: sanitizeText(entry.command, { maxLength: 1000 }),
+    cwd: sanitizeText(entry.cwd, { maxLength: 500 }),
+    path: sanitizeText(entry.path, { maxLength: 500 }),
+    query: sanitizeText(entry.query, { maxLength: 500 }),
+    input: sanitizeText(entry.input, { maxLength: 1400 }),
+    output: sanitizeText(entry.output, { maxLength: 1800 }),
+    status: sanitizeText(entry.status, { maxLength: 120 }),
+    exitCode: Number.isFinite(Number(entry.exitCode)) ? Number(entry.exitCode) : null,
+    durationMs: Number.isFinite(Number(entry.durationMs)) ? Number(entry.durationMs) : null,
+    failed: entry.failed === true
+  };
+  model.timeline.push(normalized);
+  return normalized;
+}
+
+function recordTimelineEvent(model, event) {
+  if (!event || event.kind === 'usage' || event.kind === 'quota' || event.kind === 'unknown') return;
+  const atMs = Number.isFinite(event.atMs) ? event.atMs : null;
+
+  if (event.kind === 'message') {
+    pushTimeline(model, {
+      atMs,
+      category: event.role === 'user' ? 'user' : 'assistant',
+      group: 'message',
+      label: timelineLabel(event, event.role ?? 'message'),
+      rawType: event.rawType,
+      role: event.role,
+      detail: event.detail
+    });
+    return;
+  }
+  if (event.kind === 'turn-start') {
+    pushTimeline(model, { atMs, category: 'turn', group: 'turn', label: 'Turn started', rawType: event.rawType, turnId: event.turnId });
+    return;
+  }
+  if (event.kind === 'turn-complete') {
+    pushTimeline(model, {
+      atMs,
+      category: event.error ? 'error' : 'turn',
+      group: 'turn',
+      label: event.error ? `Turn failed: ${event.error}` : 'Turn completed',
+      rawType: event.rawType,
+      turnId: event.turnId,
+      detail: event.error,
+      durationMs: model.normalized.session.lastTurnDurationMs.value,
+      failed: Boolean(event.error)
+    });
+    return;
+  }
+  if (event.kind === 'tool-start') {
+    const group = toolGroup(event.tool, event.rawType);
+    if (event.callId) model._activeToolCalls.set(event.callId, { ...event, group });
+    pushTimeline(model, {
+      atMs,
+      category: group,
+      group,
+      label: timelineLabel(event, event.tool ?? 'tool'),
+      rawType: event.rawType,
+      callId: event.callId,
+      tool: event.tool,
+      command: event.command,
+      cwd: event.cwd,
+      path: event.path,
+      query: event.query,
+      input: event.input
+    });
+    return;
+  }
+  if (event.kind === 'tool-end') {
+    const start = event.callId ? model._activeToolCalls.get(event.callId) : null;
+    const group = start?.group ?? 'tool';
+    const derivedDuration = Number.isFinite(event.durationMs)
+      ? event.durationMs
+      : (Number.isFinite(atMs) && Number.isFinite(start?.atMs) && atMs >= start.atMs ? atMs - start.atMs : null);
+    const failed = (Number.isFinite(event.exitCode) && event.exitCode !== 0) || lower(event.status).includes('fail') || lower(event.status).includes('error');
+    pushTimeline(model, {
+      atMs,
+      category: failed ? 'error' : 'result',
+      group,
+      label: failed ? `${start?.tool ?? 'tool'} failed` : `${start?.tool ?? 'tool'} result`,
+      rawType: event.rawType,
+      callId: event.callId,
+      tool: start?.tool ?? null,
+      command: start?.command ?? null,
+      cwd: start?.cwd ?? null,
+      path: start?.path ?? null,
+      query: start?.query ?? null,
+      input: start?.input ?? null,
+      output: event.output,
+      status: event.status,
+      exitCode: event.exitCode,
+      durationMs: derivedDuration,
+      failed
+    });
+    if (event.callId) model._activeToolCalls.delete(event.callId);
+    return;
+  }
+  if (event.kind === 'approval') {
+    pushTimeline(model, { atMs, category: 'approval', group: 'approval', label: timelineLabel(event, 'Approval requested'), rawType: event.rawType, detail: event.detail });
+    return;
+  }
+  if (event.kind === 'retry') {
+    pushTimeline(model, { atMs, category: 'retry', group: 'error', label: timelineLabel(event, 'Retry'), rawType: event.rawType, detail: event.detail });
+    return;
+  }
+  if (event.kind === 'error') {
+    pushTimeline(model, { atMs, category: 'error', group: 'error', label: timelineLabel(event, 'Error'), rawType: event.rawType, detail: event.detail, failed: true });
+    return;
+  }
+  if (event.kind === 'compaction') {
+    pushTimeline(model, { atMs, category: 'compaction', group: 'event', label: 'Context compacted', rawType: event.rawType });
+    return;
+  }
+  if (event.kind === 'actual-model') {
+    pushTimeline(model, { atMs, category: 'model', group: 'event', label: `Model reroute → ${event.model ?? '--'}`, rawType: event.rawType });
+  }
 }
 
 function applyHistoryEvent(model, event) {
@@ -94,6 +262,7 @@ function applyHistoryEvent(model, event) {
     if (event.contextWindow != null) model.tokens.contextWindow = event.contextWindow;
     if (event.contextUsed != null) model.tokens.contextUsed = event.contextUsed;
   }
+  recordTimelineEvent(model, event);
 }
 
 function consumeText(model, text, { final = false } = {}) {
