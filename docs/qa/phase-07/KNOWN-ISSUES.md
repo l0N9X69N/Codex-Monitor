@@ -3,20 +3,21 @@
 ## Platform status
 
 ```text
-Windows  WAITING USER VERIFY
+Windows  VERIFIED — development checkpoint
 Linux    UNVERIFIED PLATFORM
 macOS    UNVERIFIED PLATFORM
 ```
 
-## Known risk requiring Windows manual test
+## Remaining risks
 
-- CIM process query cost/availability can vary by Windows installation.
-- Windows Terminal F4 escape sequence/launcher behavior must be verified in real terminal.
+- Windows CIM/PowerShell process-query cost and availability can vary across installations. Current queries are asynchronous and short-TTL cached, but broader hardware/Windows-version benchmarking is deferred to productization.
+- Linux and macOS adapters have contract/parser coverage but no real-machine verification recorded in this checkpoint.
+- True release-quality terminal capability/restore matrices across shells and terminal emulators remain a later compatibility task.
 
 ## Graceful degradation
 
-Unavailable process/disk/terminal features return unsupported/fallback state rather than fabricate telemetry.
+Unavailable process/disk capabilities must return structured unsupported/unknown state rather than fabricate telemetry or crash Live.
 
-## Deferred
+## Closed legacy issue
 
-Linux/macOS real-machine verification remains open until hardware/CI is available. Do not record PASS from contract tests alone.
+The obsolete Monitor History/F4 platform launcher is no longer part of the adapter contract and has been removed from the Windows adapter implementation. Session Manager remains the only Monitor-owned historical/session-management UI.
