@@ -57,6 +57,7 @@ test('Session Manager entrypoint discovers local sessions without spawning Codex
   assert.equal(result.code, 0);
   assert.equal(result.items.length, 1);
   assert.match(output.text(), /Session Manager/);
+  assert.match(output.text(), /Codex processes:/);
   assert.equal(adapter.calls.some((item) => item.name === 'spawnPty'), false);
   assert.equal(adapter.calls.some((item) => item.name === 'getProcessTree'), true);
   fs.rmSync(root, { recursive: true, force: true });
@@ -97,14 +98,23 @@ test('bounded identity probe extracts thread/cwd/project/model without deep pars
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('process evidence is only strong when session identity is matchable', () => {
+test('process evidence is conservative when Codex exists but a session cannot be mapped', () => {
+  const nowMs = Date.parse('2026-08-25T00:00:20Z');
   const evidence = buildProcessEvidence([
-    { pid: 10, command: 'node codex.js resume thread-live' },
-    { pid: 11, command: 'unrelated' }
-  ]);
+    { pid: 10, ppid: 1, name: 'node.exe', command: 'node codex.js resume thread-live', ageMs: 20_000 },
+    { pid: 11, ppid: 1, name: 'unrelated.exe', command: 'unrelated', ageMs: 1000 }
+  ], { nowMs });
   assert.deepEqual(evidence({ threadId: null }), { processKnown: false, processMatch: false });
   assert.deepEqual(evidence({ threadId: 'thread-live' }), { processKnown: true, processMatch: true });
-  assert.deepEqual(evidence({ threadId: 'thread-ended' }), { processKnown: true, processMatch: false });
+  assert.deepEqual(evidence({ threadId: 'thread-ended' }), { processKnown: false, processMatch: false });
+  assert.equal(evidence.diagnostics.codexProcessCount, 1);
+
+  const startMatched = evidence({ threadId: 'opaque', startedAtMs: Date.parse('2026-08-25T00:00:00Z') });
+  assert.deepEqual(startMatched, { processKnown: true, processMatch: true });
+
+  const noCodex = buildProcessEvidence([{ pid: 99, name: 'powershell.exe', command: 'powershell.exe' }], { nowMs });
+  assert.deepEqual(noCodex({ threadId: 'thread-old' }), { processKnown: true, processMatch: false });
+
   const unavailable = buildProcessEvidence({ supported: false });
   assert.deepEqual(unavailable({ threadId: 'thread-live' }), { processKnown: false, processMatch: false });
 });
@@ -234,7 +244,7 @@ test('tracker separates discovery, process, known refresh and selected-tail cade
   let nowMs = 0;
   const adapter = createFakePlatformAdapter({
     paths: { sessions: root },
-    processTree: [{ pid: 1, command: 'codex resume thread-track' }]
+    processTree: [{ pid: 1, ppid: 0, name: 'codex.exe', command: 'codex resume thread-track', ageMs: 0 }]
   });
   const core = new SessionManagerCore({ sessionsPath: root, now: () => nowMs });
   const tracker = new SessionManagerTracker({
@@ -250,6 +260,7 @@ test('tracker separates discovery, process, known refresh and selected-tail cade
   let result = await tracker.tick();
   assert.equal(result.discovered, true);
   assert.equal(result.processPolled, true);
+  assert.equal(result.processDiagnostics.codexProcessCount, 1);
   assert.equal(core.index.length, 1);
   const processCalls = () => adapter.calls.filter((item) => item.name === 'getProcessTree').length;
   assert.equal(processCalls(), 1);
