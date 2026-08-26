@@ -29,33 +29,6 @@ function sortedToolCounts(byName = {}) {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
-function timelineCopy(items = []) {
-  if (!Array.isArray(items)) return [];
-  return items.map((item, index) => ({
-    index: nullableNumber(item?.index) ?? index,
-    atMs: nullableNumber(item?.atMs),
-    category: item?.category ?? 'event',
-    group: item?.group ?? item?.category ?? 'event',
-    label: item?.label ?? '',
-    rawType: item?.rawType ?? null,
-    role: item?.role ?? null,
-    turnId: item?.turnId ?? null,
-    callId: item?.callId ?? null,
-    tool: item?.tool ?? null,
-    detail: item?.detail ?? null,
-    command: item?.command ?? null,
-    cwd: item?.cwd ?? null,
-    path: item?.path ?? null,
-    query: item?.query ?? null,
-    input: item?.input ?? null,
-    output: item?.output ?? null,
-    status: item?.status ?? null,
-    exitCode: nullableNumber(item?.exitCode),
-    durationMs: nullableNumber(item?.durationMs),
-    failed: item?.failed === true
-  }));
-}
-
 export function createSelectedSessionDetail(meta, model) {
   if (!meta || !model) return null;
   const startedAtMs = model.info?.startedAtMs ?? meta.startedAtMs ?? null;
@@ -104,7 +77,9 @@ export function createSelectedSessionDetail(meta, model) {
         }))
         : []
     },
-    timeline: timelineCopy(model.timeline),
+    // HistoryEngine already sanitizes timeline entries. Keep the selected model's
+    // array by reference so a long live session is not cloned every 250ms tick.
+    timeline: Array.isArray(model.timeline) ? model.timeline : [],
     resources: {
       evidence: Array.isArray(model.resources?.evidence)
         ? model.resources.evidence.map((item) => ({
