@@ -7,6 +7,8 @@ import { HistoryEngine } from '../../src/history/engine.js';
 import { createSelectedSessionDetail } from '../../src/manager/detail-view.js';
 import { renderSessionInspect } from '../../src/manager/inspect-render.js';
 import { filterSessionTimeline, nextTimelineFilter } from '../../src/manager/timeline.js';
+import { SelectedActivityPreview } from '../../src/manager/activity-preview.js';
+import { renderSessionDashboardWithPreview } from '../../src/manager/dashboard-preview-render.js';
 import { cellWidth, stripAnsi } from '../../src/ui/cell-width.js';
 
 function line(type, payload = {}, timestamp = '2026-08-26T12:00:00.000Z', outer = null) {
@@ -113,4 +115,87 @@ test('timeline inspect is responsive and exposes event detail without raw usage 
     assert.match(detailText, /Output\s+clean/);
     assert.match(detailText, /Exit code\s+0/);
   }
+});
+
+test('selected activity preview reads only a bounded JSONL tail and tracks the highlighted session', () => {
+  const root = tempDir();
+  const filePath = path.join(root, 'large.jsonl');
+  const filler = `${JSON.stringify({ type: 'token_count', payload: { info: {} } })}\n`.repeat(5000);
+  const recent = [
+    line('turn_started', { turn_id: 'recent' }, '2026-08-26T12:10:00.000Z', 'event_msg'),
+    line('function_call', { call_id: 'preview-shell', name: 'exec_command', arguments: JSON.stringify({ cmd: 'npm run test:phase9' }) }, '2026-08-26T12:10:01.000Z', 'response_item'),
+    line('function_call_output', { call_id: 'preview-shell', output: 'ok', exit_code: 0 }, '2026-08-26T12:10:02.000Z', 'response_item'),
+    line('turn_complete', { turn_id: 'recent' }, '2026-08-26T12:10:03.000Z', 'event_msg')
+  ].join('');
+  fs.writeFileSync(filePath, `${filler}${recent}`);
+  const stat = fs.statSync(filePath);
+
+  let bytesRead = 0;
+  const fsRef = {
+    ...fs,
+    readSync(...args) {
+      const read = fs.readSync(...args);
+      bytesRead += read;
+      return read;
+    }
+  };
+  const reader = new SelectedActivityPreview({ fsRef, maxBytes: 64 * 1024, maxEvents: 8 });
+  const row = {
+    id: filePath,
+    filePath,
+    project: 'audit',
+    name: 'large',
+    threadId: 'preview-session',
+    fileSizeBytes: stat.size
+  };
+  const preview = reader.read(row, { nowMs: 1 });
+
+  assert.ok(bytesRead <= 64 * 1024, `preview must not read the full history file; read ${bytesRead} bytes`);
+  assert.equal(preview.truncated, true);
+  assert.ok(preview.events.some((event) => event.category === 'shell' && event.label.includes('npm run test:phase9')));
+  assert.ok(preview.events.some((event) => event.category === 'result' && event.group === 'shell'));
+
+  bytesRead = 0;
+  const cached = reader.read(row, { nowMs: 500 });
+  assert.equal(cached, preview);
+  assert.equal(bytesRead, 0, 'unchanged selected preview should be served from cache');
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('ultrawide dashboard uses spare width for selected activity instead of stretching one table row', () => {
+  const rows = [
+    {
+      id: 'a', filePath: 'a.jsonl', name: 'a', state: 'LIVE', project: 'Codex Monitor', threadId: 'thread-a', model: 'gpt-x',
+      elapsedMs: 10_000, lastActivityAtMs: Date.parse('2026-08-26T12:10:03Z'), fileSizeBytes: 1000,
+      tokens: { input: 100, cached: 20, output: 10, reasoning: 2, contextUsed: 20, contextWindow: 100 },
+      turnCount: 1, observedTurnCount: 1, toolCount: 1, observedToolCount: 1, agentSpawnCount: 0, observedAgentSpawnCount: 0,
+      recentErrors: [], recentRetries: [], recentCompactions: []
+    }
+  ];
+  const preview = {
+    id: 'a', project: 'Codex Monitor', session: 'thread-a', sizeBytes: 1000, sourceBytes: 1000, truncated: false, error: null,
+    events: [
+      { atMs: Date.parse('2026-08-26T12:10:01Z'), category: 'shell', group: 'shell', label: 'git status --short' },
+      { atMs: Date.parse('2026-08-26T12:10:02Z'), category: 'result', group: 'shell', label: 'exec_command result', durationMs: 1000 }
+    ]
+  };
+  const telemetry = { samples: [], sessions: [], latest: { activeCount: 1 }, burn60: 0, tools60: 0 };
+  const frame = renderSessionDashboardWithPreview({
+    rows,
+    width: 260,
+    height: 42,
+    mode: 'mono',
+    selectedId: 'a',
+    selectedIndex: 0,
+    viewMode: 'operations',
+    telemetry,
+    activityPreview: preview
+  });
+  const text = stripAnsi(frame.lines.join('\n'));
+
+  assert.ok(frame.lines.every((entry) => cellWidth(entry) <= 260));
+  assert.match(text, /SELECTED ACTIVITY/);
+  assert.match(text, /git status --short/);
+  assert.match(text, /RECENT SESSIONS/);
 });
