@@ -5,6 +5,7 @@ import { applyNormalizedEvent } from '../core/reducer.js';
 import { PROVENANCE } from '../core/provenance.js';
 import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { sanitizeDetail, sanitizeText } from '../core/sanitize.js';
+import { applySessionAnalyticsEvent, createSessionAnalytics } from '../manager/session-analytics.js';
 
 const HISTORY_LOAD_CHUNK_BYTES = 256 * 1024;
 
@@ -46,6 +47,7 @@ function historicalModel(filePath) {
     resources: { evidence: [] },
     errors: [],
     timeline: [],
+    analytics: createSessionAnalytics(),
     normalized: createNormalizedMonitorState({ runId: filePath, startedAtMs: 0 }),
     parsedLines: 0,
     rejectedLines: 0,
@@ -243,6 +245,9 @@ function applyHistoryEvent(model, event) {
     model.info.model = event.model ?? model.info.model;
     model.info.reasoning = event.reasoning ?? model.info.reasoning;
     model.info.cwd = event.cwd ?? model.info.cwd;
+  } else if (event.kind === 'model-settings') {
+    model.info.model = event.model ?? model.info.model;
+    model.info.reasoning = event.reasoning ?? model.info.reasoning;
   } else if (event.kind === 'turn-start') model.turns.count += 1;
   else if (event.kind === 'turn-complete') {
     model.turns.completed += 1;
@@ -264,6 +269,7 @@ function applyHistoryEvent(model, event) {
     if (event.contextWindow != null) model.tokens.contextWindow = event.contextWindow;
     if (event.contextUsed != null) model.tokens.contextUsed = event.contextUsed;
   }
+  applySessionAnalyticsEvent(model.analytics, event);
   recordTimelineEvent(model, event);
 }
 
