@@ -2,11 +2,42 @@ import { SessionManagerCore } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { sessionManagerSummaryLines } from './app.js';
 
+function stableRecent(list = []) {
+  return Array.isArray(list)
+    ? list.map((item) => `${item?.atMs ?? ''}:${item?.detail ?? ''}`).join(',')
+    : '';
+}
+
+function rowSignature(row) {
+  const tokens = row?.tokens ?? {};
+  return [
+    row?.id ?? '',
+    row?.state ?? '',
+    row?.project ?? '',
+    row?.model ?? '',
+    row?.fileSizeBytes ?? '',
+    row?.lastActivityAtMs ?? '',
+    tokens.input ?? '',
+    tokens.cached ?? '',
+    tokens.output ?? '',
+    tokens.reasoning ?? '',
+    tokens.contextUsed ?? '',
+    tokens.contextWindow ?? '',
+    row?.turnCount ?? '',
+    row?.observedTurnCount ?? '',
+    row?.toolCount ?? '',
+    row?.observedToolCount ?? '',
+    stableRecent(row?.recentErrors),
+    stableRecent(row?.recentRetries),
+    stableRecent(row?.recentCompactions)
+  ].join(':');
+}
+
 function snapshotSignature(result) {
-  const states = result.sessions.map((item) => `${item.id}:${item.state}`).join('|');
+  const rows = (result.rows ?? []).map(rowSignature).join('|');
   const diagnostics = result.processDiagnostics ?? {};
   return [
-    states,
+    rows,
     diagnostics.codexProcessCount,
     diagnostics.codexRootCount,
     diagnostics.mappedSessionCount,
@@ -119,4 +150,4 @@ export async function runSessionManagerRuntime({
   return { code: 0, core, tracker, runtime };
 }
 
-export { snapshotSignature as sessionManagerSnapshotSignature };
+export { snapshotSignature as sessionManagerSnapshotSignature, rowSignature as sessionManagerRowSignature };
