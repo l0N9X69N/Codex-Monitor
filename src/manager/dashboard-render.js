@@ -4,24 +4,30 @@ import { buildSessionDashboardModel, rowContextPercent } from './dashboard-model
 
 export const MANAGER_VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'auto']);
 
-function fmtNum(value) {
+function finiteOrNull(value) {
+  if (value === null || value === undefined || typeof value === 'boolean') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  return Number.isFinite(n) ? n : null;
+}
+function fmtNum(value) {
+  const n = finiteOrNull(value);
+  if (n == null) return '--';
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
   if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(Math.round(n));
 }
 function fmtBytes(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '--';
+  const n = finiteOrNull(value);
+  if (n == null) return '--';
   if (n >= 1024 ** 3) return `${(n / (1024 ** 3)).toFixed(1)}G`;
   if (n >= 1024 ** 2) return `${(n / (1024 ** 2)).toFixed(1)}M`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)}K`;
   return `${Math.round(n)}B`;
 }
 function fmtDuration(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n < 0) return '--';
+  const n = finiteOrNull(ms);
+  if (n == null || n < 0) return '--';
   const total = Math.floor(n / 1000);
   if (total < 60) return `${total}s`;
   const minutes = Math.floor(total / 60);
@@ -31,17 +37,26 @@ function fmtDuration(ms) {
   return `${Math.floor(hours / 24)}d${hours % 24}h`;
 }
 function fmtTurnaround(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n < 0) return '--';
+  const n = finiteOrNull(ms);
+  if (n == null || n < 0) return '--';
   if (n < 1000) return `${Math.round(n)}ms`;
   if (n < 10_000) return `${(n / 1000).toFixed(1)}s`;
   if (n < 60_000) return `${Math.round(n / 1000)}s`;
   return fmtDuration(n);
 }
 function fmtPercent(value) {
-  if (value === null || value === undefined) return '--';
-  const n = Number(value);
-  return Number.isFinite(n) ? `${Math.round(n)}%` : '--';
+  const n = finiteOrNull(value);
+  return n == null ? '--' : `${Math.round(n)}%`;
+}
+function fmtAge(atMs, nowMs = Date.now()) {
+  const at = finiteOrNull(atMs);
+  if (at == null) return '--';
+  const delta = Math.max(0, nowMs - at);
+  if (delta < 1000) return 'now';
+  if (delta < 60_000) return `${Math.floor(delta / 1000)}s`;
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h`;
+  return `${Math.floor(delta / 86_400_000)}d`;
 }
 function stateToken(state) {
   if (state === 'LIVE') return 'live';
@@ -99,7 +114,7 @@ function liveLines(model, width, mode) {
   if (!live.length) return [hpaint('No active sessions in current scope.', 'dim', mode)];
   return live.map((row) => {
     const projectWidth = Math.min(20, Math.max(8, width - 28));
-    const project = padCells(truncateCells(row.project ?? row.name ?? '--', projectWidth, '…'), projectWidth);
+    const project = padCells(truncateCells(row.project ?? 'UNKNOWN', projectWidth, '…'), projectWidth);
     return `${hpaint('●', 'live', mode)} ${hpaint(project, 'text', mode)} ${hpaint(shortSessionId(row), 'session', mode)}  ${hpaint(fmtPercent(rowContextPercent(row)).padStart(4), 'pressure', mode)}  ${hpaint(fmtNum(row.tokens?.input).padStart(7), 'secondary', mode)}  ${hpaint(`${fmtNum(row.toolCount ?? row.observedToolCount)}t`, 'live', mode)}`;
   });
 }
@@ -111,7 +126,7 @@ function selectedPreviewLines(model, mode) {
   const row = model.selected;
   if (!row) return [hpaint('No session selected.', 'dim', mode)];
   return [
-    `${hpaint('▸', 'nav', mode)} ${hpaint(`${model.selectedIndex + 1}/${model.rows.length}`, 'session', mode)}  ${hpaint(row.project ?? row.name ?? '--', 'text', mode)} · ${hpaint(row.state ?? 'UNKNOWN', stateToken(row.state), mode)}`,
+    `${hpaint('▸', 'nav', mode)} ${hpaint(`${model.selectedIndex + 1}/${model.rows.length}`, 'session', mode)}  ${hpaint(row.project ?? 'UNKNOWN', 'text', mode)} · ${hpaint(row.state ?? 'UNKNOWN', stateToken(row.state), mode)}`,
     `${hpaint('Session', 'label', mode)}    ${hpaint(truncateCells(row.threadId ?? row.name ?? '--', 30, '…'), 'session', mode)}`,
     `${hpaint('Model', 'label', mode)}      ${hpaint(row.model ?? '--', 'secondary', mode)}`,
     `${hpaint('Context', 'label', mode)}    ${hpaint(fmtPercent(rowContextPercent(row)), 'pressure', mode)}    ${hpaint('Input', 'label', mode)} ${hpaint(fmtNum(row.tokens?.input), 'secondary', mode)}`,
@@ -137,7 +152,7 @@ function chartLines(items, width, formatter, mode, token = 'nav') {
   });
 }
 function valuesFrom(samples, key) {
-  return Array.isArray(samples) ? samples.map((s) => Number.isFinite(Number(s?.[key])) ? Number(s[key]) : null) : [];
+  return Array.isArray(samples) ? samples.map((s) => finiteOrNull(s?.[key])) : [];
 }
 function latestKnown(values) {
   for (let i = values.length - 1; i >= 0; i -= 1) if (Number.isFinite(values[i])) return values[i];
@@ -156,7 +171,7 @@ function maxKnown(values, fallback = 1) {
 }
 function timeRange(samples, windowMs = 60_000) {
   const times = (Array.isArray(samples) ? samples : [])
-    .map((sample) => Number(sample?.atMs))
+    .map((sample) => finiteOrNull(sample?.atMs))
     .filter(Number.isFinite);
   const latest = times.length ? Math.max(...times) : null;
   return latest == null ? null : { start: latest - windowMs, end: latest, windowMs };
@@ -202,7 +217,7 @@ function brailleLine(samples, key, width, rows, mode, token, fixedMax = null, va
   for (let index = 0; index < list.length; index += 1) {
     const value = values[index];
     if (!Number.isFinite(value)) continue;
-    const x = Number.isFinite(Number(list[index]?.atMs)) ? xForTime(list[index].atMs, range, pixelWidth) : fallbackX(index, list.length, pixelWidth);
+    const x = finiteOrNull(list[index]?.atMs) != null ? xForTime(list[index].atMs, range, pixelWidth) : fallbackX(index, list.length, pixelWidth);
     const ratio = Math.max(0, Math.min(1, value / Math.max(1, scaleMax)));
     const y = (pixelHeight - 1) - Math.round(ratio * (pixelHeight - 1));
     points.push([x, y]);
@@ -285,25 +300,30 @@ function liveTelemetryRows(telemetry, width, mode, limit = 6) {
 }
 const COLUMN_SPECS = Object.freeze({
   state: { title: 'STATE', width: 8, value: (row) => row.state ?? 'UNKNOWN' },
-  project: { title: 'PROJECT', width: 18, value: (row) => row.project ?? row.name ?? '--' },
+  project: { title: 'PROJECT', width: 18, value: (row) => row.project ?? 'UNKNOWN' },
   session: { title: 'SESSION', width: 10, value: (row) => shortSessionId(row) },
   model: { title: 'MODEL', width: 14, value: (row) => row.model ?? '--' },
   duration: { title: 'DURATION', width: 9, value: (row) => fmtDuration(row.elapsedMs) },
+  active: { title: 'ACTIVE', width: 8, value: (row) => fmtAge(row.lastActivityAtMs ?? row.modifiedAtMs) },
   context: { title: 'CONTEXT', width: 8, value: (row) => fmtPercent(rowContextPercent(row)) },
   input: { title: 'INPUT', width: 8, value: (row) => fmtNum(row.tokens?.input) },
   cache: { title: 'CACHE', width: 8, value: (row) => fmtNum(row.tokens?.cached) },
+  output: { title: 'OUTPUT', width: 8, value: (row) => fmtNum(row.tokens?.output) },
+  reason: { title: 'REASON', width: 8, value: (row) => fmtNum(row.tokens?.reasoning) },
   turn: { title: 'TURN', width: 6, value: (row) => fmtNum(row.turnCount ?? row.observedTurnCount) },
   turnaround: { title: 'LAST TURN', width: 10, value: (row) => fmtTurnaround(row.lastTurnDurationMs) },
   tools: { title: 'TOOLS', width: 6, value: (row) => fmtNum(row.toolCount ?? row.observedToolCount) },
   agents: { title: 'AGENTS', width: 7, value: (row) => fmtNum(row.agentSpawnCount ?? row.observedAgentSpawnCount ?? 0) },
-  size: { title: 'SIZE', width: 8, value: (row) => fmtBytes(row.fileSizeBytes) }
+  size: { title: 'SIZE', width: 8, value: (row) => fmtBytes(row.fileSizeBytes) },
+  cwd: { title: 'CWD', width: 18, value: (row) => row.cwd ?? '--' }
 });
 function tableColumns(width) {
   if (width < 72) return ['state', 'project', 'context', 'tools'];
   if (width < 104) return ['state', 'project', 'session', 'context', 'tools'];
   if (width < 150) return ['state', 'project', 'session', 'model', 'duration', 'context', 'input', 'tools'];
-  if (width < 190) return ['state', 'project', 'session', 'model', 'duration', 'context', 'input', 'cache', 'turnaround', 'tools', 'size'];
-  return ['state', 'project', 'session', 'model', 'duration', 'context', 'input', 'cache', 'turn', 'turnaround', 'tools', 'agents', 'size'];
+  if (width < 190) return ['state', 'project', 'session', 'model', 'duration', 'active', 'context', 'input', 'cache', 'turnaround', 'tools', 'size'];
+  if (width < 235) return ['state', 'project', 'session', 'model', 'duration', 'active', 'context', 'input', 'cache', 'output', 'turn', 'turnaround', 'tools', 'agents', 'size'];
+  return ['state', 'project', 'session', 'model', 'duration', 'active', 'context', 'input', 'cache', 'output', 'reason', 'turn', 'turnaround', 'tools', 'agents', 'size', 'cwd'];
 }
 function baseTableWidth(columns) {
   return columns.reduce((sum, key) => sum + COLUMN_SPECS[key].width, 0) + Math.max(0, columns.length - 1);
@@ -316,8 +336,8 @@ function fitColumns(columns, width) {
 function elasticColumnWidths(columns, width) {
   const widths = Object.fromEntries(columns.map((key) => [key, COLUMN_SPECS[key].width]));
   let extra = Math.max(0, width - baseTableWidth(columns));
-  const elastic = columns.filter((key) => ['project', 'session', 'model'].includes(key));
-  const caps = { project: 42, session: 24, model: 30 };
+  const elastic = columns.filter((key) => ['project', 'session', 'model', 'cwd'].includes(key));
+  const caps = { project: 26, session: 14, model: 20, cwd: 52 };
   while (extra > 0 && elastic.length) {
     let changed = false;
     for (const key of elastic) {
@@ -329,7 +349,6 @@ function elasticColumnWidths(columns, width) {
     }
     if (!changed) break;
   }
-  if (extra > 0 && columns.includes('project')) widths.project += extra;
   return widths;
 }
 function tableLines(model, width, rows, mode) {
@@ -353,11 +372,14 @@ function tableLines(model, width, rows, mode) {
       else if (!isSelected && key === 'project') value = hpaint(raw, 'text', mode);
       else if (!isSelected && key === 'session') value = hpaint(raw, 'session', mode);
       else if (!isSelected && key === 'model') value = hpaint(raw, 'dim', mode);
+      else if (!isSelected && key === 'active') value = hpaint(raw, row.state === 'LIVE' ? 'live' : 'dim', mode);
       else if (!isSelected && key === 'context') {
         const pct = rowContextPercent(row);
         value = hpaint(raw, pct >= 80 ? 'error' : pct >= 60 ? 'pressure' : pct != null ? 'live' : 'dim', mode);
-      } else if (!isSelected && key === 'turnaround') value = hpaint(raw, 'pressure', mode);
+      } else if (!isSelected && (key === 'output' || key === 'reason')) value = hpaint(raw, 'secondary', mode);
+      else if (!isSelected && key === 'turnaround') value = hpaint(raw, 'pressure', mode);
       else if (!isSelected && key === 'agents') value = hpaint(raw, Number(row.agentSpawnCount ?? row.observedAgentSpawnCount ?? 0) > 0 ? 'nav' : 'dim', mode);
+      else if (!isSelected && key === 'cwd') value = hpaint(raw, 'dim', mode);
       return padCells(value, columnWidth);
     });
     const text = `${isSelected ? '▸' : ' '} ${cells.join(' ')}`;
