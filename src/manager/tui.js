@@ -8,6 +8,7 @@ import { renderSessionDashboard } from './dashboard-render.js';
 import { MANAGER_INSPECT_TABS, renderSessionInspect } from './inspect-render.js';
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 import { ManagerTelemetrySeries } from './telemetry-series.js';
+import { nextTimelineFilter } from './timeline.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -58,8 +59,15 @@ export async function runSessionManagerTui({
   let viewMode = initialViewMode;
   let selectedDetail = null;
   let inspectTab = 'info';
+  let timelineFilter = 'all';
+  let timelineSearch = '';
+  let timelineSearchDraft = '';
+  let timelineSearching = false;
+  let timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
+  let timelineDetail = false;
   let done = false;
   let lastFrame = null;
+  let lastInspectFrame = null;
   let telemetry = telemetrySeries.snapshot();
   let telemetryTimer = null;
 
@@ -68,7 +76,19 @@ export async function runSessionManagerTui({
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
     const frame = core.selectedId && selectedDetail
-      ? renderSessionInspect({ detail: selectedDetail, width, height, mode: colorMode, activeTab: inspectTab })
+      ? renderSessionInspect({
+        detail: selectedDetail,
+        width,
+        height,
+        mode: colorMode,
+        activeTab: inspectTab,
+        timelineFilter,
+        timelineSearch,
+        timelineSearchDraft,
+        timelineSearching,
+        timelineSelectedIndex,
+        timelineDetail
+      })
       : renderSessionDashboard({
         rows,
         width,
@@ -88,6 +108,10 @@ export async function runSessionManagerTui({
       selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
       selectedId = frame.model.selected?.id ?? null;
       lastFrame = frame;
+      lastInspectFrame = null;
+    } else if (core.selectedId) {
+      lastInspectFrame = frame;
+      if (frame.timeline && frame.timeline.selectedIndex >= 0) timelineSelectedIndex = frame.timeline.selectedIndex;
     }
     if (force) renderer.reset([]);
     renderer.render(frame.lines);
@@ -153,25 +177,88 @@ export async function runSessionManagerTui({
     telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
   };
 
+  const timelineCount = () => lastInspectFrame?.timeline?.events?.length ?? 0;
+  const clampTimelineIndex = (value) => {
+    const count = timelineCount();
+    if (!count) return 0;
+    return Math.max(0, Math.min(count - 1, Number(value) || 0));
+  };
+
   const handleInput = async (data) => {
     if (done) return;
-    const normalized = normalizeManagerInput(data, { searching });
+    const normalized = normalizeManagerInput(data, { searching: searching || timelineSearching });
     if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action) return;
 
     if (core.selectedId) {
+      if (timelineSearching) {
+        if (action === 'search-cancel') {
+          timelineSearching = false;
+          timelineSearchDraft = timelineSearch;
+        } else if (action === 'search-accept') {
+          timelineSearching = false;
+          timelineSearch = timelineSearchDraft.trim();
+          timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
+        } else if (action === 'search-backspace') {
+          timelineSearchDraft = [...timelineSearchDraft].slice(0, -1).join('');
+        } else if (action === 'search-text') {
+          timelineSearchDraft += normalized.text;
+        }
+        draw(false);
+        return;
+      }
+
+      if (timelineDetail) {
+        if (action === 'quit') {
+          timelineDetail = false;
+          draw(false);
+        }
+        return;
+      }
+
       if (action === 'quit') {
         core.releaseSelection();
         selectedDetail = null;
         inspectTab = 'info';
+        timelineFilter = 'all';
+        timelineSearch = '';
+        timelineSearchDraft = '';
+        timelineSearching = false;
+        timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
+        timelineDetail = false;
         rebaselineTelemetry();
         draw(true);
       } else if (action === 'tab' || action === 'right') {
         inspectTab = nextInspectTab(inspectTab, 1);
+        timelineDetail = false;
         draw(false);
       } else if (action === 'left') {
         inspectTab = nextInspectTab(inspectTab, -1);
+        timelineDetail = false;
+        draw(false);
+      } else if (inspectTab === 'timeline') {
+        if (action === 'up') {
+          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex - 1);
+        } else if (action === 'down') {
+          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex + 1);
+        } else if (action === 'page-up') {
+          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex - Math.max(5, (stdout.rows || 30) - 10));
+        } else if (action === 'page-down') {
+          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex + Math.max(5, (stdout.rows || 30) - 10));
+        } else if (action === 'home') {
+          timelineSelectedIndex = 0;
+        } else if (action === 'end') {
+          timelineSelectedIndex = Math.max(0, timelineCount() - 1);
+        } else if (action === 'filter') {
+          timelineFilter = nextTimelineFilter(timelineFilter);
+          timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
+        } else if (action === 'search') {
+          timelineSearching = true;
+          timelineSearchDraft = timelineSearch;
+        } else if (action === 'inspect' && lastInspectFrame?.timeline?.selected) {
+          timelineDetail = true;
+        }
         draw(false);
       }
       return;
@@ -229,7 +316,13 @@ export async function runSessionManagerTui({
       if (selected) {
         core.select(selected.id);
         selectedDetail = core.selectedDetail();
-        inspectTab = 'info';
+        inspectTab = 'timeline';
+        timelineFilter = 'all';
+        timelineSearch = '';
+        timelineSearchDraft = '';
+        timelineSearching = false;
+        timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
+        timelineDetail = false;
         forceDraw = true;
       }
     }
