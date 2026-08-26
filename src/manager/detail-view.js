@@ -1,5 +1,6 @@
 export const MANAGER_DETAIL_TABS = Object.freeze([
   'info',
+  'timeline',
   'tokens',
   'turns',
   'tools',
@@ -26,6 +27,33 @@ function sortedToolCounts(byName = {}) {
   return Object.entries(byName)
     .map(([name, count]) => ({ name, count: nullableNumber(count) ?? 0 }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function timelineCopy(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item, index) => ({
+    index: nullableNumber(item?.index) ?? index,
+    atMs: nullableNumber(item?.atMs),
+    category: item?.category ?? 'event',
+    group: item?.group ?? item?.category ?? 'event',
+    label: item?.label ?? '',
+    rawType: item?.rawType ?? null,
+    role: item?.role ?? null,
+    turnId: item?.turnId ?? null,
+    callId: item?.callId ?? null,
+    tool: item?.tool ?? null,
+    detail: item?.detail ?? null,
+    command: item?.command ?? null,
+    cwd: item?.cwd ?? null,
+    path: item?.path ?? null,
+    query: item?.query ?? null,
+    input: item?.input ?? null,
+    output: item?.output ?? null,
+    status: item?.status ?? null,
+    exitCode: nullableNumber(item?.exitCode),
+    durationMs: nullableNumber(item?.durationMs),
+    failed: item?.failed === true
+  }));
 }
 
 export function createSelectedSessionDetail(meta, model) {
@@ -76,6 +104,7 @@ export function createSelectedSessionDetail(meta, model) {
         }))
         : []
     },
+    timeline: timelineCopy(model.timeline),
     resources: {
       evidence: Array.isArray(model.resources?.evidence)
         ? model.resources.evidence.map((item) => ({
