@@ -2,17 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { discoverCurrentSessionFiles, firstSessionMeta } from '../collectors/current-session.js';
 import { sanitizeText } from '../core/sanitize.js';
+import { currentPlatform, samePlatformPath } from '../platform/common.js';
 
 const USER_MESSAGE_BEGIN = '## My request for Codex:';
 const ALT_SCREEN_ENTER = '\x1b[?1049h';
 const ALT_SCREEN_LEAVE = '\x1b[?1049l';
 const ARROW_SEQUENCE = /\x1b(?:O|\[[0-9;?]*)([AB])/g;
 
-function samePath(a, b, platform = process.platform) {
-  if (!a || !b) return false;
-  const left = path.resolve(String(a));
-  const right = path.resolve(String(b));
-  return platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+function samePath(a, b, platform = currentPlatform()) {
+  return samePlatformPath(a, b, platform);
 }
 
 function humanUserText(value) {
@@ -20,7 +18,6 @@ function humanUserText(value) {
   const marker = raw.indexOf(USER_MESSAGE_BEGIN);
   const stripped = marker >= 0 ? raw.slice(marker + USER_MESSAGE_BEGIN.length).trim() : raw.trim();
   if (!stripped) return null;
-  // Do not use known startup/injected instruction blocks as a session title.
   if (/^#\s*AGENTS\.md instructions\b/i.test(stripped) || /^<INSTRUCTIONS>/i.test(stripped)) return null;
   return sanitizeText(stripped, { maxLength: 220 });
 }
@@ -80,7 +77,7 @@ export function listLocalResumeSessions(sessionsPath, {
   showAll = false,
   fsRef = fs,
   maxSessions = 80,
-  platform = process.platform
+  platform = currentPlatform()
 } = {}) {
   const sessions = [];
   for (const filePath of discoverCurrentSessionFiles(sessionsPath, fsRef)) {
@@ -158,23 +155,12 @@ function rawInputText(raw) {
 export function decodePickerInput(raw) {
   const text = rawInputText(raw);
   if (!text) return null;
-
-  // Raw-mode Ctrl+C is ETX on most terminals. Some Windows terminal/Node
-  // combinations can include it in a larger input chunk, so do not require an
-  // exact one-byte match.
   if (text.includes('\x03')) return 'cancel';
 
-  // Decode navigation before the generic ESC rule because arrow keys are ESC
-  // sequences too. Support both normal/application cursor mode and parameterized
-  // CSI forms emitted by modern terminals.
   const arrows = [...text.matchAll(ARROW_SEQUENCE)];
   const withoutArrows = text.replace(ARROW_SEQUENCE, '');
 
   if (withoutArrows.includes('\r') || withoutArrows.includes('\n')) return 'select';
-
-  // A physical Escape key is not guaranteed to arrive as exactly one byte on
-  // Windows Terminal (enhanced-key protocols can decorate it). Any ESC bytes
-  // left after removing recognized arrow sequences mean cancel.
   if (withoutArrows.includes('\x1b')) return 'cancel';
 
   if (arrows.length > 0 && withoutArrows.length === 0) {
@@ -250,8 +236,6 @@ export async function pickLocalResumeSession({
     };
 
     try {
-      // Install every escape hatch before entering raw/alternate-screen mode so
-      // there is no interval where a startup failure can strand the terminal.
       stdin.on?.('data', onData);
       stdin.on?.('end', onEnd);
       stdin.on?.('close', onEnd);
