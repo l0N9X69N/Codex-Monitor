@@ -47,23 +47,23 @@
 
 ## 1.1 `_BASE.txt` — làm đầu tiên
 
-- [ ] Neutral/base silhouette.
-- [ ] Head / muzzle.
-- [ ] Neck connection.
-- [ ] Back line.
-- [ ] Belly line.
-- [ ] Tail root.
-- [ ] Tail neutral.
-- [ ] Tail up.
-- [ ] Tail down.
-- [ ] Front legs.
-- [ ] Rear legs.
-- [ ] Feet / ground contact.
-- [ ] Blink pose.
-- [ ] Head anchor consistency.
-- [ ] Silhouette consistency giữa các pose.
-- [ ] Print toàn bộ base poses và review lần cuối.
-- [ ] Chốt `normal/_BASE.txt`.
+- [x] Neutral/base silhouette.
+- [x] Head / muzzle.
+- [x] Neck connection.
+- [x] Back line.
+- [x] Belly line.
+- [x] Tail root.
+- [x] Tail neutral.
+- [x] Tail up.
+- [x] Tail down.
+- [x] Front legs.
+- [x] Rear legs.
+- [x] Feet / ground contact.
+- [x] Blink pose.
+- [x] Head anchor consistency.
+- [x] Silhouette consistency giữa các pose.
+- [x] Print toàn bộ base poses và review lần cuối.
+- [x] Chốt `normal/_BASE.txt`.
 
 ## 1.2 `idle.txt`
 
@@ -198,16 +198,16 @@
 
 ## 2.1 `_BASE.txt`
 
-- [ ] Canonical belly-1 silhouette.
-- [ ] Head anchor so với normal.
-- [ ] Body width.
-- [ ] Belly depth.
-- [ ] Front/rear legs dưới body.
-- [ ] Tail root.
-- [ ] Tail neutral/up/down.
-- [ ] Blink.
-- [ ] Ground contact.
-- [ ] Chốt `belly-1/_BASE.txt`.
+- [x] Canonical belly-1 silhouette.
+- [x] Head anchor so với normal.
+- [x] Body width.
+- [x] Belly depth.
+- [x] Front/rear legs dưới body.
+- [x] Tail root.
+- [x] Tail neutral/up/down.
+- [x] Blink.
+- [x] Ground contact.
+- [x] Chốt `belly-1/_BASE.txt`.
 
 ## 2.2 `idle.txt`
 
@@ -674,4 +674,16 @@ YYYY-MM-DD
 - Action:
 - Decision:
 - Cần quay lại:
+
+2026-08-26
+- File: animations/normal/_BASE.txt
+- Action: Final visual review
+- Decision: NORMAL BASE visually approved/frozen; no real visual issues found.
+- Cần quay lại: No quay lai; belly-1, belly-2, and belly-max bases remain pending.
+
+2026-08-26
+- File: animations/belly-1/_BASE.txt
+- Action: Final visual review
+- Decision: BELLY-1 BASE visually approved/frozen.
+- Cần quay lại: No quay lai; belly-2 and belly-max bases remain pending.
 ```
