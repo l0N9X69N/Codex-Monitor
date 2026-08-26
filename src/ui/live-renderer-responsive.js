@@ -433,23 +433,22 @@ function usageContent(state, rep, width, theme, nowMs) {
   }
 
   const requested = String(value(state?.model?.requested, '--'));
-  const actual = String(value(state?.model?.actual, 'waiting…'));
+  const routedRaw = value(state?.model?.actual, null);
+  const routed = routedRaw == null || routedRaw === '' ? null : String(routedRaw);
+  const modelLine = `MODEL ${styleText(requested, 'thinking', theme, { bold: true })}`;
+  const routedLine = routed ? `ROUTED ${styleText(routed, 'info', theme, { bold: true })}` : null;
+  const usageLine = `IN ${input} ${paint('·', 'frame', theme)} CACHE ${cached} ${paint('·', 'frame', theme)} OUT ${output}`;
+  const reasoningLine = `RSN ${reasoning} ${paint('·', 'frame', theme)} T.IN ${turnInput} ${paint('·', 'frame', theme)} T.OUT ${turnOutput}`;
+
   if (rep === CARD_REPRESENTATION.MINIMAL) return [`IN ${input} ${paint('·', 'frame', theme)} OUT ${output} ${paint('·', 'frame', theme)} ${requested}`];
   if (rep === CARD_REPRESENTATION.COMPACT) return [
     `MODEL ${requested} ${paint('·', 'frame', theme)} RSN ${String(value(state?.model?.reasoning, '--'))}`,
-    `IN ${input} ${paint('·', 'frame', theme)} CACHE ${cached} ${paint('·', 'frame', theme)} OUT ${output}`
+    usageLine
   ];
-  if (rep === CARD_REPRESENTATION.NORMAL) return [
-    `MODEL ${styleText(requested, 'thinking', theme, { bold: true })} ${paint('·', 'frame', theme)} ACTUAL ${actual}`,
-    `IN ${input} ${paint('·', 'frame', theme)} CACHE ${cached} ${paint('·', 'frame', theme)} OUT ${output}`,
-    `RSN ${reasoning} ${paint('·', 'frame', theme)} T.IN ${turnInput} ${paint('·', 'frame', theme)} T.OUT ${turnOutput}`
-  ];
-  return [
-    `MODEL ${styleText(requested, 'thinking', theme, { bold: true })}`,
-    `ACTUAL ${actual}`,
-    `IN ${input} ${paint('·', 'frame', theme)} CACHE ${cached} ${paint('·', 'frame', theme)} OUT ${output}`,
-    `RSN ${reasoning} ${paint('·', 'frame', theme)} T.IN ${turnInput} ${paint('·', 'frame', theme)} T.OUT ${turnOutput}`
-  ];
+  if (rep === CARD_REPRESENTATION.NORMAL) {
+    return [routedLine ? `${modelLine} ${paint('·', 'frame', theme)} ${routedLine}` : modelLine, usageLine, reasoningLine];
+  }
+  return [modelLine, routedLine, usageLine, reasoningLine].filter(Boolean);
 }
 
 function sessionContent(state, rep, theme, nowMs) {
@@ -569,8 +568,13 @@ function filterContentRows(cardId, rows, rep, fields, authMode) {
     } else {
       if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['input', 'output', 'model'])];
       else if (rep === CARD_REPRESENTATION.COMPACT) keep = [anyField(fields, ['model', 'reasoning']), anyField(fields, ['input', 'cache', 'output'])];
-      else if (rep === CARD_REPRESENTATION.NORMAL) keep = [anyField(fields, ['model', 'actual']), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
-      else keep = [fieldEnabled(fields, 'model'), fieldEnabled(fields, 'actual'), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
+      else if (rep === CARD_REPRESENTATION.NORMAL) keep = [anyField(fields, ['model', 'routed']), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
+      else {
+        const routedPresent = rows.some((row) => stripAnsiSafe(row).startsWith('ROUTED '));
+        keep = routedPresent
+          ? [fieldEnabled(fields, 'model'), fieldEnabled(fields, 'routed'), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])]
+          : [fieldEnabled(fields, 'model'), anyField(fields, ['input', 'cache', 'output']), anyField(fields, ['reasoning', 'turnInput', 'turnOutput'])];
+      }
     }
   } else if (cardId === 'session') {
     if (rep === CARD_REPRESENTATION.MINIMAL) keep = [anyField(fields, ['turns', 'thread', 'data'])];
@@ -591,6 +595,10 @@ function filterContentRows(cardId, rows, rep, fields, authMode) {
   }
 
   return rows.filter((_, index) => keep[index] !== false);
+}
+
+function stripAnsiSafe(text = '') {
+  return String(text).replace(/\x1B\[[0-?]*[ -\/]*[@-~]/g, '');
 }
 
 function enabledCards(config, state, width) {
