@@ -75,12 +75,13 @@ test('charts obey current scope and search instead of leaking hidden sessions', 
   assert.equal(none.charts.tools.length, 0);
 });
 
-test('rolling telemetry derives rates from observed deltas and resets when scope changes', () => {
+test('rolling telemetry derives rates only from comparable live-session deltas and resets when scope changes', () => {
   const series = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
   let snapshot = series.sample(rows, { scope: 'live', atMs: 1000 });
   assert.equal(snapshot.samples.length, 1);
   assert.equal(snapshot.latest.tokenRate, null);
   assert.equal(Math.round(snapshot.latest.contextPeak), 90);
+  assert.equal(snapshot.latest.activeCount, 2);
 
   const grown = rows.map((item) => item.id === 'alpha'
     ? { ...item, tokens: { ...item.tokens, input: item.tokens.input + 600 }, toolCount: item.toolCount + 2 }
@@ -93,6 +94,8 @@ test('rolling telemetry derives rates from observed deltas and resets when scope
   snapshot = series.sample(grown, { scope: 'ended', atMs: 3000 });
   assert.equal(snapshot.samples.length, 1);
   assert.equal(snapshot.latest.tokenRate, null);
+  assert.equal(snapshot.latest.contextPeak, null);
+  assert.equal(snapshot.latest.activeCount, 0);
 });
 
 test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ultrawide across view modes', () => {
@@ -116,9 +119,11 @@ test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ul
 
 test('operations view prioritizes current state, rolling motion, selected session and recent sessions', () => {
   const telemetry = {
+    sampleCount: 2,
+    latest: { activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 },
     samples: [
-      { atMs: 1, tokenRate: 0, contextPeak: 20, toolRate: 0 },
-      { atMs: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 }
+      { atMs: 1, activeCount: 2, tokenRate: 0, contextPeak: 20, toolRate: 0 },
+      { atMs: 2, activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 }
     ]
   };
   const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'operations', telemetry }).lines.join('\n'));
@@ -130,27 +135,31 @@ test('operations view prioritizes current state, rolling motion, selected sessio
   assert.match(text, /RECENT SESSIONS/);
 });
 
-test('charts view renders explicit rolling time scales instead of relative ranking bars', () => {
+test('charts view uses compact rolling strips with ranking context instead of giant area plots', () => {
   const telemetry = {
+    sampleCount: 3,
+    latest: { activeCount: 2, tokenRate: 600, contextPeak: 80, toolRate: 0 },
     samples: [
-      { atMs: 1, tokenRate: 0, contextPeak: 20, toolRate: 0 },
-      { atMs: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 },
-      { atMs: 3, tokenRate: 600, contextPeak: 80, toolRate: 0 }
+      { atMs: 1, activeCount: 2, tokenRate: 0, contextPeak: 20, toolRate: 0 },
+      { atMs: 2, activeCount: 2, tokenRate: 1200, contextPeak: 45, toolRate: 60 },
+      { atMs: 3, activeCount: 2, tokenRate: 600, contextPeak: 80, toolRate: 0 }
     ]
   };
   const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'charts', telemetry }).lines.join('\n'));
-  assert.match(charts, /TOKEN RATE · ROLLING 60s/);
-  assert.match(charts, /CONTEXT PEAK · 0–100%/);
-  assert.match(charts, /TOOL RATE · ROLLING 60s/);
-  assert.match(charts, /SCALE\s+0–/);
+  assert.match(charts, /LIVE TELEMETRY · ROLLING 60s/);
+  assert.match(charts, /TOKEN RATE/);
+  assert.match(charts, /CONTEXT/);
+  assert.match(charts, /TOOL RATE/);
+  assert.match(charts, /TOP TOKEN SESSIONS/);
+  assert.match(charts, /TOP CONTEXT/);
   assert.match(charts, /−60s/);
   assert.match(charts, /RECENT \/ SELECT/);
-  assert.doesNotMatch(charts, /TOKEN ACTIVITY/);
+  assert.doesNotMatch(charts, /SCALE\s+0–/);
 
   const table = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 36, mode: 'mono', viewMode: 'table' }).lines.join('\n'));
   assert.match(table, /SESSION INDEX/);
   assert.match(table, /SESSION/);
-  assert.doesNotMatch(table, /TOKEN RATE · ROLLING/);
+  assert.doesNotMatch(table, /LIVE TELEMETRY/);
 });
 
 test('auto view resolves from terminal geometry without changing data semantics', () => {
