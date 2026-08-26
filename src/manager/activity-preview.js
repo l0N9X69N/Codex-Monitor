@@ -3,7 +3,6 @@ import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { timelineCategoryForTool } from './timeline.js';
 
 export const DEFAULT_ACTIVITY_PREVIEW_BYTES = 512 * 1024;
-export const DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_ACTIVITY_PREVIEW_EVENTS = 32;
 export const DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS = 1000;
 
@@ -148,13 +147,11 @@ export class SelectedActivityPreview {
   constructor({
     fsRef = fs,
     maxBytes = DEFAULT_ACTIVITY_PREVIEW_BYTES,
-    maxBackfillBytes = DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES,
     maxEvents = DEFAULT_ACTIVITY_PREVIEW_EVENTS,
     refreshIntervalMs = DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS
   } = {}) {
     this.fs = fsRef;
     this.maxBytes = Math.max(16 * 1024, Number(maxBytes) || DEFAULT_ACTIVITY_PREVIEW_BYTES);
-    this.maxBackfillBytes = Math.max(this.maxBytes, Number(maxBackfillBytes) || DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES);
     this.maxEvents = Math.max(4, Number(maxEvents) || DEFAULT_ACTIVITY_PREVIEW_EVENTS);
     this.refreshIntervalMs = Math.max(250, Number(refreshIntervalMs) || DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS);
     this.cached = null;
@@ -182,7 +179,6 @@ export class SelectedActivityPreview {
       offset: size,
       sourceBytes: extras.sourceBytes ?? 0,
       lastReadBytes: extras.lastReadBytes ?? 0,
-      backfillBytes: extras.backfillBytes ?? 0,
       targetEvents: extras.targetEvents ?? this.maxEvents,
       truncated: extras.truncated ?? false,
       gap: extras.gap ?? false,
@@ -214,41 +210,29 @@ export class SelectedActivityPreview {
       return this.cached;
     }
 
-    let coverage = Math.min(size, this.maxBytes);
-    let result = null;
-    while (coverage > 0) {
-      const start = Math.max(0, size - coverage);
-      try {
-        const { text, read } = this.readSegment(row.filePath, start, coverage);
-        const state = createAccumulator();
-        const events = [];
-        consumePreviewText(events, state, text, {
-          dropLeadingPartial: start > 0,
-          limit: target
-        });
-        result = this.metadata(row, size, {
-          sourceBytes: read,
-          lastReadBytes: read,
-          backfillBytes: read,
-          targetEvents: target,
-          truncated: start > 0,
-          events
-        });
-        this.state = state;
-        if (events.length >= target || start === 0 || coverage >= this.maxBackfillBytes) break;
-        const next = Math.min(size, this.maxBackfillBytes, coverage * 2);
-        if (next <= coverage) break;
-        coverage = next;
-      } catch (error) {
-        result = this.metadata(row, size, {
-          targetEvents: target,
-          events: [],
-          error: error?.message ?? 'preview read failed'
-        });
-        break;
-      }
+    const length = Math.min(size, this.maxBytes);
+    const start = Math.max(0, size - length);
+    try {
+      const { text, read } = this.readSegment(row.filePath, start, length);
+      const events = [];
+      consumePreviewText(events, this.state, text, {
+        dropLeadingPartial: start > 0,
+        limit: target
+      });
+      this.cached = this.metadata(row, size, {
+        sourceBytes: read,
+        lastReadBytes: read,
+        targetEvents: target,
+        truncated: start > 0,
+        events
+      });
+    } catch (error) {
+      this.cached = this.metadata(row, size, {
+        targetEvents: target,
+        events: [],
+        error: error?.message ?? 'preview read failed'
+      });
     }
-    this.cached = result ?? this.metadata(row, size, { targetEvents: target, events: [] });
     return this.cached;
   }
 
@@ -284,7 +268,6 @@ export class SelectedActivityPreview {
       this.cached = this.metadata(row, size, {
         sourceBytes: (finiteOrNull(this.cached?.sourceBytes) ?? 0) + read,
         lastReadBytes: read,
-        backfillBytes: finiteOrNull(this.cached?.backfillBytes) ?? this.maxBytes,
         targetEvents: target,
         truncated: Boolean(this.cached?.truncated || gap),
         gap: Boolean(this.cached?.gap || gap),
