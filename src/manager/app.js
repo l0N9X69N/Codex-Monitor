@@ -1,6 +1,6 @@
 import { buildProcessEvidence, SessionManagerCore, SESSION_ACTIVITY } from './session-core.js';
 
-function summaryLines(items, diagnostics = null) {
+function summaryLines(items, diagnostics = null, processError = null) {
   const counts = { live: 0, ended: 0, unknown: 0 };
   let totalBytes = 0;
   for (const item of items) {
@@ -18,7 +18,7 @@ function summaryLines(items, diagnostics = null) {
     lines.push(`Codex processes: ${diagnostics.codexProcessCount} · roots ${diagnostics.codexRootCount} · mapped ${diagnostics.mappedSessionCount ?? 0}`);
     lines.push(`Process correlation: exact ${diagnostics.exactMatchCount ?? 0} · start ${diagnostics.startMatchCount ?? 0}`);
   } else if (diagnostics) {
-    lines.push('Codex processes: telemetry unavailable');
+    lines.push(`Codex processes: telemetry unavailable${processError ? ` · ${processError}` : ''}`);
   }
   lines.push('Interactive dashboard rendering arrives in Phase 09.');
   return lines;
@@ -36,14 +36,22 @@ export async function runSessionManager({
   core.discover();
 
   let processEvidence = buildProcessEvidence(null);
+  let processError = null;
   try {
     const processes = await platformAdapter.getProcessTree();
-    processEvidence = buildProcessEvidence(processes, { nowMs: now(), sessions: core.index });
-  } catch {}
+    if (Array.isArray(processes)) {
+      processEvidence = buildProcessEvidence(processes, { nowMs: now(), sessions: core.index });
+    } else {
+      processError = processes?.detail ?? 'process telemetry unavailable';
+      processEvidence = buildProcessEvidence(null);
+    }
+  } catch (error) {
+    processError = error?.message ?? 'process query failed';
+  }
 
   const items = core.refresh({ processEvidence });
-  stdout.write(`${summaryLines(items, processEvidence.diagnostics).join('\n')}\n`);
-  return { code: 0, core, items, processDiagnostics: processEvidence.diagnostics };
+  stdout.write(`${summaryLines(items, processEvidence.diagnostics, processError).join('\n')}\n`);
+  return { code: 0, core, items, processDiagnostics: processEvidence.diagnostics, processError };
 }
 
 export { summaryLines as sessionManagerSummaryLines };
