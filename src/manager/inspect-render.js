@@ -1,6 +1,8 @@
 import { cellWidth, padCells, truncateCells } from '../ui/cell-width.js';
 import { hpaint } from '../history/theme.js';
 
+export const MANAGER_INSPECT_TABS = Object.freeze(['info', 'tokens', 'turns', 'tools', 'resources', 'errors']);
+
 function fmtNum(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
@@ -95,29 +97,66 @@ function telemetryLines(detail) {
   ];
 }
 
-export function renderSessionInspect({ detail, width = 120, height = 36, mode = '256' } = {}) {
+function tabLines(detail, tab) {
+  if (tab === 'tokens') return telemetryLines(detail).slice(0, 5);
+  if (tab === 'turns') return [
+    `Turns        ${fmtNum(detail.turns?.count)}`,
+    `Completed    ${fmtNum(detail.turns?.completed)}`,
+    `Last turn    ${fmtDuration(detail.turns?.lastDurationMs)}`,
+    '',
+    'Phase 10 expands turn dynamics and timelines.'
+  ];
+  if (tab === 'tools') {
+    const tools = Array.isArray(detail.tools?.byName) ? detail.tools.byName : [];
+    return [`Total tools  ${fmtNum(detail.tools?.count)}`, '', ...tools.slice(0, 12).map((item) => `${String(fmtNum(item.count)).padStart(6)}  ${item.name ?? '--'}`)];
+  }
+  if (tab === 'resources') {
+    const evidence = Array.isArray(detail.resources?.evidence) ? detail.resources.evidence : [];
+    return evidence.length
+      ? evidence.slice(0, 14).map((item) => `${item.kind ?? '--'}  ${item.value ?? '--'}`)
+      : ['No historical resource evidence.', '', 'Resources are evidence-based; current filesystem state is not inferred.'];
+  }
+  if (tab === 'errors') {
+    const errors = Array.isArray(detail.errors) ? detail.errors : [];
+    return errors.length
+      ? errors.slice(-14).reverse().map((item) => `${fmtDate(item.atMs).slice(11, 19)}  ${item.detail ?? '--'}`)
+      : ['No recorded errors in selected session.'];
+  }
+  return infoLines(detail);
+}
+
+function tabsLine(activeTab, mode) {
+  return MANAGER_INSPECT_TABS.map((tab) => {
+    const label = `${tab[0].toUpperCase()}${tab.slice(1)}`;
+    return tab === activeTab ? hpaint(`[${label}]`, 'nav', mode) : label;
+  }).join('  ');
+}
+
+export function renderSessionInspect({ detail, width = 120, height = 36, mode = '256', activeTab = 'info' } = {}) {
   const safeWidth = Math.max(44, Number(width) || 120);
   const safeHeight = Math.max(16, Number(height) || 36);
+  const tab = MANAGER_INSPECT_TABS.includes(activeTab) ? activeTab : 'info';
   const state = detail?.state ?? 'UNKNOWN';
   const title = detail?.info?.project ?? detail?.info?.threadId ?? 'SESSION';
   const header = truncateCells(`${hpaint('CODEX // SESSION INSPECT', 'strong', mode)}  ${hpaint(String(state), state === 'LIVE' ? 'live' : 'secondary', mode)}  ${title}`, safeWidth, '');
-  const tabs = truncateCells('[Info]  Tokens  Turns  Tools  Resources  Errors    Phase 10 expands analytics', safeWidth, '');
-  const footer = truncateCells('Q/Esc back to dashboard   exact selected-session history only', safeWidth, '');
+  const tabs = truncateCells(`${tabsLine(tab, mode)}    Phase 10 expands analytics`, safeWidth, '');
+  const footer = truncateCells('←/→ or Tab change tab   Q/Esc back to dashboard   exact selected-session history only', safeWidth, '');
   const lines = [header, tabs];
   const bodyHeight = safeHeight - 3;
 
   if (!detail) {
     lines.push(...panel(['Selected session detail is unavailable.'], safeWidth, bodyHeight, { title: 'SESSION', mode, active: true }));
-  } else if (safeWidth < 92) {
-    const infoHeight = Math.max(8, Math.floor(bodyHeight * 0.5));
-    lines.push(...panel(infoLines(detail), safeWidth, infoHeight, { title: 'IDENTITY', mode, active: true }));
-    lines.push(...panel(telemetryLines(detail), safeWidth, bodyHeight - infoHeight, { title: 'EXACT TELEMETRY', mode }));
-  } else {
+  } else if (tab === 'info' && safeWidth >= 92) {
     const leftWidth = Math.max(38, Math.floor(safeWidth * 0.5));
     const rightWidth = safeWidth - leftWidth - 1;
     const left = panel(infoLines(detail), leftWidth, bodyHeight, { title: 'IDENTITY', mode, active: true });
     const right = panel(telemetryLines(detail), rightWidth, bodyHeight, { title: 'EXACT TELEMETRY', mode });
     lines.push(...join(left, right, leftWidth, bodyHeight));
+  } else {
+    const titleByTab = {
+      info: 'IDENTITY', tokens: 'TOKENS', turns: 'TURNS', tools: 'TOOLS', resources: 'RESOURCES', errors: 'ERRORS'
+    };
+    lines.push(...panel(tabLines(detail, tab), safeWidth, bodyHeight, { title: titleByTab[tab], mode, active: true }));
   }
 
   lines.push(footer);
@@ -125,6 +164,7 @@ export function renderSessionInspect({ detail, width = 120, height = 36, mode = 
     lines: lines.slice(0, safeHeight).map((line) => truncateCells(line, safeWidth, '')),
     width: safeWidth,
     height: safeHeight,
+    activeTab: tab,
     detail
   };
 }
