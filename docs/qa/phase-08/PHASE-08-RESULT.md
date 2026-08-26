@@ -2,26 +2,27 @@
 
 ## Trạng thái
 
-**IMPLEMENTED — chờ combined automated verification + manual History data acceptance.**
+**ACTIVE — first Session Manager core checkpoint implemented, verification pending.**
 
 ## Đã làm
 
-- `codexm --history` là Monitor action riêng, không spawn official Codex.
-- Session discovery/stat metadata-only từ Codex sessions path.
-- RAM-only index/cache; không DB/CSV duplicate store.
-- Lazy parse chỉ selected session.
-- Historical model: Info/Tokens/Turns/Tools/Resources/Errors.
-- Historical normalized provenance tách `official-history` khỏi Live current-run.
-- Incremental live-tail theo byte offset, partial-line remainder, no duplicate.
-- File truncate/rotation reload an toàn.
-- Historical Resources chỉ ghi evidence thật từ session event; không scan filesystem hiện tại để bịa quá khứ.
-- Missing historical values giữ `--`; không pricing/cost.
+- `src/manager/session-core.js` làm core mới cho Manager.
+- `SessionActivityResolver`: `LIVE / ENDED / UNKNOWN`, không dùng mtime-only để claim LIVE.
+- Metadata-first discovery, không deep parse body hàng loạt.
+- Selected-session deep parser tái sử dụng historical parser với provenance `OFFICIAL_HISTORY`.
+- Incremental selected tail giữ partial-line/no-duplicate/truncate behavior.
+- Query model: All/Live/Ended/Search/Sort.
+- External delete degrade an toàn.
+- `codexm --manager` chạy read-only Manager core và không launch Codex.
+- `--history` không còn Monitor-owned semantics.
+- Có `npm run verify:phase8`.
 
-## Exit gate còn lại
+## Chưa hoàn tất
 
-```powershell
-.\scripts\phase6-9-verify.ps1
-node .\src\cli\codexm.js --history
-```
+- bounded identity enrichment cho global rows;
+- process/session correlation đủ mạnh cho mixed multi-LIVE/mixed ENDED cases;
+- long-running lightweight tracker/cadence/backoff;
+- real 2–3 concurrent Codex manual acceptance;
+- Manager TUI/charts (Phase 09).
 
-Manual cần test folder session thật lớn và một session đang grow.
+Phase 08 không được đánh dấu CLOSED cho tới khi các core/multi-session manual gates hoàn tất.
