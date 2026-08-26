@@ -107,6 +107,14 @@ function selectedPosition(model) {
   return `SELECTED ${model.selectedIndex + 1}/${model.rows.length}`;
 }
 
+function shortSessionId(row) {
+  const raw = String(row?.threadId ?? row?.name ?? '');
+  if (!raw) return '--';
+  if (raw.length <= 8) return raw;
+  const compact = raw.replace(/[^a-zA-Z0-9]/g, '');
+  return (compact || raw).slice(-8);
+}
+
 function selectedPreviewLines(model, mode) {
   const row = model.selected;
   if (!row) return [hpaint('No session selected.', 'dim', mode)];
@@ -140,9 +148,85 @@ function chartLines(items, width, formatter, mode, token = 'nav') {
   });
 }
 
+function telemetryValues(telemetry, key) {
+  return Array.isArray(telemetry?.samples)
+    ? telemetry.samples.map((sample) => {
+      const value = Number(sample?.[key]);
+      return Number.isFinite(value) ? value : null;
+    })
+    : [];
+}
+
+function peakValue(values, fixedMax = null) {
+  if (Number.isFinite(Number(fixedMax))) return Math.max(1, Number(fixedMax));
+  const known = values.filter((value) => Number.isFinite(value));
+  return Math.max(...known, 1);
+}
+
+function latestKnown(values) {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (Number.isFinite(values[index])) return values[index];
+  }
+  return null;
+}
+
+function graphColumns(values, width) {
+  const count = Math.max(1, width);
+  if (!values.length) return Array(count).fill(null);
+  const source = values.slice(-count);
+  return [...Array(Math.max(0, count - source.length)).fill(null), ...source];
+}
+
+function telemetryGraphLines(telemetry, key, width, height, mode, {
+  token = 'secondary',
+  formatter = fmtNum,
+  fixedMax = null,
+  suffix = '',
+  emptyLabel = 'collecting samples…'
+} = {}) {
+  const innerWidth = Math.max(8, width);
+  const graphHeight = Math.max(2, height - 3);
+  const values = telemetryValues(telemetry, key);
+  const scaleMax = peakValue(values, fixedMax);
+  const current = latestKnown(values);
+  const known = values.filter((value) => Number.isFinite(value));
+  const observedPeak = known.length ? Math.max(...known) : null;
+  const header = `${hpaint('NOW', 'dim', mode)} ${hpaint(current == null ? '--' : `${formatter(current)}${suffix}`, token, mode)}   ${hpaint('PEAK', 'dim', mode)} ${hpaint(observedPeak == null ? '--' : `${formatter(observedPeak)}${suffix}`, token, mode)}   ${hpaint('SCALE', 'dim', mode)} 0–${formatter(scaleMax)}${suffix}`;
+  const plotWidth = Math.max(4, innerWidth - 1);
+  const columns = graphColumns(values, plotWidth);
+  const lines = [header];
+  for (let row = 0; row < graphHeight; row += 1) {
+    const threshold = (graphHeight - row) / graphHeight;
+    const pixels = columns.map((value) => {
+      if (!Number.isFinite(value)) return ' ';
+      const ratio = Math.max(0, Math.min(1, value / scaleMax));
+      return ratio >= threshold ? '█' : ' ';
+    }).join('');
+    lines.push(hpaint(pixels, token, mode));
+  }
+  if (!known.length) lines.push(hpaint(emptyLabel, 'dim', mode));
+  else lines.push(`${hpaint('−60s', 'dim', mode)}${hpaint('─'.repeat(Math.max(1, plotWidth - 9)), 'panel', mode)}${hpaint('now', 'dim', mode)}`);
+  return lines;
+}
+
+function miniTelemetryLine(telemetry, key, width, mode, token, formatter, suffix = '') {
+  const blocks = '▁▂▃▄▅▆▇█';
+  const values = telemetryValues(telemetry, key);
+  const scaleMax = peakValue(values);
+  const columns = graphColumns(values, Math.max(8, width));
+  const spark = columns.map((value) => {
+    if (!Number.isFinite(value)) return ' ';
+    const index = Math.max(0, Math.min(blocks.length - 1, Math.round((value / scaleMax) * (blocks.length - 1))));
+    return blocks[index];
+  }).join('');
+  const current = latestKnown(values);
+  return `${hpaint(spark, token, mode)} ${hpaint(current == null ? '--' : `${formatter(current)}${suffix}`, token, mode)}`;
+}
+
 const COLUMN_SPECS = Object.freeze({
   state: { title: 'STATE', width: 8, value: (row) => row.state ?? 'UNKNOWN' },
   project: { title: 'PROJECT', width: 18, value: (row) => row.project ?? row.name ?? '--' },
+  session: { title: 'SESSION', width: 10, value: (row) => shortSessionId(row) },
   model: { title: 'MODEL', width: 14, value: (row) => row.model ?? '--' },
   duration: { title: 'DURATION', width: 9, value: (row) => fmtDuration(row.elapsedMs) },
   context: { title: 'CONTEXT', width: 8, value: (row) => fmtPercent(rowContextPercent(row)) },
@@ -155,9 +239,9 @@ const COLUMN_SPECS = Object.freeze({
 
 function tableColumns(width) {
   if (width < 72) return ['state', 'project', 'context', 'tools'];
-  if (width < 104) return ['state', 'project', 'model', 'duration', 'context', 'tools'];
-  if (width < 150) return ['state', 'project', 'model', 'duration', 'context', 'input', 'turn', 'tools'];
-  return ['state', 'project', 'model', 'duration', 'context', 'input', 'cache', 'turn', 'tools', 'size'];
+  if (width < 104) return ['state', 'project', 'session', 'context', 'tools'];
+  if (width < 150) return ['state', 'project', 'session', 'model', 'duration', 'context', 'input', 'tools'];
+  return ['state', 'project', 'session', 'model', 'duration', 'context', 'input', 'cache', 'turn', 'tools', 'size'];
 }
 
 function fitColumns(columns, width) {
@@ -188,6 +272,7 @@ function tableLines(model, width, rows, mode) {
       let value = raw;
       if (!isSelected && key === 'state') value = hpaint(raw, stateToken(row.state), mode);
       else if (!isSelected && key === 'project') value = hpaint(raw, 'text', mode);
+      else if (!isSelected && key === 'session') value = hpaint(raw, 'session', mode);
       else if (!isSelected && key === 'model') value = hpaint(raw, 'dim', mode);
       else if (!isSelected && key === 'context') {
         const pct = rowContextPercent(row);
@@ -237,7 +322,7 @@ function renderTableView(lines, model, safeWidth, bodyHeight, mode) {
   lines.push(...panel(tableLines(model, safeWidth - 2, bodyHeight - summaryHeight - 2, mode), safeWidth, bodyHeight - summaryHeight, { title: tablePanelTitle('SESSIONS', model), mode, active: true }));
 }
 
-function renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout) {
+function renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout, telemetry) {
   if (layout === 'narrow') {
     renderTableView(lines, model, safeWidth, bodyHeight, mode);
     return;
@@ -252,36 +337,64 @@ function renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout)
   const status = panel(summaryLines(model, mode), rightWidth, currentHeight, { title: 'STATUS / EVENTS', mode });
   lines.push(...joinPanels(current, status, leftWidth, currentHeight));
 
-  const tokens = panel(chartLines(model.charts.tokens, leftWidth - 2, fmtNum, mode, 'secondary'), leftWidth, activityHeight, { title: 'TOKEN RANKING', mode });
+  const activity = panel([
+    `${hpaint('TOKEN RATE', 'dim', mode)}  ${miniTelemetryLine(telemetry, 'tokenRate', Math.max(12, leftWidth - 30), mode, 'secondary', fmtNum, '/min')}`,
+    '',
+    `${hpaint('CONTEXT', 'dim', mode)}     ${miniTelemetryLine(telemetry, 'contextPeak', Math.max(12, leftWidth - 30), mode, 'pressure', fmtPercent)}`,
+    '',
+    `${hpaint('TOOLS', 'dim', mode)}       ${miniTelemetryLine(telemetry, 'toolRate', Math.max(12, leftWidth - 30), mode, 'live', fmtNum, '/min')}`
+  ], leftWidth, activityHeight, { title: 'ROLLING 60s', mode });
   const preview = panel(selectedPreviewLines(model, mode), rightWidth, activityHeight, { title: 'SELECTED SESSION', mode, active: true });
-  lines.push(...joinPanels(tokens, preview, leftWidth, activityHeight));
+  lines.push(...joinPanels(activity, preview, leftWidth, activityHeight));
 
   lines.push(...panel(tableLines(model, safeWidth - 2, tableHeight - 2, mode), safeWidth, tableHeight, { title: tablePanelTitle('RECENT SESSIONS', model), mode }));
 }
 
-function renderChartsView(lines, model, safeWidth, bodyHeight, mode, layout) {
+function renderChartsView(lines, model, safeWidth, bodyHeight, mode, layout, telemetry) {
   if (layout === 'narrow') {
     renderTableView(lines, model, safeWidth, bodyHeight, mode);
     return;
   }
-  const chartHeight = Math.max(9, Math.min(12, Math.floor(bodyHeight * 0.43)));
-  const detailHeight = Math.max(7, Math.min(9, Math.floor(bodyHeight * 0.28)));
-  const recentHeight = Math.max(5, bodyHeight - chartHeight - detailHeight);
-  const gap = 2;
-  const chartWidth = Math.floor((safeWidth - gap) / 3);
-  const widths = [chartWidth, chartWidth, safeWidth - (chartWidth * 2) - gap];
-  const token = panel(chartLines(model.charts.tokens, widths[0] - 2, fmtNum, mode, 'secondary'), widths[0], chartHeight, { title: 'TOKEN ACTIVITY', mode });
-  const context = panel(chartLines(model.charts.context, widths[1] - 2, fmtPercent, mode, 'pressure'), widths[1], chartHeight, { title: 'CONTEXT PRESSURE', mode });
-  const tools = panel(chartLines(model.charts.tools, widths[2] - 2, fmtNum, mode, 'live'), widths[2], chartHeight, { title: 'TOOL ACTIVITY', mode });
-  for (let index = 0; index < chartHeight; index += 1) lines.push(`${token[index] ?? ''} ${context[index] ?? ''} ${tools[index] ?? ''}`);
 
-  const leftWidth = Math.max(34, Math.floor(safeWidth * 0.45));
+  const tokenHeight = Math.max(9, Math.min(12, Math.floor(bodyHeight * 0.34)));
+  const secondaryHeight = Math.max(8, Math.min(10, Math.floor(bodyHeight * 0.28)));
+  const recentHeight = Math.max(5, bodyHeight - tokenHeight - secondaryHeight);
+
+  lines.push(...panel(
+    telemetryGraphLines(telemetry, 'tokenRate', safeWidth - 2, tokenHeight - 2, mode, {
+      token: 'secondary', formatter: fmtNum, suffix: '/min', emptyLabel: 'Waiting for token deltas from the current Manager run.'
+    }),
+    safeWidth,
+    tokenHeight,
+    { title: 'TOKEN RATE · ROLLING 60s', mode }
+  ));
+
+  const leftWidth = Math.max(34, Math.floor(safeWidth * 0.5));
   const rightWidth = safeWidth - leftWidth - 1;
-  const status = panel(summaryLines(model, mode), leftWidth, detailHeight, { title: 'SCOPE SUMMARY', mode });
-  const preview = panel(selectedPreviewLines(model, mode), rightWidth, detailHeight, { title: 'SELECTED SESSION', mode, active: true });
-  lines.push(...joinPanels(status, preview, leftWidth, detailHeight));
+  const context = panel(
+    telemetryGraphLines(telemetry, 'contextPeak', leftWidth - 2, secondaryHeight - 2, mode, {
+      token: 'pressure', formatter: fmtPercent, fixedMax: 100, emptyLabel: 'No context evidence in current scope.'
+    }),
+    leftWidth,
+    secondaryHeight,
+    { title: 'CONTEXT PEAK · 0–100%', mode }
+  );
+  const tools = panel(
+    telemetryGraphLines(telemetry, 'toolRate', rightWidth - 2, secondaryHeight - 2, mode, {
+      token: 'live', formatter: fmtNum, suffix: '/min', emptyLabel: 'Waiting for tool deltas from the current Manager run.'
+    }),
+    rightWidth,
+    secondaryHeight,
+    { title: 'TOOL RATE · ROLLING 60s', mode }
+  );
+  lines.push(...joinPanels(context, tools, leftWidth, secondaryHeight));
 
-  lines.push(...panel(tableLines(model, safeWidth - 2, Math.min(recentHeight - 2, 5), mode), safeWidth, recentHeight, { title: tablePanelTitle('RECENT', model), mode }));
+  lines.push(...panel(
+    tableLines(model, safeWidth - 2, Math.min(recentHeight - 2, 6), mode),
+    safeWidth,
+    recentHeight,
+    { title: tablePanelTitle('RECENT / SELECT', model), mode }
+  ));
 }
 
 export function renderSessionDashboard({
@@ -295,7 +408,8 @@ export function renderSessionDashboard({
   direction = 'desc',
   selectedId = null,
   selectedIndex = 0,
-  viewMode = 'operations'
+  viewMode = 'operations',
+  telemetry = null
 } = {}) {
   const safeWidth = Math.max(44, Number(width) || 120);
   const safeHeight = Math.max(16, Number(height) || 36);
@@ -312,8 +426,8 @@ export function renderSessionDashboard({
   const bodyHeight = safeHeight - 3;
 
   if (resolvedView === 'table') renderTableView(lines, model, safeWidth, bodyHeight, mode);
-  else if (resolvedView === 'charts') renderChartsView(lines, model, safeWidth, bodyHeight, mode, layout);
-  else renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout);
+  else if (resolvedView === 'charts') renderChartsView(lines, model, safeWidth, bodyHeight, mode, layout, telemetry);
+  else renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout, telemetry);
 
   lines.push(footer);
   return {
