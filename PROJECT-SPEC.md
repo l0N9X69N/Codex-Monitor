@@ -1,236 +1,113 @@
-# Codex Monitor — PROJECT_SPEC
+# Codex Monitor — PROJECT-SPEC
 
-**Version:** 1.0 implementation baseline  
-**Frozen:** 2026-08-25  
-**Status:** Product/architecture freeze for implementation  
-**Scope:** Codex Monitor v1  
+**Version:** 1.1 implementation baseline  
+**Updated:** 2026-08-26  
+**Status:** Phase 06 closed; Phase 07 active  
+**Scope:** Codex Monitor v1
 
-> This document is the current source of truth for the Codex Monitor project. New chats and implementation work should follow this specification unless a later written decision explicitly supersedes it.
+> This file is the current product/architecture source of truth. The numbered files in `docs/RoadMap/` define execution details for each phase.
 
 ---
 
-## 1. Product definition
+## 1. Product shape
 
-Codex Monitor is a lightweight local wrapper and session-management tool around the **official Codex CLI**.
-
-The product has two main runtime modes:
+Codex Monitor wraps the official OpenAI Codex CLI without forking or modifying it.
 
 ```text
 CODEX MONITOR
-│
 ├── LIVE MONITOR
-│   └── codexm [codex args...]
+│   └── codexm [monitor options] [codex args...]
 │       ├── launches official Codex
-│       ├── passive display only
-│       ├── current run only
-│       └── never owns navigation input
-│
+│       ├── passive HUD only
+│       ├── binds telemetry to the exact new/resumed session
+│       └── never owns Codex navigation/input
 └── SESSION MANAGER
     └── codexm --manager
-        ├── does not launch Codex
-        ├── full interactive TUI
-        ├── sees all local Codex sessions
-        ├── supports multiple concurrent LIVE sessions
-        ├── analyzes ended sessions
-        └── manages session storage explicitly
+        ├── independent interactive TUI
+        ├── reads local LIVE + ENDED sessions
+        └── owns analytics and session storage management
 ```
 
-Core product rules:
+Product laws:
 
-1. **Official Codex is never forked, modified, or rebuilt.**
-2. **Live Monitor is passive.** It does not intercept function keys, arrows, letters, or navigation shortcuts for Monitor UI.
-3. **Live is current-run only.** Previous sessions must never fill missing current-run telemetry.
-4. **Session Manager is separate.** It owns all interactive navigation, charts, filters, selection, and session-management UI.
-5. **No extra model/API calls for monitoring.**
-6. **Normal monitoring is local-only.** Network is reserved for the update subsystem only.
-7. **What is not displayed is not collected. What is not actively viewed is not continuously polled. What has not changed is not repainted.**
-8. **Same product, same semantics, same UI model on Windows/Linux/macOS.** OS-specific work stays behind platform adapters.
+1. Official Codex owns stdin after spawn.
+2. Live Monitor never adds navigation hotkeys, tabs, mouse navigation, or input interception.
+3. Unrelated previous sessions must never fill missing current-session telemetry.
+4. Exact resume may hydrate durable state from the exact resumed rollout only; transient state starts clean.
+5. No extra model/API calls are made for monitoring.
+6. Normal monitoring is local-only. The updater is the only automatic network exception.
+7. What is not demanded should not be collected; what has not changed should not be repainted unnecessarily.
+8. Windows/Linux/macOS share product semantics; OS differences stay behind Platform Adapters.
 
 ---
 
-# 2. Product boundaries
+## 2. Live CLI contract
 
-## 2.1 Live Monitor
-
-`codexm` is a wrapper around official Codex.
+Examples:
 
 ```powershell
 codexm
 codexm resume
+codexm resume --last
+codexm resume <thread-id>
 codexm -m <model>
 codexm --preset compact resume
 ```
 
-Monitor options are consumed by Codex Monitor. Unknown/non-Monitor arguments are forwarded unchanged to official Codex.
-
-Escape hatch:
+Monitor-owned options are consumed by Codex Monitor. Unknown arguments are forwarded to official Codex.
 
 ```powershell
 codexm -- --help
 ```
 
-Everything after `--` is passed directly to official Codex.
+Everything after `--` is passed through unchanged.
 
-### Live Monitor is display-only
-
-Live Monitor must not contain:
-
-- interactive tabs;
-- Inspector mode;
-- F2/F4 navigation;
-- mouse navigation;
-- arrow-key Monitor navigation;
-- shortcut interception that competes with Codex input.
-
-The keyboard path should conceptually remain:
-
-```text
-User keyboard ───────────────────────────────→ Official Codex
-                                                    ↑
-Monitor observes PTY/session signals ───────────────┘
-```
-
-The Monitor is a guest in the terminal. Codex interaction always has higher priority than telemetry.
+There is no Monitor-owned public `--history` mode in v1. `--history` is forwarded to official Codex.
 
 ---
 
-## 2.2 Session Manager
+## 3. Data ownership and resume
 
-Canonical command:
-
-```powershell
-codexm --manager
-```
-
-There is **no separate public `--history` feature in v1**. Historical sessions are simply ended sessions inside Session Manager.
-
-Session Manager:
-
-- does **not** launch Codex;
-- reads Codex-owned local session data;
-- displays ended sessions;
-- can detect and follow one or many currently growing sessions;
-- can inspect one selected session in depth;
-- is the only interactive analytics/dashboard TUI;
-- is the only place where session storage can be explicitly deleted by the user.
-
-Example multi-session use case:
-
-```text
-Terminal 1: codexm              → Project A
-Terminal 2: codexm              → Project B
-Terminal 3: codexm              → Project C
-Terminal 4: codexm --manager    → sees A/B/C as LIVE
-```
-
-Session Manager may also show sessions launched using plain official `codex` when local evidence is sufficient.
-
----
-
-# 3. Data ownership and persistence
-
-## 3.1 Codex owns session history
-
-Codex Monitor does not create a second history database.
-
-Primary historical source:
+Codex owns session history:
 
 ```text
 ~/.codex/sessions/**/*.jsonl
 ```
 
-Architecture:
+Codex Monitor does not maintain a second transcript/history database by default.
 
-```text
-Official Codex
-   └── local session/rollout JSONL
-          ├── Live Monitor reads current-run data
-          └── Session Manager reads/tails all relevant sessions
-```
-
-## 3.2 No Monitor history database in v1
-
-Do not introduce by default:
-
-- SQLite history database;
-- CSV history storage;
-- duplicated transcript archive;
-- automatic retention database;
-- background telemetry recorder.
-
-Session Manager may build **RAM-only indexes/caches** while open.
-
-A small disposable disk index is allowed only later if benchmarking proves session discovery too slow. It must be rebuildable and never become the source of truth.
-
-## 3.3 Monitor-owned persistent files
-
-Monitor may persist its own configuration/update metadata only, conceptually:
-
-```text
-.codex-monitor/
-├── config.json
-└── update-state.json
-```
-
-Exact OS-specific path is not frozen yet.
-
-These files may contain:
-
-- language;
-- preset;
-- theme;
-- enabled sections/metrics;
-- header selections;
-- auto update-check preference;
-- other Monitor UI preferences;
-- last update-check metadata.
-
-They must not contain API keys, access tokens, prompts, session transcripts, or machine telemetry.
-
----
-
-# 4. Hard current-run rule
-
-At every new Live Monitor process start, runtime/session telemetry must be hard reset.
-
-Reset at startup:
-
-```text
-CONTEXT
-TOKEN USAGE
-CACHE
-TURN
-THREAD
-LAST DUR
-COMPACTION
-LAST COMPACT
-TASK PLAN
-ACTUAL MODEL
-5H QUOTA
-WEEK QUOTA
-TOOLS
-RETRY
-ERROR
-```
-
-Meaning:
+### New session
 
 ```text
 0   = source explicitly reported zero
---  = no valid current-run value yet
+--  = no valid value for this bound session yet
 ```
 
-Never use previous session values to replace `--`.
+### Resume
 
-Login quotas also start at `--` until the **current run** provides valid quota data.
+Bare `codexm resume` uses the Monitor local picker before spawn, resolves the exact local rollout/thread ID, hydrates durable telemetry from that exact rollout, then launches official Codex resume.
 
-API mode must never inherit Login quota.
+Transient state must not hydrate from history:
+
+- approval pending;
+- active tools;
+- active error;
+- currently executing command/turn unless proven current.
+
+### Login quota exception
+
+5H/WEEK quota is account-scoped. Login mode may bootstrap quota from the newest valid local Codex JSONL evidence.
+
+- local files only;
+- no quota network request;
+- API mode never inherits Login quota;
+- current-run quota evidence supersedes bootstrap evidence.
 
 ---
 
-# 5. Normalized state architecture
+## 4. Normalized state and provenance
 
-Use one normalized state model, not separate Lite/Full data paths.
+One normalized state feeds every representation:
 
 ```text
 NormalizedMonitorState
@@ -241,106 +118,25 @@ NormalizedMonitorState
 ├── quota
 ├── session
 ├── activity
+├── tools
 ├── compaction
 ├── git
 ├── system
+├── performance
+├── processes
+├── resources
 └── freshness
 ```
 
-The same source semantics feed all representations.
+Every metric must retain provenance/freshness. Derived values must never be presented as official Codex telemetry.
 
-Pipeline:
-
-```text
-Official Codex CLI
-      │
-      ├── PTY live output
-      ├── rollout/session JSONL
-      ├── auth/config/runtime signals
-      └── local process/runtime signals
-              │
-              ▼
-        DATA COLLECTORS
-              │
-              ▼
-      NORMALIZED MONITOR STATE
-              │
-              ▼
-           VIEW MODEL
-              │
-              ▼
-        RESPONSIVE LAYOUT
-              │
-              ▼
-        ANSI DIFF RENDERER
-```
-
-Renderer must not perform heavy I/O, project scans, Git commands, process-tree scans, package scans, or session discovery itself.
+Renderer code must not perform heavy I/O, Git commands, session discovery, process scans, or network access.
 
 ---
 
-# 6. Official / local / derived data
+## 5. Auth
 
-Every metric must have clear provenance.
-
-## Official / Codex-derived source data
-
-Examples:
-
-- model/requested model;
-- reasoning setting;
-- token usage;
-- context/window;
-- session/thread IDs;
-- rate-limit/quota values when present in the current run;
-- tool/activity events;
-- permissions/approval-related values;
-- compaction events;
-- retry/error events.
-
-## Local machine data
-
-Examples:
-
-- Git working tree;
-- local process/system usage;
-- disk free;
-- project size;
-- Monitor resource use.
-
-## Derived UI state
-
-Examples:
-
-- context percentage;
-- cache ratio;
-- turns since compact;
-- Session Health;
-- formatted durations;
-- hot process;
-- aggregate live-session counts in Manager.
-
-Derived values must never be presented as official server telemetry.
-
----
-
-# 7. Auth model
-
-Primary command:
-
-```powershell
-codexm
-```
-
-Auth detection order:
-
-1. explicit Monitor `--auth` override;
-2. suitable API-key environment configuration;
-3. official Codex auth/status/stored-auth signals;
-4. launch official Codex;
-5. verify again when current session appears.
-
-Supported conceptual modes:
+Conceptual modes:
 
 ```text
 login
@@ -348,1343 +144,260 @@ api
 other/unknown
 ```
 
-Override examples:
+Detection priority:
+
+1. explicit Monitor `--auth` override;
+2. suitable API-key environment configuration;
+3. official Codex login-status/stored-auth evidence;
+4. current-session evidence when available.
+
+Examples:
 
 ```powershell
 codexm --auth api
 codexm --auth login
 ```
 
-`--auth` is a Monitor hint/override and must not rewrite official Codex credentials.
+An explicit override may force the Codex login method for that launch, but Monitor must not rewrite stored Codex credentials.
 
 ---
 
-# 8. Model rules
+## 6. MODEL and ROUTED
 
-## Requested model
+`MODEL` is the model Codex persists/applies for the current turn/thread, primarily from modern `turn_context` or `thread_settings_applied` evidence.
 
-Show when current configuration/source clearly reports it.
-
-## Actual/server model
-
-Never assume:
+Direct API normally shows only:
 
 ```text
-ACTUAL = REQUESTED
+MODEL  gpt-...
 ```
 
-If reliable evidence is absent:
+`ROUTED` appears only when explicit routing evidence exists, currently including Codex `model_reroute`.
 
 ```text
-ACTUAL --
+MODEL   codex-main
+ROUTED  azure/gpt-5.6
 ```
 
-If a trustworthy source later exposes server/effective model, requested and actual may be shown separately.
+No evidence means the ROUTED row is omitted. Never display `ACTUAL waiting...` and never infer `ROUTED = MODEL`.
 
-Third-party API gateways must not be treated as proof of provider/effective model.
+Future LiteLLM/gateway support may populate ROUTED only from trustworthy routing/deployment telemetry. An alias or response model field alone is not enough when the proxy can internally route/fallback.
+
+The internal legacy slot `model.actual` may remain temporarily, but its UI/product meaning is routed-model evidence.
 
 ---
 
-# 9. Cost/pricing rule
+## 7. Live presets and cards
 
-Codex Monitor v1 does **not** maintain pricing tables and does **not** calculate cost as token × model price.
+Public presets:
 
-Do not add:
+```text
+compact
+recommended
+full
+custom
+```
 
-- LiteLLM pricing downloads;
-- OpenAI/Anthropic pricing fetches;
-- bundled pricing databases requiring maintenance;
-- `$ / hour` or `$ / day` estimates created by Monitor.
+`minimal` is not a preset; it is an internal responsive representation.
 
-If Codex/provider data itself supplies a trustworthy cost estimate, it may be displayed conditionally with explicit provenance.
+Card order:
+
+1. CONTEXT
+2. USAGE
+3. SESSION
+4. CURRENT ACTIVITY
+5. SYSTEM when present
+6. BEAST MODE when present
+
+Representation ladder:
+
+```text
+rich → normal → compact → minimal
+```
+
+Responsive decisions use terminal cells/rows, not physical screen size.
 
 ---
 
-# 10. Network policy
-
-Normal Live Monitor and Session Manager operation must be local/offline.
-
-Forbidden for monitoring:
-
-- remote quota lookup;
-- pricing API lookup;
-- provider metadata lookup;
-- extra model/API calls;
-- telemetry upload;
-- analytics upload;
-- crash-report upload;
-- prompt/session upload;
-- machine telemetry upload.
-
-The only automatic network operation permitted is the updater's GitHub Releases check.
-
-Target policy:
-
-```text
-Automatic update check: at most ~once per 24 hours
-Auto install: OFF
-Normal Monitor operation: zero network
-```
-
-Explicit network commands:
-
-```powershell
-codexm --check-update
-codexm --update
-```
-
-The update request must never send Codex prompts, token activity, project data, API endpoint/key, Git data, or system telemetry.
-
----
-
-# 11. Live Monitor UI
-
-## 11.1 Role
-
-Live Monitor is a **small passive HUD** attached to the official Codex terminal.
-
-It must remain readable, responsive, and non-interactive.
-
-No Manager navigation belongs in Live.
-
-## 11.2 Product presets
-
-Canonical presets:
-
-```text
-Recommended
-Compact
-Full
-Custom
-```
-
-They share identical data semantics.
-
-- **Recommended:** balanced default.
-- **Compact:** fewer metrics and shorter representations; lowest default workload.
-- **Full:** exposes nearly all useful enabled Live metrics but is still demand-driven.
-- **Custom:** user chooses exactly which sections/metrics/header items are enabled.
-
-## 11.3 Main Live sections
-
-```text
-CONTEXT
-USAGE
-SESSION
-ACTIVITY
-SYSTEM
-```
+## 8. CONTEXT / USAGE / SESSION / ACTIVITY
 
 ### CONTEXT
 
-Potential metrics:
+Current important values include context used %, used/window, left %, cache-related value where useful, compaction count, and turns since compact.
 
-- context used %;
-- used/window;
-- left %;
-- compactions;
-- last/since compact;
-- turns since compact;
-- Session Health;
-- cache metrics when available/selected.
+Derived context severity:
 
-### USAGE
+```text
+<60%    healthy
+60–79%  warning
+80–89%  high
+>=90%   critical
+```
 
-Login mode may show:
+### USAGE — Login
 
-- 5-hour quota;
-- weekly quota;
-- input;
-- cached input;
-- output;
-- reasoning;
-- turn I/O.
+May show 5H/WEEK quota plus input/cache/output/reasoning and turn I/O.
 
-API mode may show:
+Quota remaining severity:
 
-- requested model;
-- actual model only with evidence;
-- input;
-- cached input;
-- output;
-- reasoning;
-- turn I/O.
+```text
+>50%    healthy
+20–50%  high
+<20%    critical
+```
 
-API mode must not show Login 5h/week quota as if valid.
+### USAGE — API
+
+May show MODEL, ROUTED only with evidence, input/cache/output/reasoning and turn I/O. API mode never shows Login quota as valid telemetry.
 
 ### SESSION
 
-Potential metrics:
+Includes elapsed, turns, last-turn duration, update age, exact thread/session ID, freshness/bound state, and resume evidence where applicable.
 
-- elapsed;
-- turns;
-- last turn duration;
-- update age;
-- session/thread ID;
-- Codex version;
-- Monitor version;
-- freshness.
+### CURRENT ACTIVITY
 
-### ACTIVITY
-
-Priority:
+Priority is fixed:
 
 ```text
 ERROR > APPROVAL > TOOL > THINKING > IDLE
 ```
 
-Suggested symbols:
-
-```text
-● IDLE
-● THINKING
-◆ TOOL
-! APPROVAL
-× ERROR
-```
-
-Potential details:
-
-- current tool/command;
-- last tool;
-- task progress;
-- permissions;
-- approval;
-- retry/error.
-
-### SYSTEM
-
-Optional only. Potential metrics:
-
-- system CPU/RAM;
-- Codex process-tree CPU/RAM;
-- Monitor CPU/RAM;
-- process count;
-- hot process;
-- project size;
-- disk free.
-
-These collectors must never run merely because the code exists. They run only when selected/demanded.
+`THINKING`/`IDLE` are normalized derived states. Approval may require conservative PTY fallback because upstream rollout traces do not always persist the live approval request.
 
 ---
 
-# 12. Live header
+## 9. SYSTEM
 
-Live header is status-only, never navigation.
-
-User may select a small number of important header items. Recommended maximum: **4 items**.
-
-Possible choices:
+SYSTEM currently means whole-machine telemetry, not Codex-process telemetry.
 
 ```text
-Activity
-Model
-Reasoning
-Project
-Git
-Auth
-Health
-Session age
-Fast
+SYSTEM
+CPU   16%  <history sparkline>
+RAM   35%  <history sparkline>
+USED  <short capacity bar> 11.8 GB/34.1 GB
 ```
-
-Recommended default:
-
-```text
-Activity | Model | Reasoning | Project
-```
-
-Header is not a second dashboard. Detailed telemetry belongs in the body.
-
-## Git representation
-
-Git is one header item with responsive representations.
-
-Potential full form:
-
-```text
-main*  3 files  Δ+10 −1  ↑2 ↓1
-```
-
-Semantics:
-
-- `main` = current branch;
-- `*` = dirty working tree;
-- `Δ+10 −1` = working-tree lines added/deleted vs HEAD;
-- `↑2 ↓1` = commits ahead/behind remote when explicitly selected and available.
-
-Never claim `Δ+/-` means changes made by Codex specifically.
-
-Responsive forms:
-
-```text
-FULL     main*  3 files  Δ+10 −1  ↑2 ↓1
-NORMAL   main*  Δ+10 −1
-COMPACT  main*
-MICRO    git*
-```
-
-Git collection is metric-demand-driven. If only branch/dirty are displayed, do not calculate line deltas or remote ahead/behind.
-
----
-
-# 13. Responsive Live renderer
-
-Responsive behavior is based on terminal **cell width and height**, not physical aspect ratio.
 
 Rules:
 
-- Section is a component/card; physical column is a layout lane.
-- A lane may contain several small sections.
-- Do not map one section directly to one fixed column.
-- No telemetry word wrapping.
-- Use `FULL`, `COMPACT`, and `MICRO` representations.
-- If still too large: truncate, hide optional values, then use minimal fallback.
-- Use Unicode display-cell width (`wcwidth` equivalent).
-- Resize should recompute layout only, debounce approximately 50–100 ms, and repaint atomically.
-- Use hysteresis to prevent layout flicker around width thresholds.
+- CPU/RAM history uses a bounded in-memory sample ring;
+- wide cards resample existing history across available width instead of stopping at a fixed 36-cell cap;
+- RAM capacity bar stays short;
+- no redundant FREE row;
+- system pressure severity: `<70 healthy`, `70–84 high`, `>=85 critical`;
+- do not mix Codex process CPU/RAM into this card.
+
+Future workspace/disk/Codex-home sizing is backlog, not part of closed Phase 06.
 
 ---
 
-# 14. Themes and color semantics
+## 10. SYSTEM and BEAST display modes
+
+Both use:
+
+```text
+off
+auto
+on
+```
+
+Meaning:
+
+```text
+off   = card does not exist
+auto  = may use spare horizontal capacity but must not create another grid row by itself
+on    = explicitly selected; may reflow onto additional rows
+```
+
+AUTO priority favors SYSTEM before BEAST.
+
+When six selected cards cannot fit six columns, avoid a one-card tail. Prefer balanced layouts such as `4+2`, then `3+3`, `2+2+2`, then one-column fallback as width requires.
+
+Current Phase 06/07 testing checkpoint intentionally sets the `full` preset to:
+
+```text
+systemMode = on
+beastMode  = on
+```
+
+This is for easy testing. The intended release/customization default is `auto` unless a later product decision changes it.
+
+`systemMode=off` must also remove SYSTEM collector demand when no other consumer requires it.
+
+---
+
+## 11. BEAST MODE
+
+BEAST MODE currently exists only as an empty reserved responsive card. Runtime dog animation is not part of the closed Phase 06 checkpoint.
+
+Future direction is a geometry-aware ASCII pet:
+
+- low height -> lie/sleep;
+- medium height -> sit/stand;
+- wide/tall -> walk/run/play;
+- resize must never clip the pet or increase HUD height unexpectedly;
+- activity may influence behavior but geometry/safety wins;
+- no input interception and no telemetry collector demand.
+
+Existing animation assets are design material, not proof that live Beast animation is implemented.
+
+---
+
+## 12. Field visibility, theme and background
+
+Per-field visibility exists for CONTEXT, USAGE, SESSION, ACTIVITY and SYSTEM. Disabled fields should be omitted/reflowed rather than shown as fake missing values.
 
 Themes:
 
 ```text
-Color
-Mono
-Matrix / Cyber
+color
+mono
+matrix
 ```
 
-Background options for HUD/TUI only:
+HUD backgrounds:
 
 ```text
-Terminal / no override
-Black
-Dark
-Custom RGB
+terminal
+black
+dark
 ```
 
-Do not modify the whole terminal background via OSC in v1.
+Background styling applies only to Monitor rows and must reset before Codex content.
 
-Preserve current semantic color language:
-
-```text
-Green     healthy / idle / success
-Gold      thinking / warning
-Blue      tool activity
-Orange    approval / pressure
-Red       error / critical pressure
-Cyan      information / navigation / chrome
-Purple    reasoning / special analytics
-Muted     secondary/inactive text
-```
-
-Session Manager may visually lean strongly into a cyberpunk/hacker-futuristic style, but colors must remain semantically meaningful.
-
----
-
-# 15. Configure flow
-
-Command:
+Current CLI includes:
 
 ```powershell
-codexm --configure
+codexm --preset <recommended|compact|full|custom>
+codexm --theme <color|mono|matrix>
+codexm --background <terminal|black|dark>
+codexm --lang <vi|en>
+codexm --auth <auto|api|login>
 ```
 
-Flow:
-
-```text
-Language
-↓
-Preset
-↓
-Sections
-↓
-Metrics
-↓
-Header
-↓
-Theme
-↓
-Preview
-↓
-Save
-```
-
-There is no Live Tabs configuration in v1 because Live Monitor has no interactive tabs.
-
-Language:
-
-```text
-Tiếng Việt
-English
-```
-
-Flags/emoji may be used when display is reliable; fallback to `VI | EN`.
+The polished Custom UX is future work.
 
 ---
 
-# 16. Session Manager — purpose
+## 13. Performance rules
 
-Session Manager is the interactive local command center for Codex sessions.
+Priority order:
 
-Command:
+1. Codex stdin/PTY correctness;
+2. terminal resize/restore;
+3. Codex lifecycle/current-session state;
+4. visible UI state;
+5. optional telemetry;
+6. cosmetic work.
 
-```powershell
-codexm --manager
-```
+Full Live SYSTEM uses its own light bounded history and does not require the heavy performance/process collectors.
 
-It supports:
-
-- multiple concurrent LIVE Codex sessions;
-- ended/historical sessions;
-- realtime lightweight tracking of all visible LIVE sessions;
-- deep inspection of one selected session;
-- token/context/turn/tool analytics;
-- session resource evidence;
-- retry/error/compaction timeline;
-- storage analysis;
-- explicit select/delete of ended sessions.
-
-It must not become a generic machine/system process manager in v1.
-
-Do not add to Manager v1 merely for visual effect:
-
-- generic CPU history;
-- generic RAM history;
-- process explorer;
-- ports;
-- network traffic;
-- GPU/temperature;
-- arbitrary filesystem artifacts;
-- pricing/cost panels.
+Collectors are demand-driven and scheduled centrally. Optional telemetry must never make Codex input lag.
 
 ---
 
-# 17. Session Manager visual direction
+## 14. Platform architecture — Phase 07
 
-Session Manager should look like a futuristic local operations console:
-
-- dark terminal background;
-- cyan/green/purple/gold semantic highlights;
-- restrained neon borders;
-- generous spacing;
-- large useful charts;
-- few high-value panels rather than dense metric walls;
-- data-driven movement instead of constant fake animation.
-
-Design rule:
-
-```text
-Cyberpunk comes from typography, color, geometry, charts, and live data — not from high-FPS decorative animation.
-```
-
-The UI should feel alive because real session data changes.
-
----
-
-# 18. Manager top-level dashboard
-
-The default Manager screen should answer within a few seconds:
-
-- how many Codex sessions are currently LIVE;
-- which session is under the most context pressure;
-- whether token/tool activity is currently high;
-- which sessions have recent problems;
-- what local sessions exist and how large they are.
-
-## Recommended global dashboard panels
-
-Keep the dashboard open and breathable. Do not pack every metric into cards.
-
-Recommended summary panels/data:
-
-### A. Live Sessions
-
-```text
-Active sessions
-Aggregate turns
-Aggregate tool calls
-Longest-running live session
-```
-
-### B. Token Activity
-
-Aggregate **LIVE sessions only**.
-
-Possible values:
-
-```text
-Input
-Cached input
-Cache ratio
-Output
-Reasoning
-```
-
-Primary visualization: live sparkline/time series.
-
-### C. Context Pressure
-
-Compare current context pressure across LIVE sessions.
-
-Example:
-
-```text
-Backend       ████████████████── 82%
-Monitor-Cli   ████████████────── 68%
-Website       █████───────────── 24%
-```
-
-This is one of the most useful multi-session visualizations.
-
-### D. Live Activity
-
-Show reliable recent activity per LIVE session, for example:
-
-```text
-Monitor-Cli   updated now
-Backend       updated 2s
-Website       updated 8s
-```
-
-If reliable last-tool evidence exists:
-
-```text
-Monitor-Cli   Edit   now
-Backend       Bash   2s
-Website       Read   8s
-```
-
-Do not invent state beyond available evidence.
-
-### E. Session Events
-
-Summaries such as:
-
-```text
-Errors
-Retries
-Compactions
-Latest significant event
-```
-
-### F. Storage summary
-
-```text
-Session count
-Total history size
-Oldest session
-Largest session
-```
-
-Storage computation must be cached/lazy and not trigger repeated file reads.
-
----
-
-# 19. Manager dashboard charts
-
-Charts are important visual elements, but density is deliberately limited.
-
-## Global dashboard — default chart set
-
-Freeze the default at approximately **3 primary charts**:
-
-1. **Token Activity**
-2. **Context Pressure**
-3. **Tool Activity**
-
-Do not add charts merely because space is available.
-
-Rule:
-
-```text
-Manager Dashboard  → max ~3 primary charts
-Session Overview   → max ~1 large hero chart
-Analytics tab      → max ~2 charts visible together
-```
-
-When terminal width grows, prefer making existing charts wider rather than adding more panels.
-
----
-
-# 20. Global chart definitions
-
-## 20.1 Token Activity
-
-Visualizes real activity for LIVE sessions.
-
-Example terminal representation:
-
-```text
-IN    ▁▂▃▄▆▇█▆▅▇
-OUT   ▁▁▂▃▂▄▃▅▂▄
-```
-
-Optional additional series only if readable:
-
-```text
-CACHE
-RSN
-```
-
-The chart updates only when underlying data changes.
-
-## 20.2 Context Pressure
-
-Bar chart across LIVE sessions.
-
-Semantic thresholds are visual/derived and may evolve; exact health thresholds are not frozen.
-
-## 20.3 Tool Activity
-
-Histogram/sparkline of tool activity over recent turns/time.
-
-Example:
-
-```text
-8 │              ▆
-6 │     ▅        █
-4 │ ▃   █  ▃  ▆  █ ▄
-2 │ █ ▂ █  █  █  █ █
-  └──────────────────→
-```
-
-May show compact counts by tool type alongside the chart.
-
----
-
-# 21. Manager session list
-
-Main table should support:
-
-```text
-All
-Live
-Ended
-Search
-Filter
-Sort
-Select ended sessions
-```
-
-Example columns:
-
-```text
-STATE
-PROJECT
-MODEL
-DURATION
-CONTEXT
-INPUT
-CACHE
-TURN
-TOOLS
-SIZE
-```
-
-Example:
-
-```text
-STATE   PROJECT       MODEL      DUR    CTX    INPUT   CACHE   TURN   TOOLS   SIZE
-● LIVE  Monitor-Cli   gpt-5.6    42m    68%    1.82M    88%     18      74    18M
-● LIVE  Backend       gpt-5.6    17m    82%     628K    81%      9      29    11M
-● LIVE  Website       gpt-5.6     6m    24%     184K    76%      4      12     4M
-○       Old-Test      gpt-5.4    38m    72%     901K    84%     14      63    47M
-```
-
-The Manager may use keyboard and mouse because it is independent from Codex input.
-
-Possible controls:
-
-```text
-↑/↓          move selection
-Enter        inspect session
-←/→ or Tab   move detail tabs
-/            search
-F            filter
-Space        toggle selection in storage/delete contexts
-Q / Esc      back/quit as context allows
-```
-
-Exact keymap can be finalized during implementation, because there is no Codex-input collision in Manager mode.
-
----
-
-# 22. Detecting LIVE sessions
-
-Do not define LIVE using file modification time alone.
-
-Use a `SessionActivityResolver` with the strongest local evidence available, potentially combining:
-
-```text
-Codex process existence
-session JSONL growth
-session metadata
-cwd/session ID/process mapping
-```
-
-If evidence is strong:
-
-```text
-● LIVE
-```
-
-If clearly ended:
-
-```text
-○ ENDED
-```
-
-If uncertain, do not confidently claim LIVE. An intermediate recent/unknown state may be used if useful.
-
-This follows the same strict-evidence philosophy as Actual Model.
-
----
-
-# 23. Multi-session performance model
-
-Manager must not deep-parse every LIVE session continuously.
-
-At the global list/dashboard level:
-
-```text
-Each LIVE session → lightweight incremental tail/state update
-```
-
-Only collect enough for visible global data such as:
-
-```text
-live/ended state
-elapsed
-context
-tokens
-turn count
-tool count
-last activity
-recent errors/compactions
-```
-
-When the user selects one session:
-
-```text
-Selected session
-     ↓
-Deep parser / detail aggregation ON
-     ↓
-Charts + turns + tools + resources + errors
-```
-
-Leaving that session releases/sleeps detail-only work.
-
-Rule:
-
-> Not viewing deeply → do not process deeply.
-
----
-
-# 24. Session detail views
-
-Selecting one session opens:
-
-```text
-Info | Tokens | Turns | Tools | Resources | Errors
-```
-
-The same UI works for LIVE and ENDED sessions.
-
-```text
-LIVE  → incremental tail updates
-ENDED → static/read-only data
-```
-
-## 24.1 Info
-
-Show high-value session facts:
-
-```text
-State
-Project
-CWD
-Session ID
-Start/end
-Elapsed/duration
-Requested model
-Actual model if evidence
-Reasoning
-Turns
-Compactions
-Tool calls
-Retries
-Errors
-Input
-Cached input
-Output
-Reasoning tokens
-```
-
-Primary hero visualization:
-
-### Context Timeline / Context Stream
-
-This is the **signature visualization** of Session Manager.
-
-Example:
-
-```text
-100% ┤
- 80% ┤                            ╭──────╮
- 60% ┤                 ╭──────────╯      │
- 40% ┤       ╭─────────╯                 ╰────╮
- 20% ┤───────╯                              ╰──
-     └──────────────────────────────────────────→
-       T1       T5       T10       T15       T18
-                                      ▲ compact
-```
-
-Compaction markers should be visible when reliable events exist.
-
-## 24.2 Tokens
-
-Detailed summary when supported by JSONL:
-
-```text
-Input total
-Cached input
-Uncached input
-Cache ratio
-Output
-Reasoning output
-Total
-Context current
-Context peak
-Compactions
-```
-
-Do not manufacture unsupported values.
-
-Charts:
-
-1. **Token I/O per turn**
-2. **Cumulative Tokens**
-
-Example Token I/O representation:
-
-```text
-Turn 14   Input   ███████████████  108K
-          Cache   █████████████     92K
-          Output  ██                7.1K
-          Rsn     █                 2.4K
-```
-
-## 24.3 Turns
-
-Table when data permits:
-
-```text
-TURN
-TIME
-DURATION
-INPUT
-CACHE
-OUTPUT
-REASONING
-CONTEXT
-TOOLS
-```
-
-Chart:
-
-### Turn Duration
-
-Updates when a new turn completes for LIVE sessions.
-
-## 24.4 Tools
-
-Aggregate table:
-
-```text
-TOOL
-CALLS
-%
-```
-
-Event list:
-
-```text
-TIME
-TURN
-TOOL
-DETAIL
-```
-
-Example:
-
-```text
-22:31:02  18  Read   src/render.js
-22:31:04  18  Grep   CollectorPlan
-22:31:09  18  Edit   src/state.js
-22:31:13  18  Bash   npm test
-22:31:28  18  MCP    github: search_code
-```
-
-Chart:
-
-### Tool Calls per Turn / Time
-
-The event stream itself is also an important dynamic visual element.
-
-## 24.5 Resources
-
-Resources is an evidence-based inventory, not a file viewer.
-
-Only show historical/session resource claims that the session data actually proves.
-
-Potential rows:
-
-```text
-Skills used
-MCP servers/tools used
-Instructions/rules if reliably attributable
-```
-
-Do not scan today's filesystem and claim those resources existed in an old session.
-
-For current/live environments, structured metadata may include:
-
-### Skills
-
-```text
-name
-description
-scope
-enabled/effective state
-path/source
-dependencies
-calls this run / last used when reliable
-```
-
-Friendly scope mapping:
-
-```text
-user   → Global
-repo   → Project
-system → System
-admin  → Admin
-```
-
-Do not render the full `SKILL.md` body.
-
-### Instructions / AGENTS
-
-Show metadata only:
-
-```text
-scope
-path
-precedence/effective chain
-size
-line count
-modified time
-optional first heading
-```
-
-Do not display the full body.
-
-### MCP
-
-Show sanitized inventory:
-
-```text
-server name
-scope
-transport
-configured/active/error
-tool count
-calls this run
-last used
-sanitized command/endpoint
-```
-
-Never display API keys, auth tokens, passwords, or raw secret environment values.
-
-### Rules / Permissions
-
-Show summaries such as:
-
-```text
-sandbox
-approval policy
-network restriction
-rule files/sources
-rule counts if safely available
-effective source
-```
-
-## 24.6 Errors
-
-Show timeline of:
-
-```text
-Retries
-Errors
-Tool failures
-Stream failures
-Compactions
-```
-
-Example:
-
-```text
-TIME       TURN   TYPE          DETAIL
-22:04:18      7   Retry         stream retry
-22:17:42     13   Tool error    Bash exit 1
-22:17:51     13   Retry         tool retried
-22:29:04     17   Compaction    context compacted
-```
-
-Optional lightweight event timeline:
-
-```text
-01────03────05────07────09────11────13────15────17────18
-                   R                       ×R              C
-```
-
----
-
-# 25. Session Manager realtime behavior
-
-For LIVE sessions, realtime updates may include:
-
-```text
-Tokens
-Context
-Turns
-Tool calls
-Errors/retries
-Compactions
-Elapsed time
-Model/session metadata when the source changes
-```
-
-Session Manager should tail appended JSONL incrementally using file offset/size tracking.
-
-Do not repeatedly re-read the entire file.
-
-Realtime does **not** mean fake animation or fixed frame rate.
-
-```text
-New data → update affected state → repaint affected rows/chart
-No change → no repaint
-```
-
----
-
-# 26. Cyber/animation policy
-
-Allowed visual movement:
-
-- token sparklines changing with data;
-- context timeline extending with new data;
-- tool histogram updating with events;
-- new tool events appending;
-- elapsed time updating at a low cadence;
-- optional subtle LIVE pulse in Cyber theme.
-
-Avoid:
-
-- high-FPS decorative animation;
-- constant spinners for stable states;
-- repainting unchanged dashboards;
-- expensive glow/blurring effects impossible in terminal anyway.
-
-Terminal techniques may include:
-
-```text
-ANSI cursor positioning
-alternate screen buffer
-24-bit color
-256/16-color fallback
-Unicode block characters
-Braille charts
-mouse tracking in Manager only
-partial screen repaint
-```
-
-Fallback hierarchy:
-
-```text
-TRUECOLOR → 256 COLOR → 16 COLOR → MONO
-Braille   → Block chars → ASCII
-```
-
-Data semantics must remain identical across representations.
-
----
-
-# 27. Session storage management
-
-Session Manager owns the storage-management UI for Codex session files.
-
-Default behavior is read-only.
-
-No automatic deletion.
-
-No 30/90/180-day retention policy.
-
-No background cleanup.
-
-Storage summary may show:
-
-```text
-Sessions
-Total size
-Oldest session
-Newest session
-Largest sessions
-Size by project
-Size by age
-```
-
-Expensive breakdowns should be computed only when Storage is opened or requested.
-
-## Selection model
-
-```text
-Space   toggle current row
-A       select all visible/filtered ended sessions
-N       select none
-I       invert visible selection
-D       delete selected
-```
-
-`Select All` means **all currently visible/filtered eligible sessions**, not hidden rows.
-
-LIVE sessions are not eligible for deletion:
-
-```text
-[─] ● LIVE  current-session
-```
-
-Footer should always show selection impact:
-
-```text
-Selected: 37 sessions · 624 MB
-```
-
-## Delete confirmation
-
-Deletion must clearly say that underlying Codex session files are being removed.
-
-Example:
-
-```text
-DELETE SELECTED SESSIONS
-
-37 Codex sessions
-624 MB
-
-These session files will be permanently removed
-from ~/.codex/sessions.
-
-Cancel / Delete
-```
-
-Deletion is the only intentional write operation against Codex session history in v1.
-
----
-
-# 28. Performance architecture
-
-Performance is a product requirement, not an optimization phase.
-
-Four hard rules:
-
-> **What you don't display, we don't collect.**
-
-> **What you're not viewing, we don't continuously poll.**
-
-> **What hasn't changed, we don't repaint.**
-
-> **OS-specific behavior stays behind a Platform Adapter.**
-
-## 28.1 Demand graph
-
-Configuration and active UI create data demand:
-
-```text
-User Config
-   │
-   ├── enabled sections
-   ├── enabled metrics
-   ├── header selections
-   ├── Manager active screen
-   └── Manager selected session/tab
-          │
-          ▼
-      DEMAND GRAPH
-          │
-          ▼
-   COLLECTOR MANAGER
-```
-
-Do not start optional collectors with no consumer.
-
-## 28.2 Metric-level demand
-
-Demand must be granular.
-
-Example:
-
-```text
-Git branch/dirty selected
-→ branch + dirty collector only
-
-Git Δ+/- selected
-→ add diff-stat work
-
-Git ahead/behind selected
-→ add remote-tracking comparison work
-```
-
-Do not enable every Git operation just because the Git header item exists.
-
-## 28.3 Active-view demand
-
-Heavy Manager work should run only while its view/session requires it.
-
-Example:
-
-```text
-Global session list
-→ lightweight session tails
-
-Select Session B / Tokens
-→ deep token aggregation for Session B ON
-
-Leave Session B
-→ detail-only processing sleeps/releases
-```
-
-## 28.4 Central scheduler
-
-Avoid many independent `setInterval` loops.
-
-Use one scheduler that understands:
-
-```text
-collector demand
-priority
-TTL/cadence
-last run
-last duration
-staleness
-backoff
-```
-
-Priority concept:
-
-```text
-1. PTY input/output
-2. terminal correctness / resize
-3. Codex lifecycle
-4. current-run rollout/session state
-5. visible UI state
-6. optional telemetry
-7. cosmetic/background work
-```
-
-Optional telemetry must never make Codex interaction lag.
-
-## 28.5 Event-driven first
-
-Prefer event/incremental processing for:
-
-```text
-PTY output
-terminal resize
-process exit
-rollout/session append
-keyboard/mouse in Manager
-```
-
-Poll only when necessary.
-
-## 28.6 Adaptive backoff
-
-If an optional collector becomes expensive, automatically reduce its cadence.
-
-Concept:
-
-```text
-normal      2s
-expensive   4s
-still slow  8s
-```
-
-Recover gradually when cheap again.
-
-## 28.7 Render on change
-
-No fixed global FPS loop.
-
-```text
-State change
-   ↓
-mark dirty
-   ↓
-render debounce/rate limit
-   ↓
-compute affected frame
-   ↓
-ANSI diff
-   ↓
-one/batched stdout write
-```
-
-Idle Monitor should approach sleeping behavior.
-
-## 28.8 Diff rendering
-
-Compare previous/new terminal frames and repaint only changed rows/cells where practical.
-
-Batch ANSI output to minimize ConPTY/terminal overhead.
-
-## 28.9 Bounded buffers
-
-All live charts use bounded RAM ring buffers.
-
-Do not append samples forever.
-
-Do not persist performance/chart telemetry to disk by default.
-
----
-
-# 29. Suggested collector cadences
-
-These are starting points, not fixed guarantees:
-
-```text
-PTY                         event-driven
-rollout/session tail        event-driven/incremental when possible
-HUD/Manager repaint         on change, rate-limited
-Monitor CPU/RAM             ~1s only if displayed
-system CPU/RAM              ~1–2s only if displayed
-Codex process tree          ~2–5s only if displayed
-Git basic                   ~5–10s or trigger-based
-Disk                        ~10–30s only if displayed
-Project size                ~30–60s only if displayed
-Package cache               minutes/on-demand only
-```
-
-The collector scheduler may back off automatically.
-
----
-
-# 30. Cross-platform architecture
-
-Supported design target:
+Design target:
 
 ```text
 Windows
@@ -1692,51 +405,21 @@ Linux
 macOS
 ```
 
-The user-facing product should behave the same.
-
-Only OS integration differs.
+Phase 07 platform contract:
 
 ```text
-                    CODEX MONITOR CORE
-                           │
-           state / parser / scheduler / UI
-                           │
-                  PLATFORM INTERFACE
-                 ┌─────────┼─────────┐
-                 ▼         ▼         ▼
-              Windows    Linux     macOS
+spawnPty
+getSystemUsage
+getProcessTree
+getDiskInfo
+paths
+capabilities
+cleanup
 ```
 
-Suggested source organization:
+`openHistoryTerminal` is obsolete and must be removed from the platform contract because Monitor no longer owns a separate History launcher.
 
-```text
-src/
-├── core/
-├── collectors/
-├── live/
-├── manager/
-├── ui/
-└── platform/
-    ├── index.js
-    ├── windows.js
-    ├── linux.js
-    └── macos.js
-```
-
-Avoid `if (process.platform...)` scattered throughout business logic.
-
-Potential platform differences:
-
-```text
-PTY implementation
-process/system APIs
-process-tree implementation
-signals/terminal restore
-filesystem/config paths
-installer/updater details
-```
-
-Normalized results should share common structures, e.g.:
+Normalized process shape:
 
 ```text
 ProcessInfo {
@@ -1746,546 +429,75 @@ ProcessInfo {
   command
   cpuPercent
   memoryBytes
-  startedAt
+  ageMs
 }
 ```
 
-Exact process-tree implementation remains an implementation/benchmark decision.
+Unsupported capabilities must degrade explicitly instead of crashing or fabricating data.
+
+Optional platform telemetry must not block PTY/input. Windows CIM/PowerShell work is asynchronous/cached; POSIX optional command execution should follow the same non-blocking principle during Phase 07.
+
+Windows must be manually verified. Linux/macOS must remain explicitly UNVERIFIED until real CI/machine evidence exists.
 
 ---
 
-# 31. Freshness
+## 15. Session Manager direction
 
-Normalized state should explicitly understand freshness:
+Session Manager owns interactive local analytics and storage management for LIVE + ENDED sessions.
+
+Global tracking must stay lightweight; deep aggregation activates only for the selected session/view.
+
+Primary dashboard chart direction remains:
+
+1. Token Activity
+2. Context Pressure
+3. Tool Activity
+
+Selected-session signature chart remains Context Timeline/Stream with compaction markers when evidence exists.
+
+Detailed views remain conceptually:
 
 ```text
-waiting
-current
-stale
+Info | Tokens | Turns | Tools | Resources | Errors
 ```
 
-Stale data must not silently masquerade as current data.
+Historical resources must be evidence-based, not inferred from today's filesystem.
 
-This applies especially to:
-
-- quota;
-- session activity;
-- model metadata;
-- optional local telemetry;
-- Manager session tails.
+Session deletion is read-only by default, never automatic, never allowed for LIVE sessions, and always requires explicit confirmation.
 
 ---
 
-# 32. Session Health
+## 16. Network/privacy
 
-Session Health is a derived UX state, not official Codex telemetry.
+Normal monitoring must perform no network requests and no telemetry upload.
 
-Possible states:
+Do not add remote quota lookup, pricing lookup, provider metadata lookup, transcript upload, machine telemetry upload or extra model calls.
+
+Updater/network productization is isolated from monitoring and handled in later roadmap phases.
+
+---
+
+## 17. Numbered roadmap status
 
 ```text
-WAITING
-OK
-LONG
-HIGH
-PRESSURE
+Phase 01  Correctness / terminal safety              COMPLETE checkpoint
+Phase 02  Normalized state / parsers                 COMPLETE checkpoint
+Phase 03  Demand / scheduler / diff infrastructure   COMPLETE checkpoint
+Phase 04  Live UI / responsive / custom foundation  COMPLETE checkpoint
+Phase 05  Live UI fuzz / UX gate                     COMPLETE checkpoint
+Phase 06  Passive Live HUD completion                CLOSED by product decision
+Phase 07  Platform adapters                          ACTIVE
+Phase 08+ Session Manager / productization           PLANNED / scaffold may exist
 ```
 
-It should rely mainly on context pressure, optionally informed by:
+Closing a phase means new polish moves to backlog unless it exposes a correctness/integration blocker.
 
-- turns since compact;
-- compact history;
-- session age.
-
-Exact thresholds are deliberately not frozen in v1 spec.
+Phase 06 backlog includes runtime Beast animation, polished Custom UX, richer SYSTEM storage metrics, trusted LiteLLM ROUTED telemetry, and non-blocking cosmetic refinements.
 
 ---
 
-# 33. CLI contract
+## 18. Change control
 
-Canonical form:
+When product semantics change, update this file/version/date or add a superseding decision under `docs/decisions/`.
 
-```text
-codexm [monitor options] [codex arguments]
-```
-
-## Run / wrapper
-
-```powershell
-codexm
-codexm [codex arguments...]
-```
-
-## Session Manager
-
-```powershell
-codexm --manager
-```
-
-No public `--history` command in the current v1 contract.
-
-## Configuration
-
-```powershell
-codexm --configure
-codexm --reset
-codexm --preset <recommended|compact|full|custom>
-codexm --theme <color|mono|matrix>
-codexm --lang <vi|en>
-codexm --auth <auto|api|login>
-```
-
-## Diagnostics / maintenance
-
-```powershell
-codexm --doctor
-codexm --diagnostics
-codexm --repair
-```
-
-## Information
-
-```powershell
-codexm --config
-codexm --config-path
-codexm --monitor-version
-```
-
-## Update
-
-```powershell
-codexm --check-update
-codexm --update
-```
-
-## Removal
-
-```powershell
-codexm --uninstall
-```
-
-## Help / pass-through
-
-Monitor owns:
-
-```powershell
-codexm -h
-codexm --help
-```
-
-To guarantee official Codex receives `--help`:
-
-```powershell
-codexm -- --help
-```
-
-Prefer official Codex ownership of normal `--version`; use `--monitor-version` for Monitor version.
-
----
-
-# 34. Reset / repair / diagnostics / uninstall semantics
-
-## `--reset`
-
-Reset Monitor settings and rerun onboarding/configuration.
-
-Must not delete:
-
-- official Codex;
-- Codex auth;
-- Codex session/history files.
-
-## `--repair`
-
-May repair:
-
-- runtime/shim installation;
-- PTY/runtime prerequisites;
-- config migration;
-- broken Monitor-owned files.
-
-Must not rewrite Codex session history.
-
-## `--diagnostics`
-
-Produce a sanitized report.
-
-Never include:
-
-- API keys;
-- access tokens;
-- passwords;
-- prompts/transcripts;
-- unredacted secret env values.
-
-## `--uninstall`
-
-Remove only Codex Monitor components.
-
-Never remove:
-
-- official Codex CLI;
-- official Codex auth;
-- `~/.codex/sessions`;
-- Codex-owned history.
-
-Default behavior may keep Monitor config/cache unless user explicitly chooses removal.
-
----
-
-# 35. Update subsystem
-
-GitHub Releases is the source of truth for Monitor releases.
-
-Normal startup flow:
-
-```text
-codexm start
-   ↓
-read current version + last check
-   ↓
-if < 24h → skip network
-if >=24h → launch Codex normally + non-blocking release check
-   ↓
-cache latest metadata
-```
-
-Update checks must never block Codex startup.
-
-If a background check completes after the Codex TUI is settled, cache the result and notify on a later safe startup instead of corrupting the terminal.
-
-Suggested notification:
-
-```text
-↑ Codex Monitor v1.2.0 available · run codexm --update
-```
-
-Use informational colors, not error red.
-
-Auto-check default: ON.  
-Auto-install default: OFF.  
-Stable releases only initially.
-
-Possible future advanced flag:
-
-```text
---no-update-check
-```
-
----
-
-# 36. Security and privacy
-
-Key security principle: Monitor has a relatively small runtime attack surface; distribution/update supply chain is a larger concern.
-
-Requirements:
-
-- never log API keys/access tokens;
-- never upload telemetry;
-- do not copy prompts/transcripts unnecessarily;
-- treat PTY/JSONL content as data, never executable commands;
-- sanitize ANSI/control sequences where data enters Manager rendering;
-- config/cache contain no secrets;
-- diagnostics redact sensitive values;
-- updater verifies release integrity;
-- public Windows installer/binary should use code signing + timestamp when feasible;
-- release pipeline should produce SHA256 hashes.
-
-Recommended CI release flow:
-
-```text
-tests
-→ package
-→ sign
-→ timestamp
-→ verify
-→ SHA256
-→ GitHub Release
-```
-
----
-
-# 37. History/session deletion safety
-
-Because Session Manager may delete Codex-owned session files, deletion UX must be explicit and conservative.
-
-Rules:
-
-1. Default Manager operation is read-only.
-2. No auto cleanup.
-3. No retention policy.
-4. LIVE sessions cannot be selected for deletion.
-5. `Select All` only selects eligible visible/filtered sessions.
-6. Always show selected session count and reclaimable size.
-7. Always show a confirmation before deletion.
-8. Confirmation must identify that Codex session files are being permanently removed.
-
----
-
-# 38. What is intentionally not in v1
-
-The following are deliberately out of scope unless a later written decision adds them:
-
-- Live Monitor interactive tabs;
-- Live Monitor function-key navigation;
-- F2/F4 Monitor shortcuts;
-- separate `--history` mode;
-- Monitor-owned history database;
-- historical CPU/RAM/process telemetry;
-- generic process manager inside Session Manager;
-- ports/network/GPU/temperature dashboard;
-- automatic session retention/cleanup;
-- pricing/cost calculation;
-- remote quota APIs;
-- remote analytics/telemetry;
-- extra model calls for summaries;
-- session transcript duplication;
-- session deletion from Live Monitor;
-- free-form user header template language.
-
----
-
-# 39. Implementation phases
-
-## Phase A — Data correctness
-
-Priority P0:
-
-- enforce hard current-run reset;
-- remove stale previous-session quota merges;
-- isolate API vs Login quota;
-- strict Actual Model evidence;
-- normalized state + freshness;
-- reliable current session discovery;
-- incremental JSONL tailing;
-- preserve terminal restore/crash safety.
-
-## Phase B — Demand-driven core
-
-- Demand Graph;
-- Collector Manager;
-- central scheduler;
-- metric-level dependencies;
-- event-driven updates;
-- adaptive collector backoff;
-- bounded buffers.
-
-## Phase C — Live UI foundation
-
-- passive HUD only;
-- presets;
-- header max-item policy;
-- responsive lane layout;
-- Unicode cell width;
-- ANSI diff renderer;
-- themes;
-- configuration migration/versioning.
-
-## Phase D — Session Manager core
-
-- discover all local sessions;
-- classify LIVE/ENDED with evidence;
-- lightweight tracking of multiple LIVE sessions;
-- global session list/search/filter/sort;
-- selected-session deep parser;
-- storage accounting;
-- safe deletion flow.
-
-## Phase E — Session analytics UI
-
-- cyber/futuristic TUI chrome;
-- global Token Activity chart;
-- global Context Pressure chart;
-- global Tool Activity chart;
-- selected-session Context Timeline hero chart;
-- Token I/O chart;
-- Cumulative Tokens chart;
-- Turn Duration chart;
-- Tool Calls chart;
-- error/compaction event timeline;
-- truecolor/256/16/mono fallbacks;
-- Braille/block/ASCII chart fallbacks.
-
-## Phase F — Cross-platform/productization
-
-- Windows/Linux/macOS platform adapters;
-- installer/repair/uninstaller;
-- update subsystem;
-- signing/release pipeline;
-- compatibility testing;
-- README/SECURITY/PRIVACY/CHANGELOG documentation.
-
----
-
-# 40. Release checklist
-
-Before calling v1 production-ready, verify:
-
-### Data correctness
-
-- [ ] No previous-session telemetry leaks into Live.
-- [ ] `0` vs `--` semantics are correct.
-- [ ] Login quota starts `--` until current-run evidence exists.
-- [ ] API never inherits Login quota.
-- [ ] Actual Model is never guessed.
-- [ ] Freshness/stale states are explicit.
-
-### Live Monitor
-
-- [ ] No Monitor navigation/input interception.
-- [ ] Official Codex input works unchanged.
-- [ ] Layout never word-wraps telemetry unexpectedly.
-- [ ] Borders do not overflow terminal cells.
-- [ ] Resize works without corrupting Codex UI.
-- [ ] Unicode/Vietnamese display width is correct.
-- [ ] Compact mode is genuinely lightweight.
-
-### Performance
-
-- [ ] Disabled metric → collector does not run.
-- [ ] Heavy inactive view → continuous collector does not run.
-- [ ] Unchanged screen → no unnecessary repaint.
-- [ ] No unbounded in-memory chart buffers.
-- [ ] Optional telemetry backs off when expensive.
-- [ ] Codex PTY responsiveness remains priority #1.
-- [ ] Idle CPU/I/O is low on weak hardware.
-
-### Session Manager
-
-- [ ] Multiple concurrent LIVE sessions can be tracked.
-- [ ] Global tracking is lightweight.
-- [ ] Only selected session is deeply parsed.
-- [ ] LIVE/ENDED classification is evidence-based.
-- [ ] Charts update from real data, not fake animation.
-- [ ] Ended sessions render using the same detail semantics.
-- [ ] Historical resources are never inferred from today's filesystem.
-
-### Storage safety
-
-- [ ] No automatic delete.
-- [ ] LIVE sessions cannot be deleted.
-- [ ] Select All only applies to visible eligible sessions.
-- [ ] Selected count/size is shown before delete.
-- [ ] Delete confirmation explicitly mentions Codex session files.
-
-### Network/privacy
-
-- [ ] No monitoring network requests.
-- [ ] No telemetry upload.
-- [ ] Update check is cached and non-blocking.
-- [ ] Automatic release check happens at most about once per 24h.
-- [ ] Diagnostics contain no secrets.
-
-### Cross-platform
-
-- [ ] Same data semantics on Windows/Linux/macOS.
-- [ ] OS logic stays behind adapters.
-- [ ] terminal capability fallback works.
-- [ ] terminal restore works on normal exit and crash/signal paths.
-
----
-
-# 41. Canonical architecture summary
-
-```text
-                               CODEX MONITOR
-                                    │
-                 ┌──────────────────┴──────────────────┐
-                 │                                     │
-                 ▼                                     ▼
-          LIVE MONITOR                           SESSION MANAGER
-             codexm                              codexm --manager
-                 │                                     │
-       Official Codex + HUD                    Independent full TUI
-                 │                                     │
-         current run only                       all local sessions
-         passive display                       LIVE + ENDED sessions
-         no navigation                         multi-session dashboard
-         no hotkeys                            charts / search / filter
-                                                select / delete ended
-                 │                                     │
-                 └──────────────────┬──────────────────┘
-                                    ▼
-                            LOCAL CODEX SOURCES
-                       PTY / JSONL / config / runtime
-                                    │
-                                    ▼
-                             NORMALIZED STATE
-                                    │
-                         demand-driven processing
-                                    │
-                                    ▼
-                            RESPONSIVE ANSI UI
-
-NETWORK:
-GitHub Releases updater only, cached ≤ ~once/24h automatically.
-```
-
----
-
-# 42. Product laws
-
-These statements should be treated as architectural review rules:
-
-> **Live Monitor only observes the current run.**
-
-> **Live Monitor never owns navigation input.**
-
-> **Session Manager owns interactive analytics and session management.**
-
-> **Codex owns history; Monitor reads and presents it.**
-
-> **Multiple LIVE Codex sessions may be monitored concurrently by Manager.**
-
-> **What you don't display, we don't collect.**
-
-> **What you're not viewing, we don't continuously poll.**
-
-> **What hasn't changed, we don't repaint.**
-
-> **Monitoring is local-only; updater is the only automatic network exception.**
-
-> **Do not guess official telemetry. Unknown means `--`.**
-
-> **Same product and semantics across Windows, Linux, and macOS; platform differences stay underneath adapters.**
-
----
-
-# 43. Future Claude CLI reuse
-
-After Codex Monitor is stable, the reusable architecture may be adapted for Claude CLI:
-
-Reusable concepts:
-
-- passive Live Monitor principle;
-- Session Manager concept;
-- demand graph / collector scheduler;
-- normalized state architecture;
-- responsive renderer;
-- ANSI diff rendering;
-- cyber analytics UI;
-- freshness/provenance rules;
-- cross-platform adapters;
-- local-only network policy;
-- updater/product-management commands.
-
-Claude-specific collectors and semantics must be implemented separately. Do not assume Codex event/token/quota/resource semantics are identical to Claude.
-
----
-
-# 44. Change-control rule
-
-This file is the implementation baseline.
-
-When a future decision changes product semantics, do one of the following:
-
-1. update this document and increment its version/date; or
-2. record an explicit decision/amendment under `docs/decisions/` and mark which section it supersedes.
-
-Do not silently change major behavior only in code or chat.
-
-Suggested repository placement:
-
-```text
-docs/PROJECT_SPEC.md
-```
-
+Do not leave major product decisions only in chat or code.
