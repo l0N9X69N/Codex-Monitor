@@ -7,7 +7,8 @@ const steps = [
   ['Phase 08 Session Manager core', process.execPath, ['--test',
     'test/unit/phase8-history-core.test.js',
     'test/unit/phase8-detail-view.test.js',
-    'test/unit/phase8-lightweight-summary.test.js'
+    'test/unit/phase8-lightweight-summary.test.js',
+    'test/unit/phase8-process-evidence.test.js'
   ]]
 ];
 
