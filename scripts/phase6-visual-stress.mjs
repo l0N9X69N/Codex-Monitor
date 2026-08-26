@@ -55,6 +55,10 @@ const CASES = {
     width: 220, height: 50, auth: 'login', state: 'idle',
     config: () => configForCase({ theme: 'color', background: 'terminal' })
   },
+  'beast-ultrawide-6col': {
+    width: 300, height: 50, auth: 'login', state: 'idle',
+    config: () => configForCase({ theme: 'color', background: 'terminal' })
+  },
   'mono-black-5col': {
     width: 220, height: 50, auth: 'login', state: 'thinking',
     config: () => configForCase({ theme: 'mono', background: 'black' })
@@ -112,7 +116,7 @@ const CASES = {
     width: 130, height: 40, auth: 'login', state: 'approval',
     config: () => configForCase({
       preset: 'custom',
-      sections: { context: true, usage: false, session: true, activity: true, system: false },
+      sections: { context: true, usage: false, session: true, activity: true, system: false, beast: false },
       header: ['activity', 'health', 'session-age']
     })
   },
@@ -168,7 +172,7 @@ function renderCase(name, spec) {
   const frame = buildLiveFrame({ state, config, width: spec.width, height: spec.height, nowMs: NOW, projectName: 'Stress Case' });
   process.stdout.write(`\n=== ${name} · ${spec.width}x${spec.height} · ${spec.auth} · ${config.theme}/${config.background} ===\n`);
   process.stdout.write(`${frame.lines.join('\n')}\n`);
-  process.stdout.write(`semantic: columns=${frame.semantic.columns} cap=${frame.semantic.representationCap} rows=${frame.rowCount}\n`);
+  process.stdout.write(`semantic: columns=${frame.semantic.columns} cap=${frame.semantic.representationCap} rows=${frame.rowCount} beast=${frame.semantic.beastMode}\n`);
 }
 
 const args = parseArgs(process.argv.slice(2));
