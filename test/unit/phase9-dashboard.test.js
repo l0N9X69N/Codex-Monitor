@@ -160,9 +160,9 @@ test('operations view prioritizes current state, semantic telemetry, selected se
   assert.match(text, /CURRENT \/ LIVE/);
   assert.match(text, /STATUS \/ EVENTS/);
   assert.match(text, /LIVE TELEMETRY · 60s/);
-  assert.match(text, /TOKEN/);
-  assert.match(text, /TOOLS/);
-  assert.match(text, /CTX/);
+  assert.match(text, /TOKEN RATE/);
+  assert.match(text, /TOOL EVENTS/);
+  assert.match(text, /CONTEXT/);
   assert.match(text, /SELECTED SESSION/);
   assert.match(text, /RECENT SESSIONS/);
 });
@@ -170,7 +170,7 @@ test('operations view prioritizes current state, semantic telemetry, selected se
 test('charts view uses semantic aggregate motion and per-live-session telemetry rows', () => {
   const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 44, mode: 'mono', viewMode: 'charts', telemetry: telemetryFixture() }).lines.join('\n'));
   assert.match(charts, /SYSTEM MOTION · LIVE ONLY · ROLLING 60s/);
-  assert.match(charts, /LIVE SESSIONS · TOKEN SPARK \/ RATE \/ CONTEXT \/ TOOLS/);
+  assert.match(charts, /LIVE SESSIONS · TOKEN \/ RATE \/ CONTEXT \/ TOOLS/);
   assert.match(charts, /alpha/);
   assert.match(charts, /gamma/);
   assert.match(charts, /TOP TOKEN TOTAL · current scope/);
