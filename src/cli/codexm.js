@@ -11,6 +11,7 @@ import { createPlatformAdapter } from '../platform/index.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { codexArgsForLocalResume, localResumePickerIntent, pickLocalResumeSession } from '../runtime/local-resume-picker.js';
+import { runSessionManager } from '../manager/app.js';
 import { renderDemo } from '../ui/demo.js';
 import { parseMonitorArgs } from './args.js';
 
@@ -21,7 +22,7 @@ function printHelp() {
   process.stdout.write('Usage: codexm [monitor options] [codex arguments]\n\n');
   process.stdout.write('Monitor options:\n');
   process.stdout.write('  --help                        Show Monitor help\n');
-  process.stdout.write('  --manager                     Open Session Manager (Phase 08 implementation)\n');
+  process.stdout.write('  --manager                     Open Session Manager\n');
   process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
   process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
@@ -53,8 +54,8 @@ async function main() {
 
   if (parsed.action === 'help') { printHelp(); return 0; }
   if (parsed.action === 'manager') {
-    process.stderr.write('codexm: Session Manager is the v1 analytics UI and will be implemented in Phase 08.\n');
-    return 2;
+    const result = await runSessionManager({ platformAdapter });
+    return result.code;
   }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
