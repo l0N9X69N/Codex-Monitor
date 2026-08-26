@@ -53,6 +53,20 @@ function fmtPercent(value) {
   return n == null ? '--' : `${Math.round(n)}%`;
 }
 
+function fmtEffort(value) {
+  const text = String(value ?? '').trim();
+  return text ? text.toUpperCase() : '--';
+}
+
+function effortToken(value) {
+  const effort = String(value ?? '').trim().toLowerCase();
+  if (['xhigh', 'extra-high', 'extra_high', 'max'].includes(effort)) return 'error';
+  if (effort === 'high') return 'pressure';
+  if (effort === 'medium') return 'session';
+  if (effort === 'low' || effort === 'minimal') return 'dim';
+  return 'secondary';
+}
+
 function fmtAge(atMs, nowMs = Date.now()) {
   const at = finiteOrNull(atMs);
   if (at == null) return '--';
@@ -111,6 +125,7 @@ const PREVIEW_COLUMNS = Object.freeze([
   { key: 'project', title: 'PROJECT', width: 18, value: (row) => row.project ?? 'UNKNOWN' },
   { key: 'session', title: 'SESSION', width: 10, value: (row) => shortSessionId(row) },
   { key: 'model', title: 'MODEL', width: 14, value: (row) => row.model ?? '--' },
+  { key: 'effort', title: 'EFFORT', width: 8, value: (row) => fmtEffort(row.reasoning) },
   { key: 'active', title: 'ACTIVE', width: 7, value: (row) => fmtAge(row.lastActivityAtMs ?? row.modifiedAtMs) },
   { key: 'context', title: 'CTX', width: 6, value: (row) => fmtPercent(rowContextPercent(row)) },
   { key: 'input', title: 'INPUT', width: 8, value: (row) => fmtNum(row.tokens?.input) },
@@ -129,7 +144,7 @@ function tableWidth(columns) {
 
 function previewTableColumns(width) {
   const columns = [...PREVIEW_COLUMNS];
-  const removableOrder = ['reason', 'agents', 'output', 'active', 'size', 'turn', 'tools', 'turnaround'];
+  const removableOrder = ['effort', 'reason', 'agents', 'output', 'active', 'size', 'turn', 'tools', 'turnaround'];
   while (columns.length > 4 && tableWidth(columns) > width) {
     const key = removableOrder.find((candidate) => columns.some((column) => column.key === candidate));
     const index = columns.findIndex((column) => column.key === key);
@@ -173,6 +188,7 @@ function previewTableLines(model, width, rows, mode) {
       else if (!isSelected && column.key === 'project') value = hpaint(raw, 'text', mode);
       else if (!isSelected && column.key === 'session') value = hpaint(raw, 'session', mode);
       else if (!isSelected && column.key === 'model') value = hpaint(raw, 'dim', mode);
+      else if (!isSelected && column.key === 'effort') value = hpaint(raw, effortToken(row.reasoning), mode);
       else if (!isSelected && column.key === 'active') value = hpaint(raw, row.state === 'LIVE' ? 'live' : 'dim', mode);
       else if (!isSelected && column.key === 'context') {
         const pct = rowContextPercent(row);
