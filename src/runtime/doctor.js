@@ -1,10 +1,11 @@
 import os from 'node:os';
 import { detectAuth } from '../core/auth.js';
+import { currentPlatform } from '../platform/common.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 
 export function doctorReport({
   env = process.env,
-  platform = process.platform,
+  platform = currentPlatform(),
   arch = process.arch,
   nodeVersion = process.version,
   stdin = process.stdin,
