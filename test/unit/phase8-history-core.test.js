@@ -9,6 +9,8 @@ import { createFakePlatformAdapter } from '../../src/platform/fake.js';
 import { HistoryEngine } from '../../src/history/engine.js';
 import { runSessionManager } from '../../src/manager/app.js';
 import {
+  buildProcessEvidence,
+  probeSessionIdentity,
   SessionActivityResolver,
   SessionManagerCore,
   SESSION_ACTIVITY,
@@ -48,27 +50,62 @@ test('--manager is Monitor-owned while --history is forwarded to official Codex'
 test('Session Manager entrypoint discovers local sessions without spawning Codex', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'one.jsonl'), sampleSession());
-  const adapter = createFakePlatformAdapter({ paths: { sessions: root } });
+  const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
   const output = captureStream();
   const result = await runSessionManager({ platformAdapter: adapter, stdout: output.stream });
   assert.equal(result.code, 0);
   assert.equal(result.items.length, 1);
   assert.match(output.text(), /Session Manager/);
   assert.equal(adapter.calls.some((item) => item.name === 'spawnPty'), false);
+  assert.equal(adapter.calls.some((item) => item.name === 'getProcessTree'), true);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('metadata discovery of 1000+ sessions does not deep parse session bodies', () => {
+test('metadata discovery of 1000+ sessions never full-reads session bodies', () => {
   const root = tempDir();
   for (let i = 0; i < 1001; i += 1) fs.writeFileSync(path.join(root, `s-${String(i).padStart(4, '0')}.jsonl`), '');
-  let reads = 0;
-  const fsRef = { ...fs, readFileSync: (...args) => { reads += 1; return fs.readFileSync(...args); } };
+  let fullReads = 0;
+  const fsRef = { ...fs, readFileSync: (...args) => { fullReads += 1; return fs.readFileSync(...args); } };
   const core = new SessionManagerCore({ sessionsPath: root, fsRef });
   const index = core.discover();
   assert.equal(index.length, 1001);
-  assert.equal(reads, 0);
+  assert.equal(fullReads, 0);
   assert.ok(index.every((item) => item.parsed === false));
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('bounded identity probe extracts thread/cwd/project/model without deep parsing', () => {
+  const root = tempDir();
+  const file = path.join(root, 'one.jsonl');
+  fs.writeFileSync(file, sampleSession({ threadId: 'thread-probe', cwd: 'C:/work/proj', model: 'gpt-probe' }));
+  const identity = probeSessionIdentity(file, fs, 1024);
+  assert.deepEqual(identity, {
+    threadId: 'thread-probe',
+    cwd: 'C:/work/proj',
+    project: 'proj',
+    model: 'gpt-probe',
+    startedAtMs: Date.parse('2026-08-25T00:00:00Z')
+  });
+  const core = new SessionManagerCore({ sessionsPath: root, identityBytes: 1024 });
+  const [item] = core.discover();
+  assert.equal(item.threadId, 'thread-probe');
+  assert.equal(item.project, 'proj');
+  assert.equal(item.model, 'gpt-probe');
+  assert.equal(item.parsed, false);
+  assert.equal(core.deep.cache.size, 0);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('process evidence is only strong when session identity is matchable', () => {
+  const evidence = buildProcessEvidence([
+    { pid: 10, command: 'node codex.js resume thread-live' },
+    { pid: 11, command: 'unrelated' }
+  ]);
+  assert.deepEqual(evidence({ threadId: null }), { processKnown: false, processMatch: false });
+  assert.deepEqual(evidence({ threadId: 'thread-live' }), { processKnown: true, processMatch: true });
+  assert.deepEqual(evidence({ threadId: 'thread-ended' }), { processKnown: true, processMatch: false });
+  const unavailable = buildProcessEvidence({ supported: false });
+  assert.deepEqual(unavailable({ threadId: 'thread-live' }), { processKnown: false, processMatch: false });
 });
 
 test('activity resolver never claims LIVE from mtime alone', () => {
@@ -91,19 +128,27 @@ test('activity resolver accepts growth or process match as LIVE evidence and str
   assert.equal(resolver.resolve({ id: 's3', sizeBytes: 50, modifiedAtMs: 20_000 }, { processKnown: true, processMatch: false }), SESSION_ACTIVITY.ENDED);
 });
 
-test('multiple growing sessions update independently', () => {
+test('multiple growing sessions update independently and retain LIVE briefly across idle polls', () => {
   const root = tempDir();
   const a = path.join(root, 'a.jsonl');
   const b = path.join(root, 'b.jsonl');
   fs.writeFileSync(a, '');
   fs.writeFileSync(b, '');
-  const core = new SessionManagerCore({ sessionsPath: root });
+  let nowMs = 1000;
+  const core = new SessionManagerCore({
+    sessionsPath: root,
+    now: () => nowMs,
+    activityResolver: new SessionActivityResolver({ now: () => nowMs, staleAfterMs: 1000 })
+  });
   core.discover();
   core.refresh();
   fs.appendFileSync(a, 'x');
   let items = core.refresh();
   assert.equal(items.find((item) => item.filePath === a).state, SESSION_ACTIVITY.LIVE);
   assert.equal(items.find((item) => item.filePath === b).state, SESSION_ACTIVITY.UNKNOWN);
+  nowMs += 500;
+  items = core.refresh();
+  assert.equal(items.find((item) => item.filePath === a).state, SESSION_ACTIVITY.LIVE);
   fs.appendFileSync(b, 'y');
   items = core.refresh();
   assert.equal(items.find((item) => item.filePath === b).state, SESSION_ACTIVITY.LIVE);
