@@ -1,22 +1,64 @@
 BODY: belly-max
 GROUP: CONTEXT / RESET
-STATUS: DRAFT KEYFRAMES
+STATUS: DRAFT STORYBOARD
 
 ACTION context.eat
-At max bucket, eating does not grow the body further. Play a short stuffed reaction: food -> nom -> chew -> gulp -> blink/wag -> remain belly-max.
+See `eat.txt`. BELLY MAX cannot grow further; eating ends with stuffed blink/wag.
 
 ACTION context.poop-slim
-Primary compact/reset visual.
-Beat:
-1 look around
-2 walk/trot toward free side of track
-3 squat
-4 tiny poop marker `*` appears behind dog
-5 stand/shake
-6 switch body to belly-2
-7 kick ground / trot away
+Purpose: belly-max -> belly-2 when real context decreases.
 
-If context reduction crosses multiple buckets, scheduler may chain belly-max -> belly-2 -> belly-1 -> normal with short pauses rather than one grotesque morph.
+FRAME 01 — LOOK BACK
+--------------------------------------------------
+              __
+     /(______()'`;
+      /*       /`
+     /         \
+     \\___    __/
+        \\"-'\\
+
+FRAME 02 — SLOW WALK TO EDGE
+--------------------------------------------------
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \\___    __/
+       //"-'\\
+
+FRAME 03 — SQUAT
+--------------------------------------------------
+              __
+      (______()'`;
+      /        /`
+     /         \
+     \\_____  __/
+
+FRAME 04 — POOP
+--------------------------------------------------
+              __
+      (______()'`;
+      /        /`
+     /         \
+     \\_____  __/  *
+
+FRAME 05 — KICK / SHRINK START
+--------------------------------------------------
+             __
+     /(_____()'`;
+      /*      /`   *
+      \\_    _/
+      //"-'\\
+
+FRAME 06 — BELLY +2
+--------------------------------------------------
+             __
+     \\(_____()'`;
+      /*      /`
+      \\_    _/
+       \\"-'\\
+
+For a large reset, chain belly-max -> belly-2 -> belly-1 -> normal using each body's poop-slim storyboard.
 
 ACTION reset.wake-stretch
-If exhausted/sleeping, wake first or coordinate wake with compact event. Reset energy to 100. Body changes only according to real context.
+Wake first if sleeping; then apply the actual context-derived bodyState. Reset energy to 100.

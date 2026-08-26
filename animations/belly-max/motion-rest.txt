@@ -1,28 +1,129 @@
 BODY: belly-max
-GROUP: MOTION + FATIGUE + SLEEP
-STATUS: DRAFT KEYFRAMES
+GROUP: MOTION / REST / SLEEP
+STATUS: DRAFT STORYBOARD
 
-motion.walk: slow, clear leg alternation.
-motion.trot: moderate X movement.
-motion.run: short steps + optional belly bounce; still readable as running.
-motion.explore: wide terminal allows a long traversal even for belly-max.
-
-Run rough A
+ACTION motion.walk
+FRAME 01 — WALK A
+--------------------------------------------------
               __
      /(______()'`;
-      /*       /`__
+      /*       /`
      /         \
-     \___    __/
+     \\___    __/
        //"-'\\
-Run rough B
+
+FRAME 02 — WALK B
+--------------------------------------------------
               __
      \\(______()'`;
       /*       /`
      /         \
-     \___    __/
-        \\"-^^
+     \\___    __/
+        \\"-'//
 
-DRAFT: refine legs after preview.
+FRAME 03 — WALK C
+--------------------------------------------------
+              __
+     /(______()'`;
+      /*       /`
+     /         \
+     \\___    __/
+        \\"-'\\
 
-EXHAUSTED/SLEEP
-Required sequence: yawn -> slow walk -> lie down -> curl/sleep. While sleeping: breathe A/B + occasional ear twitch + Z pulse. Sleep latches until reset-class event.
+FRAME 04 — WALK D
+--------------------------------------------------
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \\___    __/
+       //"-'\\
+
+ACTION motion.run
+Belly-max run is intentionally short-stride and bouncy.
+
+FRAME 01 — RUN A
+--------------------------------------------------
+              __
+     /(______()'`;
+      /*       /`__
+     /         \
+     \\___    __/
+      //"----'\\
+
+FRAME 02 — AIR TINY
+--------------------------------------------------
+              __
+     \\(______()'`;
+      /*       /`
+     /         \
+     \\___    __/
+      //"----^^
+
+FRAME 03 — RUN B
+--------------------------------------------------
+              __
+     /(______()'`;
+      /*       /`
+     /         \
+     \\___    __/
+        \\"-'//
+
+ACTION sleep.lie-down
+FRAME 01 — BIG YAWN
+--------------------------------------------------
+              __
+     /(______()'`O
+      /*       /`
+     /         \
+     \\___    __/
+        \\"-'\\
+
+FRAME 02 — LOWER
+--------------------------------------------------
+              __
+      (______()'`;
+      /        /`
+     /          \
+     \\_________/
+
+FRAME 03 — EYES CLOSE
+--------------------------------------------------
+              __
+      (______()_`;
+      /        /`
+     /          \
+     \\_________/
+
+ACTION sleep.breathe
+FRAME 01 — SLEEP A
+--------------------------------------------------
+           z
+      (______()_`;
+      /        /`
+     /          \
+     \\_________/
+
+FRAME 02 — SLEEP B
+--------------------------------------------------
+              Z
+     /(______()_`;
+      /        /`
+     /          \
+     \\_________/
+
+FRAME 03 — EAR TWITCH
+--------------------------------------------------
+           z
+     \\(______()_`;
+      /        /`
+     /          \
+     \\_________/
+
+FRAME 04 — SLEEP A
+--------------------------------------------------
+           z
+      (______()_`;
+      /        /`
+     /          \
+     \\_________/

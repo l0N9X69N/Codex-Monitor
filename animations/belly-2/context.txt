@@ -1,14 +1,60 @@
 BODY: belly-2
 GROUP: CONTEXT / RESET
-STATUS: DRAFT KEYFRAMES
+STATUS: DRAFT STORYBOARD
 
 ACTION context.eat
-Purpose: belly-2 -> belly-max.
-This is the final growth stage and should feel satisfying: hop/food/nom/chew/gulp -> belly grows downward/back -> stuffed reaction.
-Use current `../eat_preview.txt` frames as reference.
+See `eat.txt` for the validated BELLY +2 sequence and grow transition toward BELLY MAX.
 
 ACTION context.poop-slim
-Purpose: belly-2 -> belly-1 on real context reduction.
-Beat: look around -> move to free corner -> squat -> tiny `*` -> stand -> switch silhouette to belly-1 -> kick ground/trot away.
+Purpose: belly-2 -> belly-1 when real context decreases.
 
-Large compact may immediately schedule another slim step if context target is normal.
+FRAME 01 — LOOK BACK
+--------------------------------------------------
+             __
+     /(_____()'`;
+      /*      /`
+      \\_    _/
+       \\"-'\\
+
+FRAME 02 — WALK TO EDGE
+--------------------------------------------------
+             __
+     \\(_____()'`;
+      /*      /`
+      \\_    _/
+      //"-'\\
+
+FRAME 03 — SQUAT
+--------------------------------------------------
+             __
+      (_____()'`;
+      /       /`
+     /__    _/
+      \\___/
+
+FRAME 04 — POOP
+--------------------------------------------------
+             __
+      (_____()'`;
+      /       /`
+     /__    _/   *
+      \\___/
+
+FRAME 05 — KICK / SLIM
+--------------------------------------------------
+             __
+      /(____()'`;
+       /*     /`   *
+       \\_   _/
+       //"-'\\
+
+FRAME 06 — BELLY +1
+--------------------------------------------------
+             __
+      \\(____()'`;
+       /*     /`
+       \\_   _/
+        \\"-'\\
+
+ACTION reset.wake-stretch
+Use sleep/wake frames in `motion-rest.txt`; after wake, choose bodyState from current real context.
