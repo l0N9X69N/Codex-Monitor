@@ -29,9 +29,9 @@ function row(id, overrides = {}) {
 }
 
 const rows = [
-  row('alpha', { state: 'LIVE', project: 'alpha', lastActivityAtMs: 3000, tokens: { input: 1000, cached: 500, output: 200, reasoning: 50, contextUsed: 180_000, contextWindow: 200_000 }, toolCount: 6, recentRetries: [{ atMs: 1 }] }),
-  row('beta', { state: 'ENDED', project: 'beta', lastActivityAtMs: 1000, tokens: { input: 400, cached: 10, output: 50, reasoning: 0, contextUsed: 100_000, contextWindow: 200_000 }, toolCount: 2, recentErrors: [{ atMs: 1 }] }),
-  row('gamma', { state: 'LIVE', project: 'gamma', lastActivityAtMs: 2000, tokens: { input: 50, cached: 0, output: 10, reasoning: 0, contextUsed: 40_000, contextWindow: 200_000 }, toolCount: null, observedToolCount: 3, recentCompactions: [{ atMs: 1 }] })
+  row('alpha', { state: 'LIVE', project: 'alpha', threadId: 'thread-alpha', lastActivityAtMs: 3000, tokens: { input: 1000, cached: 500, output: 200, reasoning: 50, contextUsed: 180_000, contextWindow: 200_000 }, toolCount: 6, recentRetries: [{ atMs: 1 }] }),
+  row('beta', { state: 'ENDED', project: 'beta', threadId: 'thread-beta', lastActivityAtMs: 1000, tokens: { input: 400, cached: 10, output: 50, reasoning: 0, contextUsed: 100_000, contextWindow: 200_000 }, toolCount: 2, recentErrors: [{ atMs: 1 }] }),
+  row('gamma', { state: 'LIVE', project: 'gamma', threadId: 'thread-gamma', lastActivityAtMs: 2000, tokens: { input: 50, cached: 0, output: 10, reasoning: 0, contextUsed: 40_000, contextWindow: 200_000 }, toolCount: null, observedToolCount: 3, recentCompactions: [{ atMs: 1 }] })
 ];
 
 test('dashboard model summarizes evidence and ranks primary charts without fabricating values', () => {
@@ -45,6 +45,7 @@ test('dashboard model summarizes evidence and ranks primary charts without fabri
   assert.equal(model.charts.tokens[0].id, 'alpha');
   assert.equal(model.charts.context[0].id, 'alpha');
   assert.equal(model.charts.tools[0].id, 'alpha');
+  assert.match(model.charts.tokens[0].label, /alpha/);
 });
 
 test('dashboard table supports live/ended scope, search, sort and stable selected row', () => {
@@ -59,6 +60,19 @@ test('dashboard table supports live/ended scope, search, sort and stable selecte
 
   model = buildSessionDashboardModel(rows, { scope: 'ended' });
   assert.deepEqual(model.rows.map((item) => item.id), ['beta']);
+});
+
+test('charts obey current scope and search instead of leaking hidden sessions', () => {
+  const ended = buildSessionDashboardModel(rows, { scope: 'ended' });
+  assert.deepEqual(ended.charts.tokens.map((item) => item.id), ['beta']);
+  assert.deepEqual(ended.charts.context.map((item) => item.id), ['beta']);
+  assert.deepEqual(ended.charts.tools.map((item) => item.id), ['beta']);
+
+  const none = buildSessionDashboardModel(rows, { scope: 'live', search: 'beta' });
+  assert.equal(none.rows.length, 0);
+  assert.equal(none.charts.tokens.length, 0);
+  assert.equal(none.charts.context.length, 0);
+  assert.equal(none.charts.tools.length, 0);
 });
 
 test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ultrawide across view modes', () => {
@@ -80,21 +94,24 @@ test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ul
   }
 });
 
-test('operations view prioritizes LIVE and selected preview instead of telemetry wall', () => {
+test('operations view prioritizes current state, selected session and recent sessions', () => {
   const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'operations' }).lines.join('\n'));
-  assert.match(text, /LIVE SESSIONS/);
-  assert.match(text, /SELECTED PREVIEW/);
-  assert.match(text, /TOKEN ACTIVITY/);
-  assert.match(text, /RECENT \/ SESSIONS/);
+  assert.match(text, /CURRENT \/ LIVE/);
+  assert.match(text, /STATUS \/ EVENTS/);
+  assert.match(text, /TOKEN RANKING/);
+  assert.match(text, /SELECTED SESSION/);
+  assert.match(text, /RECENT SESSIONS/);
   assert.doesNotMatch(text, /TOOL ACTIVITY/);
 });
 
-test('charts view exposes boxed primary charts while table view keeps charts secondary', () => {
+test('charts view emphasizes telemetry rankings and keeps session list compact', () => {
   const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'charts' }).lines.join('\n'));
   assert.match(charts, /TOKEN ACTIVITY/);
   assert.match(charts, /CONTEXT PRESSURE/);
   assert.match(charts, /TOOL ACTIVITY/);
-  assert.match(charts, /SELECTED \/ EVENTS/);
+  assert.match(charts, /SCOPE SUMMARY/);
+  assert.match(charts, /SELECTED SESSION/);
+  assert.match(charts, /RECENT/);
 
   const table = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 36, mode: 'mono', viewMode: 'table' }).lines.join('\n'));
   assert.match(table, /SESSION INDEX/);
@@ -109,6 +126,12 @@ test('auto view resolves from terminal geometry without changing data semantics'
   assert.equal(resolveManagerViewMode('auto', 'wide'), 'operations');
   assert.equal(resolveManagerViewMode('auto', 'ultrawide'), 'charts');
   assert.equal(resolveManagerViewMode('operations', 'ultrawide'), 'operations');
+});
+
+test('selected row remains structurally visible in mono mode', () => {
+  const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 36, mode: 'mono', viewMode: 'table', selectedId: 'gamma' }).lines.join('\n'));
+  assert.match(text, /SELECTED 2\/3/);
+  assert.match(text, /▸\s+LIVE\s+gamma/);
 });
 
 test('selected inspect is visibly distinct, exact-session scoped and responsive', () => {
