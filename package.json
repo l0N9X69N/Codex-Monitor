@@ -37,6 +37,7 @@
     "verify:phase5": "node ./scripts/phase5-auto-verify.mjs",
     "verify:phase6": "node ./scripts/phase6-auto-verify.mjs",
     "verify:phase7": "node ./scripts/phase7-auto-verify.mjs",
+    "verify:phase8": "node ./scripts/phase8-auto-verify.mjs",
     "demo:phase5": "node ./scripts/phase5-demo-matrix.mjs",
     "demo:phase6": "node ./scripts/phase6-visual-stress.mjs",
     "demo:history": "node ./scripts/history-demo-gallery.mjs",
