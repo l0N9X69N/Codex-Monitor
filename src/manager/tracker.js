@@ -36,14 +36,14 @@ export class SessionManagerTracker {
     try {
       const value = await this.platformAdapter.getProcessTree();
       if (Array.isArray(value)) {
-        this.processEvidence = buildProcessEvidence(value, { nowMs });
+        this.processEvidence = buildProcessEvidence(value, { nowMs, sessions: this.core.index });
         this.lastProcessError = null;
       } else {
-        this.processEvidence = buildProcessEvidence(null, { nowMs });
+        this.processEvidence = buildProcessEvidence(null, { nowMs, sessions: this.core.index });
         this.lastProcessError = value?.detail ?? null;
       }
     } catch (error) {
-      this.processEvidence = buildProcessEvidence(null, { nowMs });
+      this.processEvidence = buildProcessEvidence(null, { nowMs, sessions: this.core.index });
       this.lastProcessError = error?.message ?? 'process query failed';
     }
     return true;
@@ -67,6 +67,10 @@ export class SessionManagerTracker {
         this.summariesInitialized = true;
       } else {
         for (const item of this.core.index) this.core.summaries.ensure(item, { bootstrap: false });
+      }
+      if (processPolled) {
+        await this.refreshProcessEvidence(nowMs + this.processIntervalMs);
+        this.core.refreshKnown({ processEvidence: this.processEvidence });
       }
     } else if (nowMs - this.lastKnownRefreshAtMs >= this.knownRefreshIntervalMs) {
       this.lastKnownRefreshAtMs = nowMs;
