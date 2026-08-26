@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSessionDashboardModel } from '../../src/manager/dashboard-model.js';
 import { dashboardLayoutMode, renderSessionDashboard, resolveManagerViewMode } from '../../src/manager/dashboard-render.js';
+import { renderSessionInspect } from '../../src/manager/inspect-render.js';
 import { cellWidth, stripAnsi } from '../../src/ui/cell-width.js';
 
 function row(id, overrides = {}) {
@@ -108,6 +109,28 @@ test('auto view resolves from terminal geometry without changing data semantics'
   assert.equal(resolveManagerViewMode('auto', 'wide'), 'operations');
   assert.equal(resolveManagerViewMode('auto', 'ultrawide'), 'charts');
   assert.equal(resolveManagerViewMode('operations', 'ultrawide'), 'operations');
+});
+
+test('selected inspect is visibly distinct, exact-session scoped and responsive', () => {
+  const detail = {
+    state: 'LIVE',
+    info: { project: 'alpha', threadId: 'thread-alpha', model: 'gpt-x', reasoning: 'medium', cwd: 'C:/alpha', startedAtMs: 1000, lastEventAtMs: 61000, durationMs: 60000, fileSizeBytes: 2048, parsedLines: 12 },
+    tokens: { input: 1000, cached: 500, output: 200, reasoning: 50, contextUsed: 180000, contextWindow: 200000 },
+    turns: { count: 4, completed: 4 },
+    tools: { count: 6 },
+    errors: []
+  };
+  for (const [width, height] of [[60, 22], [120, 32], [180, 40]]) {
+    const frame = renderSessionInspect({ detail, width, height, mode: 'mono' });
+    assert.ok(frame.lines.length <= height);
+    assert.ok(frame.lines.every((line) => cellWidth(line) <= width));
+    const text = stripAnsi(frame.lines.join('\n'));
+    assert.match(text, /SESSION INSPECT/);
+    assert.match(text, /IDENTITY/);
+    assert.match(text, /EXACT TELEMETRY/);
+    assert.match(text, /thread-alpha/);
+    assert.match(text, /Q\/Esc back/);
+  }
 });
 
 test('empty and unmatched dashboard states render safely', () => {
