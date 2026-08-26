@@ -9,7 +9,8 @@ const steps = [
     'test/unit/phase9-timeline.test.js'
   ]],
   ['Phase 10 selected analytics', process.execPath, ['--test',
-    'test/unit/phase10-session-analytics.test.js'
+    'test/unit/phase10-session-analytics.test.js',
+    'test/unit/phase10-analytics-robustness.test.js'
   ]]
 ];
 
@@ -23,4 +24,4 @@ for (const [label, command, args] of steps) {
 }
 
 process.stdout.write('\nPhase 10 automated verification: PASS\n');
-process.stdout.write('Selected-session context/token/turn/tool analytics, live incremental tailing and responsive inspect views are gated; real-session visual acceptance remains pending.\n');
+process.stdout.write('Selected-session context/token/turn/tool analytics, live incremental tailing, bounded long-session state and responsive inspect views are gated; real-session visual acceptance remains pending.\n');
