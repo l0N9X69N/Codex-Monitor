@@ -2,36 +2,88 @@
 
 ## Trạng thái
 
-**ACTIVE — automated core checkpoints PASS; manual multi-terminal/performance acceptance pending.**
+**CLOSED — 2026-08-26. Automated verification PASS; real Windows multi-session acceptance PASS; P0 = 0.**
 
-## Đã làm
+## Kết quả đã nghiệm thu
 
-- `src/manager/session-core.js` làm core mới cho Manager.
-- `SessionActivityResolver`: `LIVE / ENDED / UNKNOWN`, không dùng mtime-only để claim LIVE.
-- Metadata-first discovery, không full-read/deep parse body hàng loạt.
-- Bounded identity enrichment cho thread/cwd/project/model.
-- Conservative process/session correlation bằng strong identity evidence.
-- Long-running tracker tách cadence discovery/process/known-refresh/selected-tail.
-- Lightweight global row cho state/project/model/elapsed/tokens/context/turn/tool/last activity/error/retry/compaction/file size.
-- Lightweight bootstrap/tail bounded; incomplete totals giữ unknown thay vì fabricate.
-- Selected-session deep parser tái sử dụng historical parser với provenance `OFFICIAL_HISTORY`.
-- Selected detail contract ổn định cho `Info/Tokens/Turns/Tools/Resources/Errors`.
-- Incremental selected tail giữ partial-line/no-duplicate/truncate behavior.
-- Query model: All/Live/Ended/Search/Sort.
-- External delete degrade an toàn.
-- `codexm --manager` chạy read-only Manager core và không launch Codex.
-- `--history` không còn Monitor-owned semantics.
-- `npm run verify:phase8` PASS trên local Windows checkout theo báo cáo người dùng.
+- `src/manager/session-core.js` cung cấp metadata-first Session Manager core với `LIVE / ENDED / UNKNOWN`.
+- mtime-only không được dùng để claim LIVE.
+- Process/session correlation hỗ trợ exact thread evidence, one-to-one nearest-start mapping, sticky association qua các poll và specific negative evidence khi một mapped Codex root biến mất.
+- `codexm --manager` chạy persistent tracker runtime độc lập, read-only và không launch Codex.
+- Manager phát hiện Codex sessions mở sau khi Manager đã chạy và remap chúng ở discovery/process cadence tiếp theo.
+- Windows process collection không phụ thuộc vào expensive per-process perf counters để trả process tree phục vụ correlation.
+- Discovery không deep parse toàn bộ session tree; bounded identity enrichment chỉ probe một tập recent nhỏ.
+- Failed/empty identity probe không bị lặp lại mỗi fast refresh nếu file không đổi size.
+- Fast known-session refresh được giới hạn vào recent/active/missing-transition/selected set; full discovery vẫn chạy ở cadence chậm hơn để giữ eventual truth.
+- Lightweight global summaries dùng bounded bootstrap/incremental tail và không fabricate incomplete totals.
+- Chỉ selected session mới deep parse; đổi/bỏ selection nhả deep cache cũ.
+- Selected deep tail giữ partial-line/no-duplicate/truncate semantics.
+- Query contract All/Live/Ended/Search/Sort deterministic.
+- Không tạo SQLite/CSV/history database.
+- `--history` không phải Monitor-owned feature và tiếp tục được forward cho official Codex.
 
-## Exit gate còn lại
+## Automated acceptance
 
-- chạy Manager cùng 2–3 Codex terminals thật;
-- xác nhận từng session LIVE/ENDED hợp lý và independent;
-- đóng một Codex rồi quan sát transition;
-- session folder lớn vẫn khởi động/chạy ổn;
-- selected detail hoạt động nhưng non-selected session không gây CPU/I/O cao;
-- P0 = 0.
+Lệnh cuối phase:
 
-Manager TUI/charts là Phase 09, không chặn Phase 08.
+```powershell
+npm run verify:phase8
+```
 
-Phase 08 chỉ chuyển CLOSED sau khi manual gate trên PASS.
+Người dùng báo **PASS** sau các fix cuối gồm persistent runtime, process association, bounded identity I/O và bounded fast refresh.
+
+Automated gate bao gồm cả:
+
+- 1000+ synthetic sessions không deep-read toàn bộ history;
+- bounded `openSync/readSync` cho identity probing;
+- unchanged failed probes không bị reopen mỗi fast refresh;
+- fast known refresh không stat toàn bộ 1000+ sessions;
+- non-selected sessions không deep-read;
+- selected session alone triggers deep parse;
+- persistent runtime/association regressions;
+- Phase 07 platform regression.
+
+## Real Windows manual acceptance
+
+Trên session tree thật, Manager đã quan sát được:
+
+```text
+Sessions: 63 · LIVE 2 · ENDED 0 · UNKNOWN 61
+Codex processes: 5 · roots 2 · mapped 2
+Process correlation: exact 0 · sticky 0 · start 2 · missing 0
+```
+
+Poll kế tiếp giữ association:
+
+```text
+roots 2 · mapped 2
+sticky 2 · start 0 · missing 0
+```
+
+Sau khi đóng một Codex trong khi Codex còn lại vẫn chạy:
+
+```text
+roots 1 · mapped 1
+sticky 1 · missing 1
+```
+
+và sau transition/grace:
+
+```text
+LIVE 1 · ENDED 1
+```
+
+Manager cũng phát hiện session mới mở sau khi runtime đã chạy, tăng `mapped`/`LIVE`, rồi khi đóng session mới thì specific `missing` evidence và ENDED transition tiếp tục hoạt động.
+
+## Exit gate
+
+- discover/tail/classify sessions: PASS
+- persistent multi-session tracking: PASS
+- real multi-LIVE + independent close transition: PASS
+- dynamic new-session discovery/remap: PASS
+- selected-only deep parse: PASS by deterministic automated instrumentation
+- bounded startup/runtime I/O: PASS by deterministic automated instrumentation
+- duplicate DB/CSV: none
+- P0 blockers: 0
+
+Manager TUI/dashboard rendering thuộc Phase 09 và không chặn Phase 08.
