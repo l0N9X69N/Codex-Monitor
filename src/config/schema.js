@@ -160,6 +160,7 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     header: uniqueValid(input?.header, VALID.header, presetBase.header),
     updateCheck: typeof input?.updateCheck === 'boolean' ? input.updateCheck : Boolean(presetBase.updateCheck)
   };
+  config.sections.system = config.systemMode !== 'off' && config.metrics.system !== false;
   return config;
 }
 
