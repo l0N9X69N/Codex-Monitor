@@ -4,6 +4,7 @@ const VALID = Object.freeze({
   themes: new Set(['color', 'mono', 'matrix']),
   backgrounds: new Set(['terminal', 'black', 'dark']),
   beastModes: new Set(['off', 'auto', 'on']),
+  systemModes: new Set(['off', 'auto', 'on']),
   header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']),
   sections: new Set(['context', 'usage', 'session', 'activity', 'system']),
   metrics: new Set([
@@ -31,6 +32,7 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: true, freshness: true, system: false, tools: true,
       gitBranch: false, gitDiff: false, gitAheadBehind: false
     }),
+    systemMode: 'off',
     beastMode: 'off',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project'])
   }),
@@ -41,6 +43,7 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: false, freshness: true, system: false, tools: true,
       gitBranch: false, gitDiff: false, gitAheadBehind: false
     }),
+    systemMode: 'off',
     beastMode: 'off',
     header: Object.freeze(['activity', 'model', 'project'])
   }),
@@ -51,7 +54,10 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: true, gitDiff: true, gitAheadBehind: true
     }),
-    beastMode: 'auto',
+    // Temporary Phase 6 visual-test defaults. The future customization UX can
+    // switch these defaults back to auto without changing renderer semantics.
+    systemMode: 'on',
+    beastMode: 'on',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project', 'git'])
   })
 });
@@ -86,16 +92,22 @@ function uniqueValid(values, valid, fallback = []) {
   return [...new Set(source.filter((value) => valid.has(value)))];
 }
 
+function normalizeMode(input, key, valid, fallback, legacyValue = undefined, legacyTrue = 'on') {
+  const direct = String(input?.[key] ?? '').trim().toLowerCase();
+  if (valid.has(direct)) return direct;
+  if (legacyValue === true) return legacyTrue;
+  if (legacyValue === false) return 'off';
+  return valid.has(fallback) ? fallback : 'off';
+}
+
 function normalizeBeastMode(input = {}, fallback = 'off') {
-  const direct = String(input?.beastMode ?? '').trim().toLowerCase();
-  if (VALID.beastModes.has(direct)) return direct;
+  return normalizeMode(input, 'beastMode', VALID.beastModes, fallback, input?.sections?.beast, 'auto');
+}
 
-  // Backward compatibility for the brief boolean sections.beast contract.
-  // true used to mean opportunistic ultrawide rendering, which maps to auto.
-  if (input?.sections?.beast === true) return 'auto';
-  if (input?.sections?.beast === false) return 'off';
-
-  return VALID.beastModes.has(fallback) ? fallback : 'off';
+function normalizeSystemMode(input = {}, fallback = 'off') {
+  // Before systemMode existed, sections.system=true meant the System card was
+  // always rendered. Preserve that behavior for old custom config files.
+  return normalizeMode(input, 'systemMode', VALID.systemModes, fallback, input?.sections?.system, 'on');
 }
 
 export const DEFAULT_CONFIG = Object.freeze({
@@ -104,6 +116,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   preset: 'recommended',
   theme: 'color',
   background: 'terminal',
+  systemMode: 'off',
   beastMode: 'off',
   layout: 'auto',
   sections: PRESET_DEFINITIONS.recommended.sections,
@@ -122,6 +135,7 @@ export function configForPreset(preset = 'recommended', base = DEFAULT_CONFIG) {
   if (presetDefinition) {
     next.sections = clone(presetDefinition.sections);
     next.metrics = clone(presetDefinition.metrics);
+    next.systemMode = presetDefinition.systemMode;
     next.beastMode = presetDefinition.beastMode;
     next.header = [...presetDefinition.header];
   }
@@ -137,6 +151,7 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     preset: requestedPreset,
     theme: VALID.themes.has(input?.theme) ? input.theme : presetBase.theme,
     background: VALID.backgrounds.has(input?.background) ? input.background : presetBase.background,
+    systemMode: normalizeSystemMode(input, presetBase.systemMode),
     beastMode: normalizeBeastMode(input, presetBase.beastMode),
     layout: 'auto',
     sections: booleanMap(input?.sections, [...VALID.sections], presetBase.sections),
