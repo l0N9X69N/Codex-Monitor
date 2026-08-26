@@ -91,8 +91,6 @@ function metadata(filePath, fsRef = fs, { enrichIdentity = false, identityBytes 
       startedAtMs: identity?.startedAtMs ?? null,
       lastActivityAtMs: stat.mtimeMs || null,
       parsed: false,
-      // identityProbed means an attempt was made, even if the file was empty or
-      // malformed. identityProbeSizeBytes lets a later growth trigger one retry.
       identityProbed: identityAttempted,
       identityProbeSizeBytes: identityAttempted ? stat.size : null,
       error: null
@@ -149,6 +147,14 @@ function shouldProbeIdentity(item) {
   const size = Number(item.sizeBytes);
   const probedSize = Number(item.identityProbeSizeBytes);
   return Number.isFinite(size) && (!Number.isFinite(probedSize) || size !== probedSize);
+}
+
+function boundedRefreshIds(items, limit, extraIds) {
+  if (!Number.isFinite(limit)) return null;
+  const ids = new Set(extraIds instanceof Set ? extraIds : Array.isArray(extraIds) ? extraIds : []);
+  const bounded = Math.max(0, Number(limit) || 0);
+  for (let index = 0; index < Math.min(bounded, items.length); index += 1) ids.add(items[index].id);
+  return ids;
 }
 
 export function buildProcessEvidence(processes, options = {}) {
@@ -296,9 +302,14 @@ export class SessionManagerCore {
     return this.index;
   }
 
-  refreshKnown({ processEvidence = null } = {}) {
+  refreshKnown({ processEvidence = null, limit = Number.POSITIVE_INFINITY, ids = null } = {}) {
+    const refreshIds = boundedRefreshIds(this.index, limit, ids);
     const next = [];
     for (const old of this.index) {
+      if (refreshIds && !refreshIds.has(old.id)) {
+        next.push(old);
+        continue;
+      }
       const fresh = metadata(old.filePath, this.fs, { enrichIdentity: false, identityBytes: this.identityBytes });
       if (fresh.error) {
         this.activity.forget(old.id);
