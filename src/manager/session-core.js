@@ -14,6 +14,7 @@ export const SESSION_ACTIVITY = Object.freeze({
 });
 
 const DEFAULT_IDENTITY_BYTES = 64 * 1024;
+const DEFAULT_IDENTITY_ENRICH_LIMIT = 16;
 
 function walkJsonl(root, fsRef = fs, limit = Number.POSITIVE_INFINITY) {
   const found = [];
@@ -73,7 +74,8 @@ export function probeSessionIdentity(filePath, fsRef = fs, maxBytes = DEFAULT_ID
 function metadata(filePath, fsRef = fs, { enrichIdentity = false, identityBytes = DEFAULT_IDENTITY_BYTES } = {}) {
   try {
     const stat = fsRef.statSync(filePath);
-    const identity = enrichIdentity ? probeSessionIdentity(filePath, fsRef, identityBytes) : null;
+    const identityAttempted = enrichIdentity === true;
+    const identity = identityAttempted ? probeSessionIdentity(filePath, fsRef, identityBytes) : null;
     return {
       id: filePath,
       filePath,
@@ -89,7 +91,10 @@ function metadata(filePath, fsRef = fs, { enrichIdentity = false, identityBytes 
       startedAtMs: identity?.startedAtMs ?? null,
       lastActivityAtMs: stat.mtimeMs || null,
       parsed: false,
-      identityProbed: Boolean(identity),
+      // identityProbed means an attempt was made, even if the file was empty or
+      // malformed. identityProbeSizeBytes lets a later growth trigger one retry.
+      identityProbed: identityAttempted,
+      identityProbeSizeBytes: identityAttempted ? stat.size : null,
       error: null
     };
   } catch (error) {
@@ -109,6 +114,7 @@ function metadata(filePath, fsRef = fs, { enrichIdentity = false, identityBytes 
       lastActivityAtMs: null,
       parsed: false,
       identityProbed: false,
+      identityProbeSizeBytes: null,
       error: error?.message ?? 'stat failed'
     };
   }
@@ -125,8 +131,24 @@ function mergeMetadata(old, fresh) {
     threadId: fresh.threadId ?? old.threadId,
     model: fresh.model ?? old.model,
     startedAtMs: fresh.startedAtMs ?? old.startedAtMs,
-    identityProbed: old.identityProbed || fresh.identityProbed
+    identityProbed: old.identityProbed || fresh.identityProbed,
+    identityProbeSizeBytes: fresh.identityProbed
+      ? fresh.identityProbeSizeBytes
+      : (old.identityProbeSizeBytes ?? null)
   };
+}
+
+function identityIncomplete(item) {
+  return !item?.threadId || !item?.cwd || !item?.model || !Number.isFinite(Number(item?.startedAtMs));
+}
+
+function shouldProbeIdentity(item) {
+  if (!item || item.error) return false;
+  if (!item.identityProbed) return true;
+  if (!identityIncomplete(item)) return false;
+  const size = Number(item.sizeBytes);
+  const probedSize = Number(item.identityProbeSizeBytes);
+  return Number.isFinite(size) && (!Number.isFinite(probedSize) || size !== probedSize);
 }
 
 export function buildProcessEvidence(processes, options = {}) {
@@ -216,12 +238,14 @@ export class SessionManagerCore {
     activityResolver = null,
     now = () => Date.now(),
     identityBytes = DEFAULT_IDENTITY_BYTES,
+    identityEnrichLimit = DEFAULT_IDENTITY_ENRICH_LIMIT,
     summaries = null
   } = {}) {
     this.sessionsPath = sessionsPath;
     this.fs = fsRef;
     this.now = now;
     this.identityBytes = identityBytes;
+    this.identityEnrichLimit = Math.max(0, Number(identityEnrichLimit) || 0);
     this.activity = activityResolver ?? new SessionActivityResolver({ now });
     this.summaries = summaries ?? new LightweightSessionSummaries({ fsRef });
     this.index = [];
@@ -229,15 +253,30 @@ export class SessionManagerCore {
     this.deep = new HistoryEngine({ sessionsPath, fsRef });
   }
 
+  enrichRecentIdentities(items, { processEvidence = null } = {}) {
+    const bounded = Math.min(this.identityEnrichLimit, items.length);
+    for (let index = 0; index < bounded; index += 1) {
+      let item = items[index];
+      if (!shouldProbeIdentity(item)) continue;
+      const fresh = metadata(item.filePath, this.fs, {
+        enrichIdentity: true,
+        identityBytes: this.identityBytes
+      });
+      if (fresh.error) continue;
+      item = mergeMetadata(item, fresh);
+      const evidence = typeof processEvidence === 'function' ? (processEvidence(item) ?? {}) : {};
+      item.state = this.activity.resolve(item, evidence);
+      items[index] = item;
+    }
+    return items;
+  }
+
   discover({ limit = Number.POSITIVE_INFINITY, enrichIdentity = true, processEvidence = null } = {}) {
     const previous = new Map(this.index.map((item) => [item.filePath, item]));
     const next = [];
     for (const filePath of walkJsonl(this.sessionsPath, this.fs, limit)) {
       const old = previous.get(filePath);
-      const fresh = metadata(filePath, this.fs, {
-        enrichIdentity: enrichIdentity && !old?.identityProbed,
-        identityBytes: this.identityBytes
-      });
+      const fresh = metadata(filePath, this.fs, { enrichIdentity: false, identityBytes: this.identityBytes });
       const item = mergeMetadata(old, fresh);
       const evidence = typeof processEvidence === 'function' ? (processEvidence(item) ?? {}) : {};
       item.state = this.activity.resolve(item, evidence);
@@ -250,7 +289,9 @@ export class SessionManagerCore {
         this.summaries.forget(old.id);
       }
     }
-    this.index = next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
+    next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
+    if (enrichIdentity) this.enrichRecentIdentities(next, { processEvidence });
+    this.index = next;
     if (this.selectedId && !existing.has(this.selectedId)) this.releaseSelection();
     return this.index;
   }
@@ -258,10 +299,7 @@ export class SessionManagerCore {
   refreshKnown({ processEvidence = null } = {}) {
     const next = [];
     for (const old of this.index) {
-      const fresh = metadata(old.filePath, this.fs, {
-        enrichIdentity: !old.identityProbed,
-        identityBytes: this.identityBytes
-      });
+      const fresh = metadata(old.filePath, this.fs, { enrichIdentity: false, identityBytes: this.identityBytes });
       if (fresh.error) {
         this.activity.forget(old.id);
         this.summaries.forget(old.id);
@@ -273,7 +311,9 @@ export class SessionManagerCore {
       item.state = this.activity.resolve(item, evidence);
       next.push(item);
     }
-    this.index = next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
+    next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
+    this.enrichRecentIdentities(next, { processEvidence });
+    this.index = next;
     return this.index;
   }
 
@@ -354,4 +394,9 @@ export class SessionManagerCore {
   }
 }
 
-export { walkJsonl as discoverSessionFiles, metadata as sessionFileMetadata, DEFAULT_IDENTITY_BYTES };
+export {
+  walkJsonl as discoverSessionFiles,
+  metadata as sessionFileMetadata,
+  DEFAULT_IDENTITY_BYTES,
+  DEFAULT_IDENTITY_ENRICH_LIMIT
+};
