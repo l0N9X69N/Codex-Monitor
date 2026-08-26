@@ -15,7 +15,8 @@ function summaryLines(items, diagnostics = null) {
     `Storage indexed: ${totalBytes} bytes`
   ];
   if (diagnostics?.processTelemetry) {
-    lines.push(`Codex processes: ${diagnostics.codexProcessCount} · roots ${diagnostics.codexRootCount}`);
+    lines.push(`Codex processes: ${diagnostics.codexProcessCount} · roots ${diagnostics.codexRootCount} · mapped ${diagnostics.mappedSessionCount ?? 0}`);
+    lines.push(`Process correlation: exact ${diagnostics.exactMatchCount ?? 0} · start ${diagnostics.startMatchCount ?? 0}`);
   } else if (diagnostics) {
     lines.push('Codex processes: telemetry unavailable');
   }
@@ -37,7 +38,7 @@ export async function runSessionManager({
   let processEvidence = buildProcessEvidence(null);
   try {
     const processes = await platformAdapter.getProcessTree();
-    processEvidence = buildProcessEvidence(processes, { nowMs: now() });
+    processEvidence = buildProcessEvidence(processes, { nowMs: now(), sessions: core.index });
   } catch {}
 
   const items = core.refresh({ processEvidence });
