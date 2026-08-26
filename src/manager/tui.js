@@ -10,6 +10,7 @@ import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInp
 import { ManagerTelemetrySeries } from './telemetry-series.js';
 import { nextTimelineFilter } from './timeline.js';
 import { SelectedActivityPreview } from './activity-preview.js';
+import { activityPreviewCapacity } from './activity-preview-capacity.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -83,8 +84,12 @@ export async function runSessionManagerTui({
     if (done) return null;
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
-    const activityPreview = !core.selectedId && width >= 220
-      ? activityPreviewReader.read(selectedDashboardRow(), { nowMs: now() })
+    const previewCapacity = activityPreviewCapacity({ width, height, viewMode, telemetry });
+    const activityPreview = !core.selectedId && previewCapacity > 0
+      ? activityPreviewReader.read(selectedDashboardRow(), {
+        nowMs: now(),
+        targetEvents: previewCapacity
+      })
       : null;
     const frame = core.selectedId && selectedDetail
       ? renderSessionInspect({
@@ -239,7 +244,6 @@ export async function runSessionManagerTui({
         timelineSearching = false;
         timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
         timelineDetail = false;
-        activityPreviewReader.clear();
         rebaselineTelemetry();
         draw(true);
       } else if (action === 'tab' || action === 'right') {
@@ -286,7 +290,6 @@ export async function runSessionManagerTui({
         search = searchDraft.trim();
         selectedId = null;
         selectedIndex = 0;
-        activityPreviewReader.clear();
         rebaselineTelemetry();
       } else if (action === 'search-backspace') {
         searchDraft = [...searchDraft].slice(0, -1).join('');
@@ -310,13 +313,11 @@ export async function runSessionManagerTui({
       scope = nextManagerScope(scope);
       selectedId = null;
       selectedIndex = 0;
-      activityPreviewReader.clear();
       rebaselineTelemetry();
     } else if (action === 'sort') {
       sortBy = nextManagerSort(sortBy);
       selectedId = null;
       selectedIndex = 0;
-      activityPreviewReader.clear();
     } else if (action === 'direction') {
       direction = direction === 'desc' ? 'asc' : 'desc';
     } else if (action === 'view') {
@@ -324,11 +325,9 @@ export async function runSessionManagerTui({
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
-      activityPreviewReader.clear();
     } else if (action === 'down' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.min(lastFrame.model.rows.length - 1, selectedIndex + 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
-      activityPreviewReader.clear();
     } else if (action === 'inspect') {
       const selected = lastFrame?.model?.selected;
       if (selected) {
