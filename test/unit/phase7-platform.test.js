@@ -1,10 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PLATFORM_METHODS, assertPlatformAdapter, normalizeCapabilities, unsupportedResult } from '../../src/platform/contract.js';
 import { createFakePlatformAdapter } from '../../src/platform/fake.js';
 import { createPlatformAdapter } from '../../src/platform/index.js';
 import { commonPaths, normalizeProcessRecord } from '../../src/platform/common.js';
 import { elapsedToMs, parseDf, parsePs } from '../../src/platform/posix.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+function sourceFiles(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sourceFiles(full));
+    else if (entry.isFile() && /\.(?:js|mjs)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
 
 function assertSystemShape(value) {
   for (const key of ['cpuPercent', 'memoryBytes', 'totalMemoryBytes', 'freeMemoryBytes']) {
@@ -30,6 +45,27 @@ test('platform contract contains only current cross-platform primitives', () => 
     'cleanup'
   ]);
   assert.equal(PLATFORM_METHODS.includes('openHistoryTerminal'), false);
+});
+
+test('platform-specific branching stays behind src/platform', () => {
+  const srcRoot = path.join(ROOT, 'src');
+  const platformRoot = path.join(srcRoot, 'platform') + path.sep;
+  const leaks = [];
+  for (const file of sourceFiles(srcRoot)) {
+    if (file.startsWith(platformRoot)) continue;
+    const text = fs.readFileSync(file, 'utf8');
+    if (/process\.platform/.test(text)) leaks.push(path.relative(ROOT, file));
+  }
+  assert.deepEqual(leaks, [], `process.platform leaked outside platform adapter: ${leaks.join(', ')}`);
+});
+
+test('obsolete Monitor History launcher is absent from runtime source', () => {
+  const hits = [];
+  for (const file of sourceFiles(path.join(ROOT, 'src'))) {
+    const text = fs.readFileSync(file, 'utf8');
+    if (/openHistoryTerminal/.test(text)) hits.push(path.relative(ROOT, file));
+  }
+  assert.deepEqual(hits, [], `obsolete openHistoryTerminal found in: ${hits.join(', ')}`);
 });
 
 test('fake platform adapter satisfies full contract and records calls', async () => {
