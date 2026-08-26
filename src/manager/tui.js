@@ -5,6 +5,7 @@ import { SessionManagerCore } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { SessionManagerRuntime } from './runtime.js';
 import { renderSessionDashboard } from './dashboard-render.js';
+import { renderSessionInspect } from './inspect-render.js';
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 
 const FOCUS_ORDER = Object.freeze(['table', 'tokens', 'context', 'tools']);
@@ -46,28 +47,36 @@ export async function runSessionManagerTui({
   let selectedIndex = 0;
   let focus = 'table';
   let viewMode = initialViewMode;
+  let selectedDetail = null;
   let done = false;
   let lastFrame = null;
 
   const draw = (force = false) => {
     if (done) return null;
-    const frame = renderSessionDashboard({
-      rows,
-      width: Math.max(44, stdout.columns || 120),
-      height: Math.max(16, stdout.rows || 36),
-      mode: colorMode,
-      scope,
-      search: searching ? searchDraft : search,
-      sortBy,
-      direction,
-      selectedId,
-      selectedIndex,
-      focus,
-      viewMode
-    });
-    selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
-    selectedId = frame.model.selected?.id ?? null;
-    lastFrame = frame;
+    const width = Math.max(44, stdout.columns || 120);
+    const height = Math.max(16, stdout.rows || 36);
+    const frame = core.selectedId && selectedDetail
+      ? renderSessionInspect({ detail: selectedDetail, width, height, mode: colorMode })
+      : renderSessionDashboard({
+        rows,
+        width,
+        height,
+        mode: colorMode,
+        scope,
+        search: searching ? searchDraft : search,
+        sortBy,
+        direction,
+        selectedId,
+        selectedIndex,
+        focus,
+        viewMode
+      });
+
+    if (!core.selectedId && frame.model) {
+      selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
+      selectedId = frame.model.selected?.id ?? null;
+      lastFrame = frame;
+    }
     if (force) renderer.reset([]);
     renderer.render(frame.lines);
     return frame;
@@ -78,6 +87,7 @@ export async function runSessionManagerTui({
     intervalMs,
     onSnapshot(result) {
       rows = result.rows ?? [];
+      selectedDetail = result.selectedDetail ?? selectedDetail;
       draw(false);
     }
   });
@@ -122,6 +132,15 @@ export async function runSessionManagerTui({
     const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action) return;
 
+    if (core.selectedId) {
+      if (action === 'quit') {
+        core.releaseSelection();
+        selectedDetail = null;
+        draw(true);
+      }
+      return;
+    }
+
     if (searching) {
       if (action === 'search-cancel') {
         searching = false;
@@ -141,12 +160,7 @@ export async function runSessionManagerTui({
     }
 
     if (action === 'quit') {
-      if (core.selectedId) {
-        core.releaseSelection();
-        draw(false);
-      } else {
-        await quit();
-      }
+      await quit();
       return;
     }
 
@@ -178,7 +192,10 @@ export async function runSessionManagerTui({
       focus = nextFocus(focus, -1);
     } else if (action === 'inspect') {
       const selected = lastFrame?.model?.selected;
-      if (selected) core.select(selected.id);
+      if (selected) {
+        core.select(selected.id);
+        selectedDetail = core.selectedDetail();
+      }
     }
     draw(false);
   };
