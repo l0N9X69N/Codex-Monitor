@@ -1,6 +1,12 @@
 import { cellWidth, padCells, truncateCells } from '../ui/cell-width.js';
 import { hpaint } from '../history/theme.js';
 import { filterSessionTimeline, MANAGER_TIMELINE_FILTERS } from './timeline.js';
+import {
+  contextChartModel,
+  cumulativeTokenChartModel,
+  toolShareChartModel,
+  turnDurationChartModel
+} from './analytics-charts.js';
 
 export const MANAGER_INSPECT_TABS = Object.freeze(['info', 'timeline', 'tokens', 'turns', 'tools', 'resources', 'errors']);
 
@@ -65,6 +71,11 @@ function fmtDuration(ms) {
   return `${hours}h ${minutes % 60}m`;
 }
 
+function fmtPercentValue(value) {
+  const n = finiteOrNull(value);
+  return n == null ? '--' : `${Math.round(n)}%`;
+}
+
 function fmtPercent(used, window) {
   const a = finiteOrNull(used);
   const b = finiteOrNull(window);
@@ -126,29 +137,107 @@ function telemetryLines(detail) {
   ];
 }
 
-function tabLines(detail, tab) {
-  if (tab === 'tokens') return telemetryLines(detail).slice(0, 5);
-  if (tab === 'turns') return [
+function contextAnalyticsLines(detail, width, mode) {
+  const analytics = detail.analytics;
+  if (!analytics) return telemetryLines(detail);
+  const chart = contextChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  return [
+    `${hpaint('CONTEXT STREAM', 'heading', mode)}  current ${hpaint(fmtPercentValue(chart.currentPercent), 'pressure', mode)}  peak ${hpaint(fmtPercentValue(chart.peakPercent), 'pressure', mode)}  compactions ${chart.compactions}`,
+    hpaint(chart.line, 'pressure', mode),
+    '',
+    ...telemetryLines(detail)
+  ];
+}
+
+function tokenAnalyticsLines(detail, width, mode) {
+  const analytics = detail.analytics;
+  if (!analytics) return telemetryLines(detail).slice(0, 5);
+  const chart = cumulativeTokenChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  return [
+    `${hpaint('CUMULATIVE TOKENS', 'heading', mode)}  total ${hpaint(fmtNum(chart.total), 'secondary', mode)}`,
+    hpaint(chart.line, 'secondary', mode),
+    '',
+    `Input        ${fmtNum(chart.input)}`,
+    `Cached       ${fmtNum(chart.cached)}`,
+    `Uncached     ${fmtNum(chart.uncachedInput)}`,
+    `Output       ${fmtNum(chart.output)}`,
+    `Reasoning    ${fmtNum(chart.reasoning)}`,
+    `Total I/O    ${fmtNum(chart.total)}`,
+    `Context      ${fmtPercent(detail.tokens?.contextUsed, detail.tokens?.contextWindow)}   peak ${fmtPercentValue(analytics.context?.peakPercent)}`
+  ];
+}
+
+function turnTableLines(detail, width, mode) {
+  const analytics = detail.analytics;
+  if (!analytics) return [
     `Turns        ${fmtNum(detail.turns?.count)}`,
     `Completed    ${fmtNum(detail.turns?.completed)}`,
     `Last turn    ${fmtDuration(detail.turns?.lastDurationMs)}`
   ];
-  if (tab === 'tools') {
+  const turns = Array.isArray(analytics.turns?.items) ? analytics.turns.items : [];
+  const chart = turnDurationChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const lines = [
+    `${hpaint('TURN DURATION', 'heading', mode)}  completed ${fmtNum(analytics.turns?.completed)}  peak ${fmtDuration(chart.maxDurationMs)}`,
+    hpaint(chart.line, 'pressure', mode),
+    '',
+    hpaint(' #   START     DURATION   INPUT    OUTPUT   REASON   CTX    TOOLS', 'label', mode)
+  ];
+  const visible = Math.max(3, Math.min(14, turns.length));
+  for (const turn of turns.slice(-visible)) {
+    const ctx = fmtPercent(turn.contextUsed, turn.contextWindow);
+    const marker = turn.completed ? ' ' : turn.incomplete ? '!' : '>';
+    lines.push(`${marker}${String(turn.index + 1).padStart(3)}  ${fmtTime(turn.startedAtMs)}  ${String(fmtDuration(turn.durationMs)).padEnd(9)}  ${String(fmtNum(turn.inputTokens)).padStart(7)}  ${String(fmtNum(turn.outputTokens)).padStart(7)}  ${String(fmtNum(turn.reasoningTokens)).padStart(7)}  ${String(ctx).padStart(5)}  ${String(fmtNum(turn.toolCount)).padStart(5)}`);
+  }
+  if (!turns.length) lines.push(hpaint('No turn-level analytics evidence.', 'dim', mode));
+  return lines;
+}
+
+function toolAnalyticsLines(detail, width, mode) {
+  const analytics = detail.analytics;
+  if (!analytics) {
     const tools = Array.isArray(detail.tools?.byName) ? detail.tools.byName : [];
     return [`Total tools  ${fmtNum(detail.tools?.count)}`, '', ...tools.slice(0, 12).map((item) => `${String(fmtNum(item.count)).padStart(6)}  ${item.name ?? '--'}`)];
   }
+  const bars = toolShareChartModel(analytics, Math.max(8, Math.min(30, Math.floor(width * 0.35))), { ascii: mode === 'mono' && width < 60, maxItems: 8 });
+  const lines = [`${hpaint('TOOL SHARE', 'heading', mode)}  total ${fmtNum(bars.total)}`];
+  for (const row of bars.bars) lines.push(`${String(row.label).padEnd(16).slice(0, 16)} ${row.bar} ${fmtNum(row.value)}`);
+  if (!bars.bars.length) lines.push(hpaint('No tool call evidence.', 'dim', mode));
+  const events = Array.isArray(analytics.tools?.events) ? analytics.tools.events : [];
+  lines.push('', hpaint('RECENT TOOL EVENTS', 'label', mode));
+  for (const event of events.slice(-8).reverse()) {
+    lines.push(`${fmtTime(event.atMs)}  ${String(event.name ?? '--').padEnd(14).slice(0, 14)}  ${fmtDuration(event.durationMs)}${event.failed ? '  FAILED' : ''}`);
+  }
+  return lines;
+}
+
+function errorAnalyticsLines(detail, mode) {
+  const signals = Array.isArray(detail.analytics?.signals) ? detail.analytics.signals : [];
+  const errors = Array.isArray(detail.errors) ? detail.errors : [];
+  if (!signals.length && !errors.length) return ['No recorded errors/retries/compactions in selected session.'];
+  const lines = [];
+  if (signals.length) {
+    lines.push(hpaint('ERROR / RETRY / COMPACTION STREAM', 'heading', mode));
+    for (const signal of signals.slice(-16).reverse()) {
+      const token = signal.kind === 'error' || signal.kind === 'turn-error' || signal.kind === 'tool-failure' ? 'error' : signal.kind === 'retry' ? 'pressure' : 'dim';
+      lines.push(`${fmtTime(signal.atMs)}  ${hpaint(String(signal.kind ?? 'event').toUpperCase().padEnd(12).slice(0, 12), token, mode)}  ${signal.detail ?? '--'}`);
+    }
+  } else {
+    for (const item of errors.slice(-14).reverse()) lines.push(`${fmtTime(item.atMs)}  ${item.detail ?? '--'}`);
+  }
+  return lines;
+}
+
+function tabLines(detail, tab, width, mode) {
+  if (tab === 'tokens') return tokenAnalyticsLines(detail, width, mode);
+  if (tab === 'turns') return turnTableLines(detail, width, mode);
+  if (tab === 'tools') return toolAnalyticsLines(detail, width, mode);
   if (tab === 'resources') {
     const evidence = Array.isArray(detail.resources?.evidence) ? detail.resources.evidence : [];
     return evidence.length
-      ? evidence.slice(0, 14).map((item) => `${item.kind ?? '--'}  ${item.value ?? '--'}`)
+      ? evidence.slice(0, 20).map((item) => `${fmtTime(item.atMs)}  ${item.kind ?? '--'}  ${item.value ?? '--'}`)
       : ['No historical resource evidence.', '', 'Resources are evidence-based; current filesystem state is not inferred.'];
   }
-  if (tab === 'errors') {
-    const errors = Array.isArray(detail.errors) ? detail.errors : [];
-    return errors.length
-      ? errors.slice(-14).reverse().map((item) => `${fmtTime(item.atMs)}  ${item.detail ?? '--'}`)
-      : ['No recorded errors in selected session.'];
-  }
+  if (tab === 'errors') return errorAnalyticsLines(detail, mode);
   return infoLines(detail);
 }
 
@@ -282,16 +371,16 @@ export function renderSessionInspect({
   } else {
     const bodyHeight = safeHeight - 3;
     if (tab === 'info' && safeWidth >= 92) {
-      const leftWidth = Math.max(38, Math.floor(safeWidth * 0.5));
+      const leftWidth = Math.max(38, Math.floor(safeWidth * 0.42));
       const rightWidth = safeWidth - leftWidth - 1;
       const left = panel(infoLines(detail), leftWidth, bodyHeight, { title: 'IDENTITY', mode, active: true });
-      const right = panel(telemetryLines(detail), rightWidth, bodyHeight, { title: 'EXACT TELEMETRY', mode });
+      const right = panel(contextAnalyticsLines(detail, rightWidth - 4, mode), rightWidth, bodyHeight, { title: 'CONTEXT / EXACT TELEMETRY', mode });
       lines.push(...join(left, right, leftWidth, bodyHeight));
     } else {
       const titleByTab = {
-        info: 'IDENTITY', tokens: 'TOKENS', turns: 'TURNS', tools: 'TOOLS', resources: 'RESOURCES', errors: 'ERRORS'
+        info: 'IDENTITY', tokens: 'TOKENS / CUMULATIVE', turns: 'TURNS / DURATION', tools: 'TOOLS / SHARE', resources: 'RESOURCES', errors: 'ERRORS / EVENTS'
       };
-      lines.push(...panel(tabLines(detail, tab), safeWidth, bodyHeight, { title: titleByTab[tab], mode, active: true }));
+      lines.push(...panel(tabLines(detail, tab, safeWidth - 4, mode), safeWidth, bodyHeight, { title: titleByTab[tab], mode, active: true }));
     }
   }
 
@@ -299,7 +388,7 @@ export function renderSessionInspect({
     ? (timelineDetail
         ? 'Q/Esc close detail   ↑/↓ select after close   Enter detail'
         : '↑/↓ select   PgUp/PgDn · Home/End   Enter detail   F filter   / search   Tab/←/→ tabs   Q/Esc back')
-    : '←/→ or Tab change tab   Q/Esc back to dashboard   exact selected-session history only';
+    : '←/→ or Tab change tab   Q/Esc back to dashboard   exact selected-session analytics only';
   lines.push(truncateCells(footer, safeWidth, ''));
   return {
     lines: lines.slice(0, safeHeight).map((line) => truncateCells(line, safeWidth, '')),
