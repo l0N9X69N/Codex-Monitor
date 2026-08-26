@@ -4,7 +4,7 @@ const VALID = Object.freeze({
   themes: new Set(['color', 'mono', 'matrix']),
   backgrounds: new Set(['terminal', 'black', 'dark']),
   header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']),
-  sections: new Set(['context', 'usage', 'session', 'activity', 'system']),
+  sections: new Set(['context', 'usage', 'session', 'activity', 'system', 'beast']),
   metrics: new Set([
     'activity', 'model', 'reasoning', 'project', 'context', 'usage', 'quota', 'session',
     'health', 'freshness', 'system', 'tools', 'gitBranch', 'gitDiff', 'gitAheadBehind'
@@ -24,7 +24,7 @@ export const DEFAULT_FIELD_VISIBILITY = Object.freeze({
 
 const PRESET_DEFINITIONS = Object.freeze({
   recommended: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false, beast: false }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: true, project: true, context: true, usage: true,
       quota: true, session: true, health: true, freshness: true, system: false, tools: true,
@@ -33,7 +33,7 @@ const PRESET_DEFINITIONS = Object.freeze({
     header: Object.freeze(['activity', 'model', 'reasoning', 'project'])
   }),
   compact: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false, beast: false }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: false, project: true, context: true, usage: true,
       quota: true, session: true, health: false, freshness: true, system: false, tools: true,
@@ -42,7 +42,7 @@ const PRESET_DEFINITIONS = Object.freeze({
     header: Object.freeze(['activity', 'model', 'project'])
   }),
   full: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: true }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: true, beast: true }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: true, project: true, context: true, usage: true,
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
