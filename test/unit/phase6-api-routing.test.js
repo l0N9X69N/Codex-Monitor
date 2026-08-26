@@ -43,12 +43,21 @@ test('explicit model reroute evidence is presented as ROUTED', () => {
 
 test('legacy usage.actual visibility migrates to routed visibility', () => {
   const base = configForPreset('full');
+  const legacyUsage = {
+    fiveHour: true,
+    weekly: true,
+    input: true,
+    cache: true,
+    output: true,
+    reasoning: true,
+    turnInput: true,
+    turnOutput: true,
+    model: true,
+    actual: false
+  };
   const config = normalizeConfig({
     ...base,
-    fields: {
-      ...base.fields,
-      usage: { ...base.fields.usage, actual: false }
-    }
+    fields: { ...base.fields, usage: legacyUsage }
   });
   assert.equal(config.fields.usage.routed, false);
   assert.equal(Object.prototype.hasOwnProperty.call(config.fields.usage, 'actual'), false);
