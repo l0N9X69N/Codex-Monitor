@@ -2,7 +2,7 @@
 
 ## Trạng thái
 
-**WAITING USER RUN — tracker cadence checkpoint**
+**WAITING USER RUN — selected-session detail checkpoint**
 
 Run:
 
@@ -25,9 +25,12 @@ Coverage hiện tại:
 - process collector không chạy mỗi tick;
 - selected session mới deep parse/tail;
 - release/chuyển selection nhả deep-cache cũ;
+- selected detail có contract ổn định cho `Info/Tokens/Turns/Tools/Resources/Errors`;
+- missing historical values giữ `null`/empty, không fabricate cost/system resources;
+- selected detail cập nhật sau incremental tail và biến mất khi release selection;
 - partial append/no duplicate/truncate/external delete;
 - deterministic All/Live/Ended/Search/Sort;
 - no SQLite/CSV/history DB created;
 - Phase 07 platform regression.
 
-PASS checkpoint này chưa đóng Phase 08. Còn selected-session detail/view-model completeness và manual multi-terminal/performance gate.
+PASS checkpoint này chưa đóng Phase 08. Còn manual multi-terminal/performance gate và rà completeness của lightweight global row trước khi close.
