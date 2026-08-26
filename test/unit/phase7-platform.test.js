@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { PLATFORM_METHODS, assertPlatformAdapter, normalizeCapabilities, unsupportedResult } from '../../src/platform/contract.js';
 import { createFakePlatformAdapter } from '../../src/platform/fake.js';
 import { createPlatformAdapter } from '../../src/platform/index.js';
-import { commonPaths, normalizeProcessRecord } from '../../src/platform/common.js';
+import { commonPaths, normalizeProcessRecord, samePlatformPath } from '../../src/platform/common.js';
 import { elapsedToMs, parseDf, parsePs } from '../../src/platform/posix.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -66,6 +66,12 @@ test('obsolete Monitor History launcher is absent from runtime source', () => {
     if (/openHistoryTerminal/.test(text)) hits.push(path.relative(ROOT, file));
   }
   assert.deepEqual(hits, [], `obsolete openHistoryTerminal found in: ${hits.join(', ')}`);
+});
+
+test('centralized path semantics preserve Windows case-insensitive matching', () => {
+  assert.equal(samePlatformPath('C:\\Repo\\App', 'c:\\repo\\app', 'win32'), true);
+  assert.equal(samePlatformPath('/Repo/App', '/repo/app', 'linux'), false);
+  assert.equal(samePlatformPath('/Repo/App', '/Repo/App', 'darwin'), true);
 });
 
 test('fake platform adapter satisfies full contract and records calls', async () => {
