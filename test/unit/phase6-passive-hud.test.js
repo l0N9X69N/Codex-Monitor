@@ -28,6 +28,10 @@ function textOf(frame) {
   return stripAnsi(frame.lines.join('\n'));
 }
 
+function fullDataConfig(overrides = {}) {
+  return normalizeConfig({ ...configForPreset('full'), beastMode: 'off', systemMode: 'on', ...overrides });
+}
+
 function fullState(authMode = 'login') {
   const state = createDemoState('idle', { authMode, nowMs: NOW });
   setLocal(state.system, 'cpuPercent', 30);
@@ -56,13 +60,13 @@ test('three public presets plus custom remain the user-facing configuration mode
   assert.equal(normalizeConfig({ preset: 'minimal' }).preset, 'recommended');
 });
 
-test('responsive card grid packs enabled cards from five columns down to one', () => {
-  const config = normalizeConfig(configForPreset('full'));
+test('responsive data-card grid packs enabled cards from five columns down to one', () => {
+  const config = fullDataConfig();
   const state = fullState('login');
   const cases = [
     [220, 5],
     [180, 5],
-    [160, 4],
+    [160, 3],
     [130, 3],
     [100, 2],
     [70, 2],
@@ -73,7 +77,7 @@ test('responsive card grid packs enabled cards from five columns down to one', (
   for (const [width, columns] of cases) {
     const frame = buildLiveFrame({ state, config, width, height: 50, nowMs: NOW, projectName: 'Codex Monitor' });
     const text = textOf(frame);
-    assert.equal(frame.semantic.visual, 'responsive-card-grid-v3');
+    assert.equal(frame.semantic.visual, 'responsive-card-grid-v4');
     assert.equal(frame.semantic.columns, columns, `${width} cells should use ${columns} columns`);
     assert.equal(frame.semantic.cardCount, 5);
     assert.match(text, /CONTEXT/);
@@ -81,6 +85,7 @@ test('responsive card grid packs enabled cards from five columns down to one', (
     assert.match(text, /SESSION/);
     assert.match(text, /CURRENT ACTIVITY/);
     assert.match(text, /SYSTEM/);
+    assert.doesNotMatch(text, /BEAST MODE/);
     assert.equal(assertNoWrap(frame, width), true, `${width} cells wraps`);
     assert.ok(frame.lines.every((line) => cellWidth(line) <= width));
   }
@@ -89,8 +94,8 @@ test('responsive card grid packs enabled cards from five columns down to one', (
   assert.equal(columnCountFor(60, 5), 1);
 });
 
-test('narrow full layout preserves card frames and degrades to minimal representation', () => {
-  const config = normalizeConfig(configForPreset('full'));
+test('narrow full data layout preserves card frames and degrades to minimal representation', () => {
+  const config = fullDataConfig();
   const state = fullState('login');
   const frame = buildLiveFrame({ state, config, width: 60, height: 45, nowMs: NOW });
   const text = textOf(frame);
@@ -113,6 +118,8 @@ test('narrow full layout preserves card frames and degrades to minimal represent
 test('custom config removes only disabled cards and redistributes the remaining grid', () => {
   const config = normalizeConfig({
     ...configForPreset('custom'),
+    systemMode: 'off',
+    beastMode: 'off',
     sections: { context: true, usage: true, session: false, activity: true, system: false },
     metrics: { context: true, usage: true, activity: true, session: false, system: false },
     header: ['activity', 'model', 'project']
@@ -129,7 +136,7 @@ test('custom config removes only disabled cards and redistributes the remaining 
 });
 
 test('Login usage gets thin quota bars when width permits and keeps essential quota values when compact', () => {
-  const config = normalizeConfig(configForPreset('full'));
+  const config = fullDataConfig();
   const state = fullState('login');
 
   const wide = textOf(buildLiveFrame({ state, config, width: 220, height: 50, nowMs: NOW }));
@@ -143,7 +150,7 @@ test('Login usage gets thin quota bars when width permits and keeps essential qu
 });
 
 test('API key mode never displays Login quota and keeps model plus token usage across representations', () => {
-  const config = normalizeConfig(configForPreset('full'));
+  const config = fullDataConfig();
   const state = fullState('api');
 
   for (const [width, height] of [[220, 50], [140, 40], [80, 40], [60, 45]]) {
@@ -160,7 +167,7 @@ test('API key mode never displays Login quota and keeps model plus token usage a
 });
 
 test('system low-profile sparkline appears only after enough samples and never replaces essential CPU/RAM values', () => {
-  const config = normalizeConfig(configForPreset('full'));
+  const config = fullDataConfig();
   const state = fullState('login');
   setLocal(state.system, 'samples', [
     { cpuPercent: 10, memoryBytes: 10_000_000_000, totalMemoryBytes: 16_000_000_000 },
@@ -184,26 +191,27 @@ test('system low-profile sparkline appears only after enough samples and never r
   assert.match(ready, /RAM 75%\s{2}[▁▂▃▄]{4,}/);
   assert.equal(MIN_SPARKLINE_SAMPLES, 4);
   assert.equal(sparkline([10, 20, 15], 12), null);
-  assert.ok(sparkline([10, 20, 15, 30], 12));
+  assert.equal(sparkline([10, 20, 15, 30], 80).length, 80);
   assert.match(progressBar(25, 8), /^[━─]{8}$/);
 });
 
-test('System gives trend history more width than occupancy and removes redundant FREE memory', () => {
-  const config = normalizeConfig(configForPreset('full'));
+test('System stretches trend history across available card width while occupancy stays short', () => {
+  const config = fullDataConfig();
   const state = fullState('login');
   setLocal(state.system, 'samples', longSamples());
   const text = textOf(buildLiveFrame({ state, config, width: 300, height: 50, nowMs: NOW }));
-  assert.match(text, /CPU 30%\s{2}[▁▂▃▄]{20,}/);
-  assert.match(text, /RAM 75%\s{2}[▁▂▃▄]{20,}/);
+  assert.match(text, /CPU 30%\s{2}[▁▂▃▄]{30,}/);
+  assert.match(text, /RAM 75%\s{2}[▁▂▃▄]{30,}/);
   assert.match(text, /USED\s+[━─]{6,10}\s+12\.0 GB\/16\.0 GB/);
   assert.doesNotMatch(text, /\bFREE\b/);
 });
 
 test('field visibility supports uneven 5-1-0 content while enabled cards keep their frames', () => {
-  const base = normalizeConfig(configForPreset('full'));
+  const base = fullDataConfig();
   const config = normalizeConfig({
     ...base,
     preset: 'custom',
+    beastMode: 'off',
     fields: {
       ...base.fields,
       context: { used: true, gauge: true, cache: true, left: true, compaction: true },
@@ -228,14 +236,15 @@ test('field visibility supports uneven 5-1-0 content while enabled cards keep th
 });
 
 test('cards remain visible even when every field inside them is disabled', () => {
-  const base = normalizeConfig(configForPreset('full'));
+  const base = fullDataConfig();
   const config = normalizeConfig({
     ...base,
     preset: 'custom',
+    beastMode: 'off',
     fields: Object.fromEntries(Object.entries(base.fields).map(([section, fields]) => [section, allFalse(fields)]))
   });
   const text = textOf(buildLiveFrame({ state: fullState('login'), config, width: 180, height: 50, nowMs: NOW }));
-  for (const title of ['CONTEXT', 'USAGE · LOGIN', 'SESSION', 'CURRENT ACTIVITY', 'SYSTEM']) assert.match(text, new RegExp(title.replace(' · ', ' \\· ')));
+  for (const title of ['CONTEXT', 'USAGE · LOGIN', 'SESSION', 'CURRENT ACTIVITY', 'SYSTEM']) assert.ok(text.includes(title));
   assert.doesNotMatch(text, /\bCPU\s+30%/);
   assert.doesNotMatch(text, /\bWEEK\b/);
 });
@@ -245,7 +254,7 @@ test('mono black and matrix dark backgrounds preserve exact terminal cell bounds
     ['mono', 'black', '\x1b[48;2;0;0;0m'],
     ['matrix', 'dark', '\x1b[48;2;15;23;42m']
   ]) {
-    const config = normalizeConfig({ ...configForPreset('full'), theme, background });
+    const config = fullDataConfig({ theme, background });
     const frame = buildLiveFrame({ state: fullState('login'), config, width: 220, height: 50, nowMs: NOW });
     assert.equal(frame.semantic.theme, theme);
     assert.equal(frame.semantic.background, background);
@@ -300,6 +309,8 @@ test('Full demands displayed System and Git collectors without enabling heavy hi
 test('health header remains derived from current state inside the card renderer', () => {
   const config = normalizeConfig({
     ...configForPreset('custom'),
+    systemMode: 'off',
+    beastMode: 'off',
     header: ['health'],
     sections: { context: true, usage: false, session: false, activity: true, system: false }
   });
