@@ -8,6 +8,7 @@ import { PROVENANCE } from '../../src/core/provenance.js';
 import { createFakePlatformAdapter } from '../../src/platform/fake.js';
 import { HistoryEngine } from '../../src/history/engine.js';
 import { runSessionManager } from '../../src/manager/app.js';
+import { SessionManagerTracker } from '../../src/manager/tracker.js';
 import {
   buildProcessEvidence,
   probeSessionIdentity,
@@ -141,21 +142,21 @@ test('multiple growing sessions update independently and retain LIVE briefly acr
     activityResolver: new SessionActivityResolver({ now: () => nowMs, staleAfterMs: 1000 })
   });
   core.discover();
-  core.refresh();
+  core.refreshKnown();
   fs.appendFileSync(a, 'x');
-  let items = core.refresh();
+  let items = core.refreshKnown();
   assert.equal(items.find((item) => item.filePath === a).state, SESSION_ACTIVITY.LIVE);
   assert.equal(items.find((item) => item.filePath === b).state, SESSION_ACTIVITY.UNKNOWN);
   nowMs += 500;
-  items = core.refresh();
+  items = core.refreshKnown();
   assert.equal(items.find((item) => item.filePath === a).state, SESSION_ACTIVITY.LIVE);
   fs.appendFileSync(b, 'y');
-  items = core.refresh();
+  items = core.refreshKnown();
   assert.equal(items.find((item) => item.filePath === b).state, SESSION_ACTIVITY.LIVE);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('only selected session is deep parsed and historical provenance is retained', () => {
+test('only selected session is deep parsed and releaseSelection frees detail cache', () => {
   const root = tempDir();
   const a = path.join(root, 'a.jsonl');
   const b = path.join(root, 'b.jsonl');
@@ -171,6 +172,9 @@ test('only selected session is deep parsed and historical provenance is retained
   assert.equal(selected.normalized.session.threadId.provenance.source, PROVENANCE.OFFICIAL_HISTORY);
   assert.equal(items.filter((item) => item.parsed).length, 1);
   assert.equal(core.deep.cache.size, 1);
+  core.releaseSelection();
+  assert.equal(core.selectedId, null);
+  assert.equal(core.deep.cache.size, 0);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -207,7 +211,7 @@ test('selected session truncation reloads safely and no database is created', ()
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('external delete degrades gracefully and clears missing selection on refresh', () => {
+test('external delete degrades gracefully and clears missing selection on known refresh', () => {
   const root = tempDir();
   const file = path.join(root, 'gone.jsonl');
   fs.writeFileSync(file, sampleSession());
@@ -218,8 +222,65 @@ test('external delete degrades gracefully and clears missing selection on refres
   const tail = core.tailSelected();
   assert.equal(tail.changed, false);
   assert.ok(tail.error);
-  core.refresh();
+  core.refreshKnown();
   assert.equal(core.selectedId, null);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('tracker separates discovery, process, known refresh and selected-tail cadences', async () => {
+  const root = tempDir();
+  const file = path.join(root, 'one.jsonl');
+  fs.writeFileSync(file, sampleSession({ threadId: 'thread-track' }));
+  let nowMs = 0;
+  const adapter = createFakePlatformAdapter({
+    paths: { sessions: root },
+    processTree: [{ pid: 1, command: 'codex resume thread-track' }]
+  });
+  const core = new SessionManagerCore({ sessionsPath: root, now: () => nowMs });
+  const tracker = new SessionManagerTracker({
+    core,
+    platformAdapter: adapter,
+    now: () => nowMs,
+    discoveryIntervalMs: 5000,
+    processIntervalMs: 2500,
+    knownRefreshIntervalMs: 750,
+    selectedTailIntervalMs: 500
+  });
+
+  let result = await tracker.tick();
+  assert.equal(result.discovered, true);
+  assert.equal(result.processPolled, true);
+  assert.equal(core.index.length, 1);
+  const processCalls = () => adapter.calls.filter((item) => item.name === 'getProcessTree').length;
+  assert.equal(processCalls(), 1);
+
+  nowMs = 400;
+  result = await tracker.tick();
+  assert.equal(result.discovered, false);
+  assert.equal(result.knownRefreshed, false);
+  assert.equal(result.processPolled, false);
+  assert.equal(processCalls(), 1);
+
+  nowMs = 800;
+  result = await tracker.tick();
+  assert.equal(result.knownRefreshed, true);
+  assert.equal(result.discovered, false);
+  assert.equal(processCalls(), 1);
+
+  core.select(core.index[0].id);
+  nowMs = 1300;
+  result = await tracker.tick();
+  assert.equal(result.selectedTailed, true);
+  assert.ok(result.selected);
+
+  nowMs = 2600;
+  result = await tracker.tick();
+  assert.equal(result.processPolled, true);
+  assert.equal(processCalls(), 2);
+
+  nowMs = 5000;
+  result = await tracker.tick();
+  assert.equal(result.discovered, true);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
