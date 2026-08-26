@@ -12,6 +12,21 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function isAgentSpawnTool(name) {
+  const clean = String(name ?? '').trim().toLowerCase();
+  if (!clean) return false;
+  const leaf = clean.split(/[.:/\\]/).filter(Boolean).at(-1) ?? clean;
+  return leaf === 'spawn_agent';
+}
+
+function agentSpawnCountFromByName(byName = {}) {
+  if (!byName || typeof byName !== 'object') return 0;
+  return Object.entries(byName).reduce((sum, [name, count]) => {
+    if (!isAgentSpawnTool(name)) return sum;
+    return sum + (numberOrNull(count) ?? 0);
+  }, 0);
+}
+
 function readSegment(filePath, start, length, fsRef = fs) {
   if (!Number.isFinite(start) || !Number.isFinite(length) || length <= 0) return '';
   const fd = fsRef.openSync(filePath, 'r');
@@ -47,8 +62,10 @@ function freshSummary(item, { countsComplete = false } = {}) {
     },
     turnCount: countsComplete ? 0 : null,
     toolCount: countsComplete ? 0 : null,
+    agentSpawnCount: countsComplete ? 0 : null,
     observedTurnCount: 0,
     observedToolCount: 0,
+    observedAgentSpawnCount: 0,
     recentErrors: [],
     recentRetries: [],
     recentCompactions: [],
@@ -86,6 +103,10 @@ function applyEvent(summary, event, recentLimit) {
   } else if (event.kind === 'tool-start') {
     summary.observedToolCount += 1;
     if (summary.countsComplete) summary.toolCount = (summary.toolCount ?? 0) + 1;
+    if (isAgentSpawnTool(event.tool)) {
+      summary.observedAgentSpawnCount += 1;
+      if (summary.countsComplete) summary.agentSpawnCount = (summary.agentSpawnCount ?? 0) + 1;
+    }
   } else if (event.kind === 'error') {
     pushRecent(summary.recentErrors, { atMs, detail: event.detail ?? null }, recentLimit);
   } else if (event.kind === 'retry') {
@@ -161,6 +182,7 @@ export class LightweightSessionSummaries {
       summary.countsComplete = false;
       summary.turnCount = null;
       summary.toolCount = null;
+      summary.agentSpawnCount = null;
     }
     this.cache.set(item.id, summary);
     return summary;
@@ -191,6 +213,7 @@ export class LightweightSessionSummaries {
       summary.countsComplete = false;
       summary.turnCount = null;
       summary.toolCount = null;
+      summary.agentSpawnCount = null;
       summary.observationGap = true;
       dropLeadingPartial = start > 0;
     }
@@ -224,8 +247,10 @@ export class LightweightSessionSummaries {
     summary.tokens.contextUsed = numberOrNull(model.tokens?.contextUsed);
     summary.turnCount = numberOrNull(model.turns?.count) ?? 0;
     summary.toolCount = numberOrNull(model.tools?.count) ?? 0;
+    summary.agentSpawnCount = agentSpawnCountFromByName(model.tools?.byName);
     summary.observedTurnCount = summary.turnCount;
     summary.observedToolCount = summary.toolCount;
+    summary.observedAgentSpawnCount = summary.agentSpawnCount;
     if (Array.isArray(model.errors)) {
       summary.recentErrors = model.errors.slice(-this.recentLimit).map((entry) => ({
         atMs: numberOrNull(entry?.atMs),
@@ -269,9 +294,11 @@ export class LightweightSessionSummaries {
       },
       turnCount: summary?.turnCount ?? null,
       toolCount: summary?.toolCount ?? null,
+      agentSpawnCount: summary?.agentSpawnCount ?? null,
       countsComplete: summary?.countsComplete ?? false,
       observedTurnCount: summary?.observedTurnCount ?? 0,
       observedToolCount: summary?.observedToolCount ?? 0,
+      observedAgentSpawnCount: summary?.observedAgentSpawnCount ?? 0,
       lastActivityAtMs,
       lastActivitySource: eventLastActivityAtMs != null ? 'rollout-event' : (fileActivityAtMs != null ? 'file-mtime' : null),
       recentErrors: summary ? [...summary.recentErrors] : [],
