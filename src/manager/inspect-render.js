@@ -4,6 +4,8 @@ import { filterSessionTimeline, MANAGER_TIMELINE_FILTERS } from './timeline.js';
 import {
   contextChartModel,
   cumulativeTokenChartModel,
+  tokenIoByTurnChartModel,
+  toolCallsByTurnChartModel,
   toolShareChartModel,
   turnDurationChartModel
 } from './analytics-charts.js';
@@ -152,19 +154,24 @@ function contextAnalyticsLines(detail, width, mode) {
 function tokenAnalyticsLines(detail, width, mode) {
   const analytics = detail.analytics;
   if (!analytics) return telemetryLines(detail).slice(0, 5);
-  const chart = cumulativeTokenChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
-  return [
-    `${hpaint('CUMULATIVE TOKENS', 'heading', mode)}  total ${hpaint(fmtNum(chart.total), 'secondary', mode)}`,
-    hpaint(chart.line, 'secondary', mode),
+  const cumulative = cumulativeTokenChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const perTurn = tokenIoByTurnChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const turns = Array.isArray(analytics.turns?.items) ? analytics.turns.items : [];
+  const lines = [
+    `${hpaint('CUMULATIVE TOKENS', 'heading', mode)}  total ${hpaint(fmtNum(cumulative.total), 'secondary', mode)}`,
+    hpaint(cumulative.line, 'secondary', mode),
+    `Input ${fmtNum(cumulative.input)}  Cached ${fmtNum(cumulative.cached)}  Uncached ${fmtNum(cumulative.uncachedInput)}  Output ${fmtNum(cumulative.output)}  Reason ${fmtNum(cumulative.reasoning)}`,
     '',
-    `Input        ${fmtNum(chart.input)}`,
-    `Cached       ${fmtNum(chart.cached)}`,
-    `Uncached     ${fmtNum(chart.uncachedInput)}`,
-    `Output       ${fmtNum(chart.output)}`,
-    `Reasoning    ${fmtNum(chart.reasoning)}`,
-    `Total I/O    ${fmtNum(chart.total)}`,
-    `Context      ${fmtPercent(detail.tokens?.contextUsed, detail.tokens?.contextWindow)}   peak ${fmtPercentValue(analytics.context?.peakPercent)}`
+    `${hpaint('TOKEN I/O / TURN', 'heading', mode)}  peak ${fmtNum(perTurn.peakTokens)}`,
+    hpaint(perTurn.line, 'session', mode),
+    hpaint(' #    INPUT    CACHE   UNCACHED   OUTPUT   REASON    TOTAL', 'label', mode)
   ];
+  for (const turn of turns.slice(-8)) {
+    lines.push(`${String(turn.index + 1).padStart(3)}  ${String(fmtNum(turn.inputTokens)).padStart(7)}  ${String(fmtNum(turn.cachedTokens)).padStart(7)}  ${String(fmtNum(turn.uncachedInputTokens)).padStart(9)}  ${String(fmtNum(turn.outputTokens)).padStart(7)}  ${String(fmtNum(turn.reasoningTokens)).padStart(7)}  ${String(fmtNum(turn.totalTokens)).padStart(7)}`);
+  }
+  if (!turns.length) lines.push(hpaint('No per-turn token evidence.', 'dim', mode));
+  lines.push('', `Context      ${fmtPercent(detail.tokens?.contextUsed, detail.tokens?.contextWindow)}   peak ${fmtPercentValue(analytics.context?.peakPercent)}`);
+  return lines;
 }
 
 function turnTableLines(detail, width, mode) {
@@ -199,7 +206,13 @@ function toolAnalyticsLines(detail, width, mode) {
     return [`Total tools  ${fmtNum(detail.tools?.count)}`, '', ...tools.slice(0, 12).map((item) => `${String(fmtNum(item.count)).padStart(6)}  ${item.name ?? '--'}`)];
   }
   const bars = toolShareChartModel(analytics, Math.max(8, Math.min(30, Math.floor(width * 0.35))), { ascii: mode === 'mono' && width < 60, maxItems: 8 });
-  const lines = [`${hpaint('TOOL SHARE', 'heading', mode)}  total ${fmtNum(bars.total)}`];
+  const callsByTurn = toolCallsByTurnChartModel(analytics, Math.max(12, width - 2), { ascii: mode === 'mono' && width < 60 });
+  const lines = [
+    `${hpaint('TOOL CALLS / TURN', 'heading', mode)}  total ${fmtNum(bars.total)}  peak ${fmtNum(callsByTurn.peakCalls)}`,
+    hpaint(callsByTurn.line, 'live', mode),
+    '',
+    hpaint('TOOL SHARE', 'heading', mode)
+  ];
   for (const row of bars.bars) lines.push(`${String(row.label).padEnd(16).slice(0, 16)} ${row.bar} ${fmtNum(row.value)}`);
   if (!bars.bars.length) lines.push(hpaint('No tool call evidence.', 'dim', mode));
   const events = Array.isArray(analytics.tools?.events) ? analytics.tools.events : [];
