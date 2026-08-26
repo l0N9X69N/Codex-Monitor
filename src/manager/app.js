@@ -16,7 +16,7 @@ function summaryLines(items, diagnostics = null, processError = null) {
   ];
   if (diagnostics?.processTelemetry) {
     lines.push(`Codex processes: ${diagnostics.codexProcessCount} · roots ${diagnostics.codexRootCount} · mapped ${diagnostics.mappedSessionCount ?? 0}`);
-    lines.push(`Process correlation: exact ${diagnostics.exactMatchCount ?? 0} · start ${diagnostics.startMatchCount ?? 0}`);
+    lines.push(`Process correlation: exact ${diagnostics.exactMatchCount ?? 0} · sticky ${diagnostics.stickyMatchCount ?? 0} · start ${diagnostics.startMatchCount ?? 0} · missing ${diagnostics.missingAssociationCount ?? 0}`);
   } else if (diagnostics) {
     lines.push(`Codex processes: telemetry unavailable${processError ? ` · ${processError}` : ''}`);
   }
