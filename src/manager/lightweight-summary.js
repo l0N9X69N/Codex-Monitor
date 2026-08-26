@@ -292,7 +292,7 @@ export class LightweightSessionSummaries {
       name: item.name,
       state: item.state,
       threadId: item.threadId ?? null,
-      project: item.project ?? null,
+      project: item.project ?? 'UNKNOWN',
       cwd: item.cwd ?? null,
       model: summary?.model ?? item.model ?? null,
       reasoning: summary?.reasoning ?? null,
