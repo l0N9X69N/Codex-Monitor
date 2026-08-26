@@ -50,6 +50,7 @@ test('Manager input normalizes navigation, search, filters, sorting and mouse wh
   assert.equal(normalizeManagerInput('d'), 'direction');
   assert.equal(normalizeManagerInput('\r'), 'inspect');
   assert.equal(normalizeManagerInput('q'), 'quit');
+  assert.equal(normalizeManagerInput('!'), null);
   assert.equal(normalizeManagerInput('\x1b[<64;3;4M'), 'up');
   assert.equal(normalizeManagerInput('\x1b[<65;3;4M'), 'down');
   assert.deepEqual(normalizeManagerInput('abc', { searching: true }), { action: 'search-text', text: 'abc' });
@@ -87,7 +88,7 @@ test('Manager snapshot signature repaints evidenced row changes but ignores elap
   assert.notEqual(tokenChanged, first);
 });
 
-test('Manager TUI owns alternate screen and restores raw mode, mouse and cursor on quit', async () => {
+test('Manager TUI ignores unknown input and restores raw mode, mouse and cursor on quit', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'one.jsonl'), sessionLine());
   const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
@@ -102,7 +103,10 @@ test('Manager TUI owns alternate screen and restores raw mode, mouse and cursor 
     colorMode: 'mono',
     intervalMs: 50
   });
-  setImmediate(() => stdin.emit('data', Buffer.from('q')));
+  setImmediate(() => {
+    stdin.emit('data', Buffer.from('!'));
+    setImmediate(() => stdin.emit('data', Buffer.from('q')));
+  });
   const result = await running;
 
   assert.equal(result.code, 0);
