@@ -2,25 +2,33 @@
 
 ## Trạng thái
 
-**WAITING USER RUN**
+**PASS — user-run Windows development checkpoint, 2026-08-26**
+
+Command used for the Phase 07 gate:
 
 ```powershell
-.\scripts\phase6-9-verify.ps1
+npm run verify:phase7
 ```
 
-Automated coverage:
-- full adapter contract qua fake adapter;
-- resolver win32/linux/darwin không execute native command;
-- CODEX_HOME/path semantics;
-- POSIX elapsed-time parser variants;
-- F4 History routing qua adapter;
-- unsupported paths degrade có cấu trúc;
-- full regression.
+The user reported the verification gate passed.
 
-Automated contract PASS không đồng nghĩa real-platform PASS.
+Automated coverage includes:
+
+- shared adapter contract via fake adapter;
+- win32/linux/darwin adapter resolution without executing native commands;
+- CODEX_HOME/path semantics;
+- POSIX elapsed/parser coverage;
+- normalized `ps`/`df` result shapes;
+- structured unsupported capability fallback;
+- capability normalization;
+- cleanup idempotence;
+- obsolete History launcher absent from the platform contract;
+- Phase 06 Live/platform regression coverage included by the Phase 07 verify script.
+
+Automated PASS does not equal real-machine cross-platform PASS.
 
 ```text
-Windows  needs manual verification
+Windows  AUTO PASS + manual development gate PASS
 Linux    UNVERIFIED PLATFORM
 macOS    UNVERIFIED PLATFORM
 ```
