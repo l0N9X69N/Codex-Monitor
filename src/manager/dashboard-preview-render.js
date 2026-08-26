@@ -3,6 +3,7 @@ import { hpaint } from '../history/theme.js';
 import { rowContextPercent } from './dashboard-model.js';
 import { renderSessionDashboard } from './dashboard-render.js';
 import { selectedActivityPreviewLines } from './activity-preview-render.js';
+import { activityPreviewPanelHeight } from './activity-preview-capacity.js';
 
 function finiteOrNull(value) {
   if (value === null || value === undefined || typeof value === 'boolean') return null;
@@ -248,8 +249,15 @@ export function renderSessionDashboardWithPreview(options = {}) {
   const rightWidth = width - leftWidth - 1;
   if (rightWidth < 48) return frame;
 
+  const activityHeight = activityPreviewPanelHeight({
+    width,
+    height,
+    viewMode: frame.viewMode,
+    telemetry: options.telemetry
+  });
+  const safeActivityHeight = Math.max(0, Math.min(geometry.height, activityHeight || geometry.height));
   const tableLines = previewTableLines(frame.model, leftWidth - 2, geometry.height - 2, options.mode ?? '256');
-  const activityLines = selectedActivityPreviewLines(preview, rightWidth - 2, geometry.height - 2, options.mode ?? '256');
+  const activityLines = selectedActivityPreviewLines(preview, rightWidth - 2, Math.max(1, safeActivityHeight - 2), options.mode ?? '256');
   const tablePrefix = frame.viewMode === 'table'
     ? 'SESSIONS'
     : frame.viewMode === 'charts' ? 'RECENT / SELECT' : 'RECENT SESSIONS';
@@ -258,7 +266,7 @@ export function renderSessionDashboardWithPreview(options = {}) {
       title: `${tablePrefix} ${frame.model.rows.length}/${frame.model.summary.total}  SELECTED ${frame.model.selectedIndex + 1}/${frame.model.rows.length}`,
       mode: options.mode ?? '256'
     }),
-    panel(activityLines, rightWidth, geometry.height, {
+    panel(activityLines, rightWidth, safeActivityHeight, {
       title: previewTitle(preview, frame.model),
       mode: options.mode ?? '256',
       active: true
