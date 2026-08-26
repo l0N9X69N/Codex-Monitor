@@ -53,6 +53,17 @@ function fmtPercent(value) {
   return n == null ? '--' : `${Math.round(n)}%`;
 }
 
+function fmtAge(atMs, nowMs = Date.now()) {
+  const at = finiteOrNull(atMs);
+  if (at == null) return '--';
+  const delta = Math.max(0, nowMs - at);
+  if (delta < 1000) return 'now';
+  if (delta < 60_000) return `${Math.floor(delta / 1000)}s`;
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h`;
+  return `${Math.floor(delta / 86_400_000)}d`;
+}
+
 function stateToken(state) {
   if (state === 'LIVE') return 'live';
   if (state === 'ENDED') return 'dim';
@@ -100,10 +111,15 @@ const PREVIEW_COLUMNS = Object.freeze([
   { key: 'project', title: 'PROJECT', width: 18, value: (row) => row.project ?? 'UNKNOWN' },
   { key: 'session', title: 'SESSION', width: 10, value: (row) => shortSessionId(row) },
   { key: 'model', title: 'MODEL', width: 14, value: (row) => row.model ?? '--' },
+  { key: 'active', title: 'ACTIVE', width: 7, value: (row) => fmtAge(row.lastActivityAtMs ?? row.modifiedAtMs) },
   { key: 'context', title: 'CTX', width: 6, value: (row) => fmtPercent(rowContextPercent(row)) },
   { key: 'input', title: 'INPUT', width: 8, value: (row) => fmtNum(row.tokens?.input) },
+  { key: 'output', title: 'OUTPUT', width: 8, value: (row) => fmtNum(row.tokens?.output) },
+  { key: 'reason', title: 'REASON', width: 8, value: (row) => fmtNum(row.tokens?.reasoning) },
+  { key: 'turn', title: 'TURN', width: 5, value: (row) => fmtNum(row.turnCount ?? row.observedTurnCount) },
   { key: 'turnaround', title: 'LAST TURN', width: 10, value: (row) => fmtTurnaround(row.lastTurnDurationMs) },
   { key: 'tools', title: 'TOOLS', width: 6, value: (row) => fmtNum(row.toolCount ?? row.observedToolCount) },
+  { key: 'agents', title: 'AGENTS', width: 7, value: (row) => fmtNum(row.agentSpawnCount ?? row.observedAgentSpawnCount ?? 0) },
   { key: 'size', title: 'SIZE', width: 8, value: (row) => fmtBytes(row.fileSizeBytes) }
 ]);
 
@@ -113,7 +129,13 @@ function tableWidth(columns) {
 
 function previewTableColumns(width) {
   const columns = [...PREVIEW_COLUMNS];
-  while (columns.length > 4 && tableWidth(columns) > width) columns.splice(columns.length - 1, 1);
+  const removableOrder = ['reason', 'agents', 'output', 'active', 'size', 'turn', 'tools', 'turnaround'];
+  while (columns.length > 4 && tableWidth(columns) > width) {
+    const key = removableOrder.find((candidate) => columns.some((column) => column.key === candidate));
+    const index = columns.findIndex((column) => column.key === key);
+    if (index < 0) break;
+    columns.splice(index, 1);
+  }
   return columns;
 }
 
@@ -121,12 +143,17 @@ function previewTableLines(model, width, rows, mode) {
   const columns = previewTableColumns(width);
   const widths = Object.fromEntries(columns.map((column) => [column.key, column.width]));
   let extra = Math.max(0, width - tableWidth(columns));
-  const project = columns.find((column) => column.key === 'project');
-  const modelColumn = columns.find((column) => column.key === 'model');
-  while (extra > 0 && (project || modelColumn)) {
+  const elasticOrder = ['project', 'model', 'session'];
+  const caps = { project: 28, model: 22, session: 14 };
+  while (extra > 0) {
     let changed = false;
-    if (project && widths.project < 24 && extra > 0) { widths.project += 1; extra -= 1; changed = true; }
-    if (modelColumn && widths.model < 20 && extra > 0) { widths.model += 1; extra -= 1; changed = true; }
+    for (const key of elasticOrder) {
+      if (extra <= 0 || !columns.some((column) => column.key === key)) continue;
+      if (widths[key] >= caps[key]) continue;
+      widths[key] += 1;
+      extra -= 1;
+      changed = true;
+    }
     if (!changed) break;
   }
 
@@ -146,10 +173,13 @@ function previewTableLines(model, width, rows, mode) {
       else if (!isSelected && column.key === 'project') value = hpaint(raw, 'text', mode);
       else if (!isSelected && column.key === 'session') value = hpaint(raw, 'session', mode);
       else if (!isSelected && column.key === 'model') value = hpaint(raw, 'dim', mode);
+      else if (!isSelected && column.key === 'active') value = hpaint(raw, row.state === 'LIVE' ? 'live' : 'dim', mode);
       else if (!isSelected && column.key === 'context') {
         const pct = rowContextPercent(row);
         value = hpaint(raw, pct >= 80 ? 'error' : pct >= 60 ? 'pressure' : pct != null ? 'live' : 'dim', mode);
-      } else if (!isSelected && column.key === 'turnaround') value = hpaint(raw, 'pressure', mode);
+      } else if (!isSelected && (column.key === 'output' || column.key === 'reason')) value = hpaint(raw, 'secondary', mode);
+      else if (!isSelected && column.key === 'turnaround') value = hpaint(raw, 'pressure', mode);
+      else if (!isSelected && column.key === 'agents') value = hpaint(raw, Number(row.agentSpawnCount ?? row.observedAgentSpawnCount ?? 0) > 0 ? 'nav' : 'dim', mode);
       return padCells(value, widths[column.key]);
     });
     const text = `${isSelected ? '▸' : ' '} ${cells.join(' ')}`;
@@ -161,6 +191,10 @@ function previewTableLines(model, width, rows, mode) {
 function recentBlockGeometry(frame, height, telemetry) {
   const safeHeight = Math.max(16, Number(height) || 36);
   const bodyHeight = safeHeight - 3;
+  if (frame.viewMode === 'table') {
+    const summaryHeight = 4;
+    return { start: 2 + summaryHeight, height: bodyHeight - summaryHeight };
+  }
   if (frame.viewMode === 'operations') {
     const blockHeight = Math.max(5, bodyHeight - 7 - 11);
     return { start: 2 + 7 + 11, height: blockHeight };
@@ -189,20 +223,23 @@ export function renderSessionDashboardWithPreview(options = {}) {
   const width = Math.max(44, Number(options.width) || 120);
   const height = Math.max(16, Number(options.height) || 36);
   const preview = options.activityPreview ?? null;
-  if (width < 220 || frame.layout !== 'ultrawide' || !preview || frame.viewMode === 'table') return frame;
+  if (width < 220 || frame.layout !== 'ultrawide' || !preview) return frame;
 
   const geometry = recentBlockGeometry(frame, height, options.telemetry);
   if (!geometry || geometry.height < 6) return frame;
 
-  const leftWidth = Math.max(112, Math.min(Math.floor(width * 0.64), 150));
+  const leftWidth = Math.max(118, Math.min(Math.floor(width * 0.62), 158));
   const rightWidth = width - leftWidth - 1;
   if (rightWidth < 48) return frame;
 
   const tableLines = previewTableLines(frame.model, leftWidth - 2, geometry.height - 2, options.mode ?? '256');
   const activityLines = selectedActivityPreviewLines(preview, rightWidth - 2, geometry.height - 2, options.mode ?? '256');
+  const tablePrefix = frame.viewMode === 'table'
+    ? 'SESSIONS'
+    : frame.viewMode === 'charts' ? 'RECENT / SELECT' : 'RECENT SESSIONS';
   const replacement = joinPanels(
     panel(tableLines, leftWidth, geometry.height, {
-      title: `${frame.viewMode === 'charts' ? 'RECENT / SELECT' : 'RECENT SESSIONS'} ${frame.model.rows.length}/${frame.model.summary.total}  SELECTED ${frame.model.selectedIndex + 1}/${frame.model.rows.length}`,
+      title: `${tablePrefix} ${frame.model.rows.length}/${frame.model.summary.total}  SELECTED ${frame.model.selectedIndex + 1}/${frame.model.rows.length}`,
       mode: options.mode ?? '256'
     }),
     panel(activityLines, rightWidth, geometry.height, {
