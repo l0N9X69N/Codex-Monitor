@@ -25,6 +25,7 @@ export class SessionManagerTracker {
     this.lastKnownRefreshAtMs = Number.NEGATIVE_INFINITY;
     this.lastSelectedTailAtMs = Number.NEGATIVE_INFINITY;
     this.processEvidence = buildProcessEvidence(null);
+    this.processAssociations = new Map();
     this.lastProcessError = null;
     this.summariesInitialized = false;
   }
@@ -36,14 +37,27 @@ export class SessionManagerTracker {
     try {
       const value = await this.platformAdapter.getProcessTree();
       if (Array.isArray(value)) {
-        this.processEvidence = buildProcessEvidence(value, { nowMs, sessions: this.core.index });
+        this.processEvidence = buildProcessEvidence(value, {
+          nowMs,
+          sessions: this.core.index,
+          previousAssociations: this.processAssociations
+        });
+        this.processAssociations = this.processEvidence.associations ?? this.processAssociations;
         this.lastProcessError = null;
       } else {
-        this.processEvidence = buildProcessEvidence(null, { nowMs, sessions: this.core.index });
+        this.processEvidence = buildProcessEvidence(null, {
+          nowMs,
+          sessions: this.core.index,
+          previousAssociations: this.processAssociations
+        });
         this.lastProcessError = value?.detail ?? null;
       }
     } catch (error) {
-      this.processEvidence = buildProcessEvidence(null, { nowMs, sessions: this.core.index });
+      this.processEvidence = buildProcessEvidence(null, {
+        nowMs,
+        sessions: this.core.index,
+        previousAssociations: this.processAssociations
+      });
       this.lastProcessError = error?.message ?? 'process query failed';
     }
     return true;
