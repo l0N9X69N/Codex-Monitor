@@ -29,7 +29,7 @@
     "test:phase6": "node --test test/unit/phase6-passive-hud.test.js test/unit/phase6-beast-mode.test.js test/unit/phase6-api-routing.test.js test/unit/phase6-bootstrap.test.js test/integration/phase6-passive-runtime.test.js",
     "test:phase7": "node --test test/unit/phase7-platform.test.js",
     "test:phase8": "node --test test/unit/phase8-history-core.test.js test/unit/phase8-detail-view.test.js test/unit/phase8-lightweight-summary.test.js test/unit/phase8-process-evidence.test.js test/unit/phase8-runtime.test.js test/unit/phase8-io-bounds.test.js",
-    "test:phase9": "node --test test/unit/phase9-dashboard.test.js test/unit/phase9-history-ui.test.js",
+    "test:phase9": "node --test test/unit/phase9-dashboard.test.js test/unit/phase9-tui.test.js test/unit/phase9-history-ui.test.js",
     "verify:phase1": "node ./scripts/phase1-auto-verify.mjs",
     "verify:phase2": "node ./scripts/phase2-auto-verify.mjs",
     "verify:phase3": "node ./scripts/phase3-auto-verify.mjs",
