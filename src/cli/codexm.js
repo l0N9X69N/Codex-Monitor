@@ -12,6 +12,7 @@ import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { codexArgsForLocalResume, localResumePickerIntent, pickLocalResumeSession } from '../runtime/local-resume-picker.js';
 import { runSessionManagerRuntime } from '../manager/runtime.js';
+import { runSessionManagerTui } from '../manager/tui.js';
 import { renderDemo } from '../ui/demo.js';
 import { parseMonitorArgs } from './args.js';
 
@@ -54,7 +55,10 @@ async function main() {
 
   if (parsed.action === 'help') { printHelp(); return 0; }
   if (parsed.action === 'manager') {
-    const result = await runSessionManagerRuntime({ platformAdapter });
+    const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
+    const result = interactive
+      ? await runSessionManagerTui({ platformAdapter })
+      : await runSessionManagerRuntime({ platformAdapter });
     return result.code;
   }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
@@ -116,14 +120,13 @@ async function main() {
     }
   }
 
-  let codexArgsFinal = codexArgs;
   let state = createCurrentRunState({ startedAtMs: Date.now() });
   const auth = detectAuth({ override: parsed.auth, codexPath });
   state = withDetectedAuth(state, auth);
 
   return await runCodexLive({
     codexPath,
-    codexArgs: codexArgsFinal,
+    codexArgs,
     resumeTargetPath,
     auth,
     monitorState: state,
