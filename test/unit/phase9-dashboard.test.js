@@ -19,6 +19,8 @@ function row(id, overrides = {}) {
     observedTurnCount: 2,
     toolCount: 1,
     observedToolCount: 1,
+    agentSpawnCount: 0,
+    observedAgentSpawnCount: 0,
     recentErrors: [],
     recentRetries: [],
     recentCompactions: [],
@@ -30,9 +32,9 @@ function row(id, overrides = {}) {
 }
 
 const rows = [
-  row('alpha', { state: 'LIVE', project: 'alpha', threadId: 'thread-alpha', lastActivityAtMs: 3000, tokens: { input: 1000, cached: 500, output: 200, reasoning: 50, contextUsed: 180_000, contextWindow: 200_000 }, toolCount: 6, recentRetries: [{ atMs: 1 }] }),
+  row('alpha', { state: 'LIVE', project: 'alpha', threadId: 'thread-alpha', lastActivityAtMs: 3000, tokens: { input: 1000, cached: 500, output: 200, reasoning: 50, contextUsed: 180_000, contextWindow: 200_000 }, toolCount: 6, agentSpawnCount: 2, recentRetries: [{ atMs: 1 }] }),
   row('beta', { state: 'ENDED', project: 'beta', threadId: 'thread-beta', lastActivityAtMs: 1000, tokens: { input: 400, cached: 10, output: 50, reasoning: 0, contextUsed: 100_000, contextWindow: 200_000 }, toolCount: 2, recentErrors: [{ atMs: 1 }] }),
-  row('gamma', { state: 'LIVE', project: 'gamma', threadId: 'thread-gamma', lastActivityAtMs: 2000, tokens: { input: 50, cached: 0, output: 10, reasoning: 0, contextUsed: 40_000, contextWindow: 200_000 }, toolCount: 3, observedToolCount: 3, recentCompactions: [{ atMs: 1 }] })
+  row('gamma', { state: 'LIVE', project: 'gamma', threadId: 'thread-gamma', lastActivityAtMs: 2000, tokens: { input: 50, cached: 0, output: 10, reasoning: 0, contextUsed: 40_000, contextWindow: 200_000 }, toolCount: 3, observedToolCount: 3, agentSpawnCount: 1, recentCompactions: [{ atMs: 1 }] })
 ];
 
 test('dashboard model summarizes evidence and ranks primary charts without fabricating values', () => {
@@ -75,41 +77,52 @@ test('charts obey current scope and search instead of leaking hidden sessions', 
   assert.equal(none.charts.tools.length, 0);
 });
 
-test('rolling telemetry retains aggregate and per-live-session rates and raw tool event deltas', () => {
+test('rolling telemetry retains multi-codex burn share, raw tool events, turn events and agent evidence', () => {
   const series = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
   let snapshot = series.sample(rows, { scope: 'live', atMs: 1000 });
   assert.equal(snapshot.samples.length, 1);
   assert.equal(snapshot.latest.tokenRate, null);
   assert.equal(snapshot.latest.toolEvents, null);
-  assert.equal(Math.round(snapshot.latest.contextPeak), 90);
+  assert.equal(snapshot.latest.turnEvents, null);
   assert.equal(snapshot.latest.activeCount, 2);
   assert.equal(snapshot.sessions.length, 2);
+  assert.equal(snapshot.sessions.find((item) => item.id === 'alpha').agentSpawns, 2);
 
   const grown = rows.map((item) => {
-    if (item.id === 'alpha') return { ...item, tokens: { ...item.tokens, input: item.tokens.input + 600 }, toolCount: item.toolCount + 2 };
+    if (item.id === 'alpha') return { ...item, tokens: { ...item.tokens, input: item.tokens.input + 600 }, toolCount: item.toolCount + 2, turnCount: item.turnCount + 1, agentSpawnCount: 3 };
     if (item.id === 'gamma') return { ...item, tokens: { ...item.tokens, input: item.tokens.input + 100 }, toolCount: item.toolCount + 1 };
     return item;
   });
   snapshot = series.sample(grown, { scope: 'live', atMs: 2000 });
   assert.equal(Math.round(snapshot.latest.tokenRate), 42_000);
+  assert.equal(snapshot.latest.tokenDelta, 700);
   assert.equal(snapshot.latest.toolEvents, 3);
-  assert.equal(Math.round(snapshot.latest.toolRate), 180);
-  assert.equal(Math.round(snapshot.latest.contextPeak), 90);
+  assert.equal(snapshot.latest.turnEvents, 1);
+  assert.equal(snapshot.burn60, 700);
+  assert.equal(snapshot.tools60, 3);
+  assert.equal(snapshot.turns60, 1);
   assert.equal(snapshot.sessions.length, 2);
+
   const alpha = snapshot.sessions.find((item) => item.id === 'alpha');
   const gamma = snapshot.sessions.find((item) => item.id === 'gamma');
   assert.equal(Math.round(alpha.latest.tokenRate), 36_000);
   assert.equal(Math.round(gamma.latest.tokenRate), 6_000);
   assert.equal(alpha.latest.toolEvents, 2);
   assert.equal(gamma.latest.toolEvents, 1);
-  assert.equal(Math.round(alpha.latest.toolRate), 120);
-  assert.equal(Math.round(gamma.latest.toolRate), 60);
+  assert.equal(alpha.latest.turnEvents, 1);
+  assert.equal(gamma.latest.turnEvents, 0);
+  assert.equal(alpha.burn60, 600);
+  assert.equal(gamma.burn60, 100);
+  assert.equal(Math.round(alpha.burnShare), 86);
+  assert.equal(Math.round(gamma.burnShare), 14);
+  assert.equal(alpha.agentSpawns, 3);
+  assert.equal(gamma.agentSpawns, 1);
 
   snapshot = series.sample(grown, { scope: 'ended', atMs: 3000 });
   assert.equal(snapshot.samples.length, 1);
   assert.equal(snapshot.latest.tokenRate, null);
-  assert.equal(snapshot.latest.contextPeak, null);
   assert.equal(snapshot.latest.activeCount, 0);
+  assert.equal(snapshot.burn60, 0);
   assert.equal(snapshot.sessions.length, 0);
 });
 
@@ -130,53 +143,63 @@ test('responsive dashboard stays inside terminal cells for narrow/normal/wide/ul
 function telemetryFixture() {
   return {
     sampleCount: 3,
-    latest: { activeCount: 2, tokenRate: 600, contextPeak: 80, toolEvents: 3, toolRate: 3 },
+    burn60: 30,
+    tools60: 5,
+    turns60: 2,
+    latest: { activeCount: 2, tokenRate: 600, tokenDelta: 10, toolEvents: 3, turnEvents: 1 },
     samples: [
-      { atMs: 1, activeCount: 2, tokenRate: 0, contextPeak: 20, toolEvents: 0, toolRate: 0 },
-      { atMs: 2, activeCount: 2, tokenRate: 1200, contextPeak: 45, toolEvents: 2, toolRate: 6 },
-      { atMs: 3, activeCount: 2, tokenRate: 600, contextPeak: 80, toolEvents: 3, toolRate: 3 }
+      { atMs: 1, activeCount: 2, tokenRate: 0, tokenDelta: 0, toolEvents: 0, turnEvents: 0 },
+      { atMs: 2, activeCount: 2, tokenRate: 1200, tokenDelta: 20, toolEvents: 2, turnEvents: 1 },
+      { atMs: 3, activeCount: 2, tokenRate: 600, tokenDelta: 10, toolEvents: 3, turnEvents: 1 }
     ],
     sessions: [
       {
-        id: 'alpha', project: 'alpha', threadId: 'thread-alpha', active: true,
-        latest: { tokenRate: 500, context: 80, toolEvents: 2, toolRate: 2 },
+        id: 'alpha', project: 'alpha', threadId: 'thread-alpha', active: true, context: 80, agentSpawns: 2,
+        burn60: 24, burnShare: 80, tools60: 4, turns60: 2,
+        latest: { tokenRate: 500, tokenDelta: 8, toolEvents: 2, turnEvents: 1 },
         samples: [
-          { atMs: 1, tokenRate: 0, context: 20, toolEvents: 0, toolRate: 0 },
-          { atMs: 2, tokenRate: 900, context: 45, toolEvents: 2, toolRate: 4 },
-          { atMs: 3, tokenRate: 500, context: 80, toolEvents: 2, toolRate: 2 }
+          { atMs: 1, tokenRate: 0, tokenDelta: 0, toolEvents: 0, turnEvents: 0 },
+          { atMs: 2, tokenRate: 900, tokenDelta: 16, toolEvents: 2, turnEvents: 1 },
+          { atMs: 3, tokenRate: 500, tokenDelta: 8, toolEvents: 2, turnEvents: 1 }
         ]
       },
       {
-        id: 'gamma', project: 'gamma', threadId: 'thread-gamma', active: true,
-        latest: { tokenRate: 100, context: 20, toolEvents: 1, toolRate: 1 },
+        id: 'gamma', project: 'gamma', threadId: 'thread-gamma', active: true, context: 20, agentSpawns: 1,
+        burn60: 6, burnShare: 20, tools60: 1, turns60: 0,
+        latest: { tokenRate: 100, tokenDelta: 2, toolEvents: 1, turnEvents: 0 },
         samples: [
-          { atMs: 1, tokenRate: 0, context: 20, toolEvents: 0, toolRate: 0 },
-          { atMs: 2, tokenRate: 300, context: 20, toolEvents: 0, toolRate: 2 },
-          { atMs: 3, tokenRate: 100, context: 20, toolEvents: 1, toolRate: 1 }
+          { atMs: 1, tokenRate: 0, tokenDelta: 0, toolEvents: 0, turnEvents: 0 },
+          { atMs: 2, tokenRate: 300, tokenDelta: 4, toolEvents: 0, turnEvents: 0 },
+          { atMs: 3, tokenRate: 100, tokenDelta: 2, toolEvents: 1, turnEvents: 0 }
         ]
       }
     ]
   };
 }
 
-test('operations view prioritizes current state, semantic telemetry, selected session and recent sessions', () => {
+test('operations view prioritizes current state, motion telemetry, selected session and recent sessions', () => {
   const text = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 40, mode: 'mono', viewMode: 'operations', telemetry: telemetryFixture() }).lines.join('\n'));
   assert.match(text, /CURRENT \/ LIVE/);
   assert.match(text, /STATUS \/ EVENTS/);
   assert.match(text, /LIVE TELEMETRY · 60s/);
-  assert.match(text, /TOKEN RATE/);
+  assert.match(text, /TOKEN BURN/);
+  assert.match(text, /tok\/60s/);
   assert.match(text, /TOOL LOAD/);
   assert.match(text, /evt\/5s/);
-  assert.match(text, /CONTEXT/);
+  assert.match(text, /TURN LOAD/);
+  assert.match(text, /turn\/5s/);
   assert.match(text, /SELECTED SESSION/);
+  assert.match(text, /Agents/);
   assert.match(text, /RECENT SESSIONS/);
 });
 
-test('charts view uses semantic aggregate motion and per-live-session telemetry rows', () => {
+test('charts view exposes per-live-session burn share context tools and agent spawns', () => {
   const charts = stripAnsi(renderSessionDashboard({ rows, width: 150, height: 44, mode: 'mono', viewMode: 'charts', telemetry: telemetryFixture() }).lines.join('\n'));
   assert.match(charts, /SYSTEM MOTION · LIVE ONLY · ROLLING 60s/);
-  assert.match(charts, /LIVE SESSIONS · TOKEN \/ RATE \/ CONTEXT \/ TOOLS/);
-  assert.match(charts, /TOOLS\/5s/);
+  assert.match(charts, /LIVE SESSIONS · BURN \/ SHARE \/ CONTEXT \/ TOOLS \/ AGENTS/);
+  assert.match(charts, /BURN60/);
+  assert.match(charts, /SHARE/);
+  assert.match(charts, /AGENTS/);
   assert.match(charts, /alpha/);
   assert.match(charts, /gamma/);
   assert.match(charts, /TOP TOKEN TOTAL · current scope/);
