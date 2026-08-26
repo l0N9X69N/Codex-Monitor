@@ -5,7 +5,7 @@ import { SessionManagerCore } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { SessionManagerRuntime } from './runtime.js';
 import { renderSessionDashboard } from './dashboard-render.js';
-import { nextManagerScope, nextManagerSort, normalizeManagerInput } from './input.js';
+import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 
 const FOCUS_ORDER = Object.freeze(['table', 'tokens', 'context', 'tools']);
 
@@ -23,7 +23,8 @@ export async function runSessionManagerTui({
   now = () => Date.now(),
   processRef = process,
   colorMode = detectHistoryColorMode(),
-  intervalMs = 250
+  intervalMs = 250,
+  initialViewMode = 'operations'
 } = {}) {
   if (!platformAdapter) throw new Error('Session Manager requires platform adapter');
   if (!stdin?.isTTY || !stdout?.isTTY) throw new Error('Session Manager TUI requires an interactive terminal');
@@ -44,6 +45,7 @@ export async function runSessionManagerTui({
   let selectedId = null;
   let selectedIndex = 0;
   let focus = 'table';
+  let viewMode = initialViewMode;
   let done = false;
   let lastFrame = null;
 
@@ -60,7 +62,8 @@ export async function runSessionManagerTui({
       direction,
       selectedId,
       selectedIndex,
-      focus
+      focus,
+      viewMode
     });
     selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
     selectedId = frame.model.selected?.id ?? null;
@@ -160,6 +163,9 @@ export async function runSessionManagerTui({
       selectedIndex = 0;
     } else if (action === 'direction') {
       direction = direction === 'desc' ? 'asc' : 'desc';
+    } else if (action === 'view') {
+      viewMode = nextManagerView(viewMode);
+      focus = 'table';
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
@@ -196,7 +202,7 @@ export async function runSessionManagerTui({
     stdout.write('\x1b[2J\x1b[H');
     void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
-    return { code, core, tracker, runtime };
+    return { code, core, tracker, runtime, viewMode };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
     processRef?.removeListener?.('SIGTERM', onSignal);
