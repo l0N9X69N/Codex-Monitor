@@ -1,7 +1,8 @@
 import { cellWidth, padCells, truncateCells } from '../ui/cell-width.js';
 import { hpaint } from '../history/theme.js';
+import { filterSessionTimeline, MANAGER_TIMELINE_FILTERS } from './timeline.js';
 
-export const MANAGER_INSPECT_TABS = Object.freeze(['info', 'tokens', 'turns', 'tools', 'resources', 'errors']);
+export const MANAGER_INSPECT_TABS = Object.freeze(['info', 'timeline', 'tokens', 'turns', 'tools', 'resources', 'errors']);
 
 function fmtNum(value) {
   const n = Number(value);
@@ -25,9 +26,16 @@ function fmtDate(ms) {
   try { return new Date(n).toISOString().replace('T', ' ').slice(0, 19); } catch { return '--'; }
 }
 
+function fmtTime(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return '--:--:--';
+  try { return new Date(n).toISOString().slice(11, 19); } catch { return '--:--:--'; }
+}
+
 function fmtDuration(ms) {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < 0) return '--';
+  if (n < 1000) return `${Math.round(n)}ms`;
   const seconds = Math.floor(n / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -72,7 +80,7 @@ function join(left, right, leftWidth, height) {
 
 function infoLines(detail) {
   return [
-    `Project      ${detail.info?.project ?? '--'}`,
+    `Project      ${detail.info?.project ?? 'UNKNOWN'}`,
     `Thread       ${detail.info?.threadId ?? '--'}`,
     `Model        ${detail.info?.model ?? '--'}`,
     `Reasoning    ${detail.info?.reasoning ?? '--'}`,
@@ -102,9 +110,7 @@ function tabLines(detail, tab) {
   if (tab === 'turns') return [
     `Turns        ${fmtNum(detail.turns?.count)}`,
     `Completed    ${fmtNum(detail.turns?.completed)}`,
-    `Last turn    ${fmtDuration(detail.turns?.lastDurationMs)}`,
-    '',
-    'Phase 10 expands turn dynamics and timelines.'
+    `Last turn    ${fmtDuration(detail.turns?.lastDurationMs)}`
   ];
   if (tab === 'tools') {
     const tools = Array.isArray(detail.tools?.byName) ? detail.tools.byName : [];
@@ -132,39 +138,155 @@ function tabsLine(activeTab, mode) {
   }).join('  ');
 }
 
-export function renderSessionInspect({ detail, width = 120, height = 36, mode = '256', activeTab = 'info' } = {}) {
+function eventToken(event) {
+  if (event?.failed || event?.category === 'error') return 'error';
+  if (event?.category === 'result') return 'live';
+  if (event?.category === 'agent') return 'pressure';
+  if (event?.category === 'shell') return 'secondary';
+  if (event?.category === 'file') return 'nav';
+  if (event?.category === 'approval' || event?.category === 'retry' || event?.category === 'turn') return 'pressure';
+  if (event?.category === 'user') return 'session';
+  if (event?.category === 'assistant') return 'text';
+  if (event?.category === 'compaction') return 'dim';
+  return 'label';
+}
+
+function eventCategory(event) {
+  const raw = String(event?.category ?? 'event').toUpperCase();
+  return raw.length > 9 ? raw.slice(0, 9) : raw;
+}
+
+function timelineView(detail, { filter = 'all', search = '', selectedIndex = 0, rows = 12, mode = '256' } = {}) {
+  const events = filterSessionTimeline(detail?.timeline, { filter, search });
+  const resolved = events.length ? Math.max(0, Math.min(events.length - 1, Number(selectedIndex) || 0)) : -1;
+  const visible = Math.max(1, rows);
+  let start = 0;
+  if (resolved >= visible) start = resolved - visible + 1;
+  const slice = events.slice(start, start + visible);
+  const lines = slice.map((event, index) => {
+    const absolute = start + index;
+    const marker = absolute === resolved ? hpaint('▸', 'nav', mode) : ' ';
+    const time = hpaint(fmtTime(event.atMs), 'dim', mode);
+    const category = hpaint(eventCategory(event).padEnd(9), eventToken(event), mode);
+    const duration = Number.isFinite(Number(event.durationMs)) ? hpaint(` ${fmtDuration(event.durationMs)}`, 'dim', mode) : '';
+    return `${marker} ${time}  ${category}  ${hpaint(event.label || event.tool || event.rawType || '--', eventToken(event), mode)}${duration}`;
+  });
+  if (!lines.length) lines.push(hpaint('No timeline events match current filter/search.', 'dim', mode));
+  return { events, selectedIndex: resolved, selected: resolved >= 0 ? events[resolved] : null, lines };
+}
+
+function detailValueLines(label, value, width, maxLines = 5) {
+  if (value === null || value === undefined || value === '') return [];
+  const text = String(value);
+  const chunk = Math.max(20, width - 16);
+  const lines = [];
+  for (let offset = 0; offset < text.length && lines.length < maxLines; offset += chunk) {
+    const prefix = lines.length === 0 ? `${label.padEnd(12)} ` : ' '.repeat(13);
+    lines.push(`${prefix}${text.slice(offset, offset + chunk)}`);
+  }
+  if (text.length > chunk * maxLines) lines.push(`${' '.repeat(13)}…`);
+  return lines;
+}
+
+function eventDetailLines(event, width) {
+  if (!event) return ['No timeline event selected.'];
+  const lines = [
+    `Time         ${fmtDate(event.atMs)}`,
+    `Category     ${event.category ?? '--'}${event.group && event.group !== event.category ? ` / ${event.group}` : ''}`,
+    `Raw type     ${event.rawType ?? '--'}`
+  ];
+  if (event.tool) lines.push(`Tool         ${event.tool}`);
+  if (event.callId) lines.push(`Call ID      ${event.callId}`);
+  if (event.turnId) lines.push(`Turn ID      ${event.turnId}`);
+  if (event.role) lines.push(`Role         ${event.role}`);
+  if (Number.isFinite(Number(event.durationMs))) lines.push(`Duration     ${fmtDuration(event.durationMs)}`);
+  if (event.status) lines.push(`Status       ${event.status}`);
+  if (Number.isFinite(Number(event.exitCode))) lines.push(`Exit code    ${event.exitCode}`);
+  lines.push(...detailValueLines('Command', event.command, width, 4));
+  lines.push(...detailValueLines('CWD', event.cwd, width, 2));
+  lines.push(...detailValueLines('Path', event.path, width, 2));
+  lines.push(...detailValueLines('Query', event.query, width, 3));
+  lines.push(...detailValueLines('Detail', event.detail, width, 4));
+  lines.push(...detailValueLines('Input', event.input, width, 6));
+  lines.push(...detailValueLines('Output', event.output, width, 8));
+  return lines;
+}
+
+export function renderSessionInspect({
+  detail,
+  width = 120,
+  height = 36,
+  mode = '256',
+  activeTab = 'info',
+  timelineFilter = 'all',
+  timelineSearch = '',
+  timelineSearchDraft = '',
+  timelineSearching = false,
+  timelineSelectedIndex = 0,
+  timelineDetail = false
+} = {}) {
   const safeWidth = Math.max(44, Number(width) || 120);
   const safeHeight = Math.max(16, Number(height) || 36);
   const tab = MANAGER_INSPECT_TABS.includes(activeTab) ? activeTab : 'info';
   const state = detail?.state ?? 'UNKNOWN';
   const title = detail?.info?.project ?? detail?.info?.threadId ?? 'SESSION';
   const header = truncateCells(`${hpaint('CODEX // SESSION INSPECT', 'strong', mode)}  ${hpaint(String(state), state === 'LIVE' ? 'live' : 'secondary', mode)}  ${title}`, safeWidth, '');
-  const tabs = truncateCells(`${tabsLine(tab, mode)}    Phase 10 expands analytics`, safeWidth, '');
-  const footer = truncateCells('←/→ or Tab change tab   Q/Esc back to dashboard   exact selected-session history only', safeWidth, '');
+  const tabs = truncateCells(tabsLine(tab, mode), safeWidth, '');
   const lines = [header, tabs];
-  const bodyHeight = safeHeight - 3;
+  let timeline = null;
 
   if (!detail) {
+    const bodyHeight = safeHeight - 3;
     lines.push(...panel(['Selected session detail is unavailable.'], safeWidth, bodyHeight, { title: 'SESSION', mode, active: true }));
-  } else if (tab === 'info' && safeWidth >= 92) {
-    const leftWidth = Math.max(38, Math.floor(safeWidth * 0.5));
-    const rightWidth = safeWidth - leftWidth - 1;
-    const left = panel(infoLines(detail), leftWidth, bodyHeight, { title: 'IDENTITY', mode, active: true });
-    const right = panel(telemetryLines(detail), rightWidth, bodyHeight, { title: 'EXACT TELEMETRY', mode });
-    lines.push(...join(left, right, leftWidth, bodyHeight));
+  } else if (tab === 'timeline') {
+    const query = timelineSearching ? timelineSearchDraft : timelineSearch;
+    const status = timelineSearching
+      ? `${hpaint('SEARCH', 'nav', mode)} /${query}`
+      : `${hpaint('FILTER', 'label', mode)} ${String(timelineFilter).toUpperCase()}  ${hpaint('SEARCH', 'label', mode)} ${query || '--'}  ${hpaint('EVENTS', 'label', mode)} ${filterSessionTimeline(detail.timeline, { filter: timelineFilter, search: query }).length}/${detail.timeline?.length ?? 0}`;
+    lines.push(truncateCells(status, safeWidth, ''));
+    const bodyHeight = Math.max(5, safeHeight - 4);
+    timeline = timelineView(detail, {
+      filter: timelineFilter,
+      search: query,
+      selectedIndex: timelineSelectedIndex,
+      rows: Math.max(1, bodyHeight - 2),
+      mode
+    });
+    const body = timelineDetail ? eventDetailLines(timeline.selected, safeWidth - 4) : timeline.lines;
+    lines.push(...panel(body, safeWidth, bodyHeight, {
+      title: timelineDetail ? 'EVENT DETAIL' : 'TIMELINE / AUDIT',
+      mode,
+      active: true
+    }));
   } else {
-    const titleByTab = {
-      info: 'IDENTITY', tokens: 'TOKENS', turns: 'TURNS', tools: 'TOOLS', resources: 'RESOURCES', errors: 'ERRORS'
-    };
-    lines.push(...panel(tabLines(detail, tab), safeWidth, bodyHeight, { title: titleByTab[tab], mode, active: true }));
+    const bodyHeight = safeHeight - 3;
+    if (tab === 'info' && safeWidth >= 92) {
+      const leftWidth = Math.max(38, Math.floor(safeWidth * 0.5));
+      const rightWidth = safeWidth - leftWidth - 1;
+      const left = panel(infoLines(detail), leftWidth, bodyHeight, { title: 'IDENTITY', mode, active: true });
+      const right = panel(telemetryLines(detail), rightWidth, bodyHeight, { title: 'EXACT TELEMETRY', mode });
+      lines.push(...join(left, right, leftWidth, bodyHeight));
+    } else {
+      const titleByTab = {
+        info: 'IDENTITY', tokens: 'TOKENS', turns: 'TURNS', tools: 'TOOLS', resources: 'RESOURCES', errors: 'ERRORS'
+      };
+      lines.push(...panel(tabLines(detail, tab), safeWidth, bodyHeight, { title: titleByTab[tab], mode, active: true }));
+    }
   }
 
-  lines.push(footer);
+  const footer = tab === 'timeline'
+    ? (timelineDetail
+        ? 'Q/Esc close detail   ↑/↓ select after close   Enter detail'
+        : '↑/↓ select   PgUp/PgDn · Home/End   Enter detail   F filter   / search   Tab/←/→ tabs   Q/Esc back')
+    : '←/→ or Tab change tab   Q/Esc back to dashboard   exact selected-session history only';
+  lines.push(truncateCells(footer, safeWidth, ''));
   return {
     lines: lines.slice(0, safeHeight).map((line) => truncateCells(line, safeWidth, '')),
     width: safeWidth,
     height: safeHeight,
     activeTab: tab,
+    timelineFilter: MANAGER_TIMELINE_FILTERS.includes(timelineFilter) ? timelineFilter : 'all',
+    timeline,
     detail
   };
 }
