@@ -117,9 +117,15 @@ test('timeline inspect is responsive and exposes event detail without raw usage 
   }
 });
 
-test('selected activity preview reads only a bounded JSONL tail and tracks the highlighted session', () => {
+test('selected activity preview backfills visible events with non-overlapping bounded reads', () => {
   const root = tempDir();
   const filePath = path.join(root, 'large.jsonl');
+  const older = Array.from({ length: 8 }, (_, index) => line(
+    'user_message',
+    { message: `older-${index}` },
+    `2026-08-26T12:0${index}:00.000Z`,
+    'event_msg'
+  )).join('');
   const filler = `${JSON.stringify({ type: 'token_count', payload: { info: {} } })}\n`.repeat(5000);
   const recent = [
     line('turn_started', { turn_id: 'recent' }, '2026-08-26T12:10:00.000Z', 'event_msg'),
@@ -127,19 +133,23 @@ test('selected activity preview reads only a bounded JSONL tail and tracks the h
     line('function_call_output', { call_id: 'preview-shell', output: 'ok', exit_code: 0 }, '2026-08-26T12:10:02.000Z', 'response_item'),
     line('turn_complete', { turn_id: 'recent' }, '2026-08-26T12:10:03.000Z', 'event_msg')
   ].join('');
-  fs.writeFileSync(filePath, `${filler}${recent}`);
+  fs.writeFileSync(filePath, `${older}${filler}${recent}`);
   const stat = fs.statSync(filePath);
 
   let bytesRead = 0;
+  const ranges = [];
   const fsRef = {
     ...fs,
-    readSync(...args) {
-      const read = fs.readSync(...args);
+    readSync(fd, buffer, offset, length, position) {
+      const read = fs.readSync(fd, buffer, offset, length, position);
       bytesRead += read;
+      ranges.push([position, position + read]);
       return read;
     }
   };
-  const reader = new SelectedActivityPreview({ fsRef, maxBytes: 64 * 1024, maxEvents: 8 });
+  const maxBytes = 64 * 1024;
+  const maxBackfillBytes = maxBytes * 8;
+  const reader = new SelectedActivityPreview({ fsRef, maxBytes, maxBackfillBytes, maxEvents: 8 });
   const row = {
     id: filePath,
     filePath,
@@ -148,15 +158,22 @@ test('selected activity preview reads only a bounded JSONL tail and tracks the h
     threadId: 'preview-session',
     fileSizeBytes: stat.size
   };
-  const preview = reader.read(row, { nowMs: 1 });
+  const preview = reader.read(row, { nowMs: 1, targetEvents: 8 });
 
-  assert.ok(bytesRead <= 64 * 1024, `preview must not read the full history file; read ${bytesRead} bytes`);
-  assert.equal(preview.truncated, true);
+  assert.ok(bytesRead <= maxBackfillBytes, `preview backfill must stay bounded; read ${bytesRead} bytes`);
+  assert.equal(preview.events.length, 8, 'preview should backfill enough evidenced events to fill its visible target');
+  assert.equal(preview.truncated, false, 'fixture should reach the beginning before exhausting the backfill budget');
   assert.ok(preview.events.some((event) => event.category === 'shell' && event.label.includes('npm run test:phase9')));
   assert.ok(preview.events.some((event) => event.category === 'result' && event.group === 'shell'));
 
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  for (let index = 1; index < sorted.length; index += 1) {
+    assert.ok(sorted[index - 1][1] <= sorted[index][0], `preview read ranges must not overlap: ${JSON.stringify(sorted)}`);
+  }
+
   bytesRead = 0;
-  const cached = reader.read(row, { nowMs: 500 });
+  ranges.length = 0;
+  const cached = reader.read(row, { nowMs: 500, targetEvents: 8 });
   assert.equal(cached, preview);
   assert.equal(bytesRead, 0, 'unchanged selected preview should be served from cache');
 
