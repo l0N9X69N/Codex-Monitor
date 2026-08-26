@@ -33,11 +33,48 @@ function rowSignature(row) {
   ].join(':');
 }
 
+function selectedDetailSignature(detail) {
+  if (!detail) return '';
+  const analytics = detail.analytics ?? {};
+  const contextPoints = analytics.context?.points ?? [];
+  const tokenPoints = analytics.tokens?.points ?? [];
+  const turns = analytics.turns?.items ?? [];
+  const tools = analytics.tools?.events ?? [];
+  const signals = analytics.signals ?? [];
+  const lastContext = contextPoints.at?.(-1) ?? null;
+  const lastToken = tokenPoints.at?.(-1) ?? null;
+  const lastTurn = turns.at?.(-1) ?? null;
+  const lastTool = tools.at?.(-1) ?? null;
+  const lastSignal = signals.at?.(-1) ?? null;
+  return [
+    detail.id ?? '',
+    detail.info?.parsedLines ?? '',
+    detail.info?.lastEventAtMs ?? '',
+    detail.timeline?.length ?? 0,
+    contextPoints.length,
+    lastContext?.atMs ?? '',
+    lastContext?.used ?? '',
+    tokenPoints.length,
+    lastToken?.atMs ?? '',
+    lastToken?.total ?? '',
+    turns.length,
+    lastTurn?.completedAtMs ?? lastTurn?.startedAtMs ?? '',
+    lastTurn?.durationMs ?? '',
+    lastTurn?.toolCount ?? '',
+    tools.length,
+    lastTool?.endAtMs ?? lastTool?.atMs ?? '',
+    signals.length,
+    lastSignal?.atMs ?? '',
+    lastSignal?.kind ?? ''
+  ].join(':');
+}
+
 function snapshotSignature(result) {
   const rows = (result.rows ?? []).map(rowSignature).join('|');
   const diagnostics = result.processDiagnostics ?? {};
   return [
     rows,
+    selectedDetailSignature(result.selectedDetail),
     diagnostics.codexProcessCount,
     diagnostics.codexRootCount,
     diagnostics.mappedSessionCount,
@@ -102,10 +139,7 @@ export class SessionManagerRuntime {
   stop() {
     if (!this.running) return false;
     this.running = false;
-    if (this.timer != null) {
-      this.clearTimeoutRef(this.timer);
-      this.timer = null;
-    }
+    this.timer = null;
     const resolve = this.stopResolve;
     this.stopResolve = null;
     resolve?.();
@@ -150,4 +184,8 @@ export async function runSessionManagerRuntime({
   return { code: 0, core, tracker, runtime };
 }
 
-export { snapshotSignature as sessionManagerSnapshotSignature, rowSignature as sessionManagerRowSignature };
+export {
+  snapshotSignature as sessionManagerSnapshotSignature,
+  rowSignature as sessionManagerRowSignature,
+  selectedDetailSignature as sessionManagerSelectedDetailSignature
+};
