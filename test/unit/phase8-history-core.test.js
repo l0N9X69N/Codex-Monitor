@@ -100,17 +100,24 @@ test('bounded identity probe extracts thread/cwd/project/model without deep pars
 
 test('process evidence is conservative when Codex exists but a session cannot be mapped', () => {
   const nowMs = Date.parse('2026-08-25T00:00:20Z');
-  const evidence = buildProcessEvidence([
+  const processes = [
     { pid: 10, ppid: 1, name: 'node.exe', command: 'node codex.js resume thread-live', ageMs: 20_000 },
     { pid: 11, ppid: 1, name: 'unrelated.exe', command: 'unrelated', ageMs: 1000 }
-  ], { nowMs });
+  ];
+  const evidence = buildProcessEvidence(processes, { nowMs });
   assert.deepEqual(evidence({ threadId: null }), { processKnown: false, processMatch: false });
   assert.deepEqual(evidence({ threadId: 'thread-live' }), { processKnown: true, processMatch: true });
   assert.deepEqual(evidence({ threadId: 'thread-ended' }), { processKnown: false, processMatch: false });
   assert.equal(evidence.diagnostics.codexProcessCount, 1);
 
-  const startMatched = evidence({ threadId: 'opaque', startedAtMs: Date.parse('2026-08-25T00:00:00Z') });
-  assert.deepEqual(startMatched, { processKnown: true, processMatch: true });
+  const startSession = {
+    id: 'start-session',
+    threadId: 'opaque',
+    startedAtMs: Date.parse('2026-08-25T00:00:00Z')
+  };
+  const startEvidence = buildProcessEvidence(processes, { nowMs, sessions: [startSession] });
+  assert.deepEqual(startEvidence(startSession), { processKnown: true, processMatch: true });
+  assert.equal(startEvidence.diagnostics.startMatchCount, 1);
 
   const noCodex = buildProcessEvidence([{ pid: 99, name: 'powershell.exe', command: 'powershell.exe' }], { nowMs });
   assert.deepEqual(noCodex({ threadId: 'thread-old' }), { processKnown: true, processMatch: false });
