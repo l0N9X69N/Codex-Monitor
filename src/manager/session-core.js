@@ -5,6 +5,7 @@ import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { samePlatformPath } from '../platform/common.js';
 import { createSelectedSessionDetail } from './detail-view.js';
 import { LightweightSessionSummaries } from './lightweight-summary.js';
+import { buildManagerProcessEvidence } from './process-evidence.js';
 
 export const SESSION_ACTIVITY = Object.freeze({
   LIVE: 'LIVE',
@@ -128,22 +129,8 @@ function mergeMetadata(old, fresh) {
   };
 }
 
-function commandContainsIdentity(command, item) {
-  const text = String(command ?? '').toLowerCase();
-  if (!text) return false;
-  const threadId = String(item?.threadId ?? '').trim().toLowerCase();
-  return Boolean(threadId && text.includes(threadId));
-}
-
-export function buildProcessEvidence(processes) {
-  if (!Array.isArray(processes)) return () => ({ processKnown: false, processMatch: false });
-  return (item) => {
-    if (!item?.threadId) return { processKnown: false, processMatch: false };
-    return {
-      processKnown: true,
-      processMatch: processes.some((process) => commandContainsIdentity(process?.command, item))
-    };
-  };
+export function buildProcessEvidence(processes, options = {}) {
+  return buildManagerProcessEvidence(processes, options);
 }
 
 export class SessionActivityResolver {
