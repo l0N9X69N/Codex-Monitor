@@ -8,7 +8,8 @@ const ULTRAWIDE_SYSTEM_CARD_MIN_CELLS = 200;
 const MIN_SPARKLINE_SAMPLES = 4;
 const SPARK_BLOCKS = '▁▂▃▄';
 const MIN_CARD_OUTER_CELLS = 34;
-const MAX_CARD_COLUMNS = 5;
+const MAX_CARD_COLUMNS = 6;
+const BEAST_MODE_MIN_CELLS = 240;
 const MIN_CHILD_ROWS = 8;
 const MAX_MONITOR_ROWS = 16;
 
@@ -592,7 +593,7 @@ function filterContentRows(cardId, rows, rep, fields, authMode) {
   return rows.filter((_, index) => keep[index] !== false);
 }
 
-function enabledCards(config, state) {
+function enabledCards(config, state, width) {
   const auth = String(value(state?.auth?.mode, 'unknown'));
   const cards = [];
   if (config?.sections?.context === true && config?.metrics?.context !== false) cards.push({ id: 'context', title: 'CONTEXT', token: 'info', weight: 0.85 });
@@ -600,6 +601,7 @@ function enabledCards(config, state) {
   if (config?.sections?.session === true && config?.metrics?.session !== false) cards.push({ id: 'session', title: 'SESSION', token: 'healthy', weight: 1.0 });
   if (config?.sections?.activity === true && config?.metrics?.activity !== false) cards.push({ id: 'activity', title: 'CURRENT ACTIVITY', token: 'thinking', weight: 1.05 });
   if (config?.sections?.system === true && config?.metrics?.system !== false) cards.push({ id: 'system', title: 'SYSTEM', token: 'info', weight: 0.95 });
+  if (config?.sections?.beast === true && width >= BEAST_MODE_MIN_CELLS) cards.push({ id: 'beast', title: 'BEAST MODE', token: 'tool', weight: 1.0 });
   return cards;
 }
 
@@ -611,6 +613,7 @@ function cardContent(item, state, config, theme, nowMs) {
   else if (card.id === 'session') content = sessionContent(state, representation, theme, nowMs);
   else if (card.id === 'activity') content = activityContent(state, representation, theme);
   else if (card.id === 'system') content = systemContent(state, representation, innerWidth, theme);
+  else if (card.id === 'beast') content = [];
   return filterContentRows(card.id, content, representation, config?.fields?.[card.id], String(value(state?.auth?.mode, 'unknown')));
 }
 
@@ -650,7 +653,7 @@ function responsiveCardFrame({
   const theme = config?.theme ?? 'color';
   const background = config?.background ?? 'terminal';
   const options = { theme, cwd, nowMs, projectName, health, gitLabel, fast };
-  const cards = enabledCards(config, state);
+  const cards = enabledCards(config, state, safeWidth);
   const plan = planGrid(cards, safeWidth, safeHeight);
 
   let lines;
@@ -702,6 +705,7 @@ function responsiveCardFrame({
       representations,
       progressiveGraphs: true,
       systemCard: cards.some((card) => card.id === 'system'),
+      beastMode: cards.some((card) => card.id === 'beast'),
       heightConstrained: plan.heightConstrained
     }
   };
@@ -718,6 +722,7 @@ export {
   ULTRAWIDE_SYSTEM_CARD_MIN_CELLS,
   MIN_SPARKLINE_SAMPLES,
   MIN_CARD_OUTER_CELLS,
+  BEAST_MODE_MIN_CELLS,
   CARD_REPRESENTATION,
   sparkline,
   progressBar,
