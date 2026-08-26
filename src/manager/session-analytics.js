@@ -24,14 +24,7 @@ function tokenDerived(input, cached, output, reasoning) {
     ? Math.max(0, safeInput - safeCached)
     : null;
   const total = safeInput != null && safeOutput != null ? safeInput + safeOutput : null;
-  return {
-    input: safeInput,
-    cached: safeCached,
-    uncachedInput,
-    output: safeOutput,
-    reasoning: safeReasoning,
-    total
-  };
+  return { input: safeInput, cached: safeCached, uncachedInput, output: safeOutput, reasoning: safeReasoning, total };
 }
 
 function appendRing(list, value, limit) {
@@ -69,30 +62,23 @@ function deltaOrNull(current, baseline) {
   return value - start;
 }
 
-function turnAt(analytics, index) {
-  if (!Number.isInteger(index) || index < 0) return null;
-  return analytics.turns.items[index] ?? null;
-}
-
 function currentTurn(analytics) {
-  return turnAt(analytics, analytics._activeTurnIndex);
+  return analytics._activeTurn ?? null;
 }
 
 function usageTargetTurn(analytics) {
-  return currentTurn(analytics) ?? turnAt(analytics, analytics._lastCompletedTurnIndex);
+  return analytics._activeTurn ?? analytics._lastCompletedTurn ?? null;
 }
 
 function updateTurnUsage(analytics, event) {
   const turn = usageTargetTurn(analytics);
   if (!turn) return;
-
   const current = tokenSnapshot(analytics);
   const baseline = turn._tokenBaseline ?? {};
   const inputDelta = deltaOrNull(current.input, baseline.input);
   const cachedDelta = deltaOrNull(current.cached, baseline.cached);
   const outputDelta = deltaOrNull(current.output, baseline.output);
   const reasoningDelta = deltaOrNull(current.reasoning, baseline.reasoning);
-
   turn.inputTokens = inputDelta ?? finiteOrNull(event.turnInputTokens) ?? turn.inputTokens;
   turn.cachedTokens = cachedDelta ?? turn.cachedTokens;
   turn.outputTokens = outputDelta ?? finiteOrNull(event.turnOutputTokens) ?? turn.outputTokens;
@@ -113,7 +99,6 @@ function pushContextPoint(analytics, event) {
   if (used == null && window == null) return;
   if (used != null) analytics.context.currentUsed = used;
   if (window != null) analytics.context.currentWindow = window;
-
   const effectiveUsed = analytics.context.currentUsed;
   const effectiveWindow = analytics.context.currentWindow;
   const percent = effectiveUsed != null && effectiveWindow != null && effectiveWindow > 0
@@ -121,29 +106,15 @@ function pushContextPoint(analytics, event) {
     : null;
   const previous = analytics.context.points.at(-1);
   const atMs = finiteOrNull(event.atMs);
-  if (!previous
-    || previous.used !== effectiveUsed
-    || previous.window !== effectiveWindow
-    || previous.atMs !== atMs) {
-    appendSeries(analytics.context.points, {
-      atMs,
-      used: effectiveUsed,
-      window: effectiveWindow,
-      percent
-    }, analytics.limits.series);
+  if (!previous || previous.used !== effectiveUsed || previous.window !== effectiveWindow || previous.atMs !== atMs) {
+    appendSeries(analytics.context.points, { atMs, used: effectiveUsed, window: effectiveWindow, percent }, analytics.limits.series);
   }
-
   if (effectiveUsed != null) analytics.context.peakUsed = Math.max(analytics.context.peakUsed ?? 0, effectiveUsed);
   if (percent != null) analytics.context.peakPercent = Math.max(analytics.context.peakPercent ?? 0, percent);
 }
 
 function pushTokenPoint(analytics, event) {
-  const snapshot = tokenDerived(
-    analytics.tokens.input,
-    analytics.tokens.cached,
-    analytics.tokens.output,
-    analytics.tokens.reasoning
-  );
+  const snapshot = tokenDerived(analytics.tokens.input, analytics.tokens.cached, analytics.tokens.output, analytics.tokens.reasoning);
   if (Object.values(snapshot).every((value) => value == null)) return;
   const atMs = finiteOrNull(event.atMs);
   const previous = analytics.tokens.points.at(-1);
@@ -153,14 +124,12 @@ function pushTokenPoint(analytics, event) {
     || previous.output !== snapshot.output
     || previous.reasoning !== snapshot.reasoning
     || previous.atMs !== atMs;
-  if (!changed) return;
-  appendSeries(analytics.tokens.points, { atMs, ...snapshot }, analytics.limits.series);
+  if (changed) appendSeries(analytics.tokens.points, { atMs, ...snapshot }, analytics.limits.series);
 }
 
 function startTurn(analytics, event) {
   const prior = currentTurn(analytics);
   if (prior && prior.completedAtMs == null) prior.incomplete = true;
-
   const item = {
     index: analytics.turns.nextIndex,
     turnId: event.turnId ?? null,
@@ -184,7 +153,7 @@ function startTurn(analytics, event) {
   };
   analytics.turns.nextIndex += 1;
   appendRing(analytics.turns.items, item, analytics.limits.turns);
-  analytics._activeTurnIndex = analytics.turns.items.length - 1;
+  analytics._activeTurn = item;
   if (analytics.turns.items.length >= analytics.limits.turns && item.index >= analytics.limits.turns) {
     analytics.turns.dropped = Math.max(0, item.index + 1 - analytics.turns.items.length);
   }
@@ -197,7 +166,7 @@ function findTurnForComplete(analytics, event) {
     for (let index = analytics.turns.items.length - 1; index >= 0; index -= 1) {
       const item = analytics.turns.items[index];
       if (item.turnId === event.turnId && item.completedAtMs == null) {
-        analytics._activeTurnIndex = index;
+        analytics._activeTurn = item;
         return item;
       }
     }
@@ -213,17 +182,15 @@ function completeTurn(analytics, event) {
   }
   const atMs = finiteOrNull(event.atMs);
   turn.completedAtMs = atMs;
-  turn.durationMs = atMs != null && turn.startedAtMs != null && atMs >= turn.startedAtMs
-    ? atMs - turn.startedAtMs
-    : null;
+  turn.durationMs = atMs != null && turn.startedAtMs != null && atMs >= turn.startedAtMs ? atMs - turn.startedAtMs : null;
   turn.completed = true;
   turn.incomplete = false;
   turn.error = event.error ?? null;
   if (analytics.context.currentUsed != null) turn.contextUsed = analytics.context.currentUsed;
   if (analytics.context.currentWindow != null) turn.contextWindow = analytics.context.currentWindow;
   analytics.turns.completed += 1;
-  analytics._lastCompletedTurnIndex = analytics.turns.items.indexOf(turn);
-  analytics._activeTurnIndex = -1;
+  analytics._lastCompletedTurn = turn;
+  analytics._activeTurn = null;
 }
 
 function toolStart(analytics, event) {
@@ -236,15 +203,9 @@ function toolStart(analytics, event) {
     turn.toolNames[name] = (turn.toolNames[name] ?? 0) + 1;
   }
   const entry = {
-    atMs: finiteOrNull(event.atMs),
-    endAtMs: null,
-    durationMs: null,
-    name,
-    callId: event.callId ?? null,
-    turnIndex: turn?.index ?? null,
-    failed: false,
-    status: null,
-    exitCode: null
+    atMs: finiteOrNull(event.atMs), endAtMs: null, durationMs: null, name,
+    callId: event.callId ?? null, turnIndex: turn?.index ?? null,
+    failed: false, status: null, exitCode: null
   };
   appendRing(analytics.tools.events, entry, analytics.limits.toolEvents);
   if (event.callId) analytics._activeTools.set(event.callId, entry);
@@ -257,8 +218,7 @@ function toolEnd(analytics, event) {
     ?? (entry?.atMs != null && atMs != null && atMs >= entry.atMs ? atMs - entry.atMs : null);
   const exitCode = finiteOrNull(event.exitCode);
   const status = String(event.status ?? '').trim();
-  const failed = (exitCode != null && exitCode !== 0)
-    || /fail|error/i.test(status);
+  const failed = (exitCode != null && exitCode !== 0) || /fail|error/i.test(status);
   if (entry) {
     entry.endAtMs = atMs;
     entry.durationMs = duration;
@@ -268,11 +228,7 @@ function toolEnd(analytics, event) {
   }
   if (failed) {
     appendRing(analytics.signals, {
-      atMs,
-      kind: 'tool-failure',
-      detail: entry?.name ?? 'tool',
-      tool: entry?.name ?? null,
-      callId: event.callId ?? null
+      atMs, kind: 'tool-failure', detail: entry?.name ?? 'tool', tool: entry?.name ?? null, callId: event.callId ?? null
     }, analytics.limits.signals);
   }
   if (event.callId) analytics._activeTools.delete(event.callId);
@@ -280,9 +236,7 @@ function toolEnd(analytics, event) {
 
 function addSignal(analytics, event, kind, detail = null) {
   appendRing(analytics.signals, {
-    atMs: finiteOrNull(event.atMs),
-    kind,
-    detail: detail ?? event.detail ?? event.error ?? null
+    atMs: finiteOrNull(event.atMs), kind, detail: detail ?? event.detail ?? event.error ?? null
   }, analytics.limits.signals);
 }
 
@@ -299,53 +253,25 @@ export function createSessionAnalytics({
       toolEvents: Math.max(64, Number(toolEventLimit) || DEFAULT_TOOL_EVENT_LIMIT),
       signals: Math.max(32, Number(signalLimit) || DEFAULT_SIGNAL_LIMIT)
     },
-    context: {
-      points: [],
-      compactions: [],
-      currentUsed: null,
-      currentWindow: null,
-      peakUsed: null,
-      peakPercent: null
-    },
-    tokens: {
-      input: null,
-      cached: null,
-      output: null,
-      reasoning: null,
-      points: []
-    },
-    turns: {
-      items: [],
-      nextIndex: 0,
-      completed: 0,
-      dropped: 0
-    },
-    tools: {
-      total: 0,
-      byName: {},
-      events: []
-    },
+    context: { points: [], compactions: [], currentUsed: null, currentWindow: null, peakUsed: null, peakPercent: null },
+    tokens: { input: null, cached: null, output: null, reasoning: null, points: [] },
+    turns: { items: [], nextIndex: 0, completed: 0, dropped: 0 },
+    tools: { total: 0, byName: {}, events: [] },
     signals: [],
-    _activeTurnIndex: -1,
-    _lastCompletedTurnIndex: -1,
+    _activeTurn: null,
+    _lastCompletedTurn: null,
     _activeTools: new Map()
   };
 }
 
 export function applySessionAnalyticsEvent(analytics, event) {
   if (!analytics || !event) return analytics;
-
-  if (event.kind === 'turn-start') {
-    startTurn(analytics, event);
-    return analytics;
-  }
-
+  if (event.kind === 'turn-start') { startTurn(analytics, event); return analytics; }
   if (event.kind === 'turn-complete') {
     completeTurn(analytics, event);
     if (event.error) addSignal(analytics, event, 'turn-error', event.error);
     return analytics;
   }
-
   if (event.kind === 'usage') {
     if (event.inputTokens != null) analytics.tokens.input = finiteOrNull(event.inputTokens);
     if (event.cachedInputTokens != null) analytics.tokens.cached = finiteOrNull(event.cachedInputTokens);
@@ -356,49 +282,23 @@ export function applySessionAnalyticsEvent(analytics, event) {
     updateTurnUsage(analytics, event);
     return analytics;
   }
-
-  if (event.kind === 'tool-start') {
-    toolStart(analytics, event);
-    return analytics;
-  }
-
-  if (event.kind === 'tool-end') {
-    toolEnd(analytics, event);
-    return analytics;
-  }
-
+  if (event.kind === 'tool-start') { toolStart(analytics, event); return analytics; }
+  if (event.kind === 'tool-end') { toolEnd(analytics, event); return analytics; }
   if (event.kind === 'compaction') {
-    const marker = {
-      atMs: finiteOrNull(event.atMs),
-      used: analytics.context.currentUsed,
-      window: analytics.context.currentWindow
-    };
-    appendRing(analytics.context.compactions, marker, analytics.limits.signals);
+    appendRing(analytics.context.compactions, {
+      atMs: finiteOrNull(event.atMs), used: analytics.context.currentUsed, window: analytics.context.currentWindow
+    }, analytics.limits.signals);
     addSignal(analytics, event, 'compaction', 'Context compacted');
     return analytics;
   }
-
-  if (event.kind === 'retry') {
-    addSignal(analytics, event, 'retry');
-    return analytics;
-  }
-
-  if (event.kind === 'error') {
-    addSignal(analytics, event, 'error');
-    return analytics;
-  }
-
+  if (event.kind === 'retry') { addSignal(analytics, event, 'retry'); return analytics; }
+  if (event.kind === 'error') { addSignal(analytics, event, 'error'); return analytics; }
   return analytics;
 }
 
 export function sessionAnalyticsSummary(analytics) {
   if (!analytics) return null;
-  const token = tokenDerived(
-    analytics.tokens.input,
-    analytics.tokens.cached,
-    analytics.tokens.output,
-    analytics.tokens.reasoning
-  );
+  const token = tokenDerived(analytics.tokens.input, analytics.tokens.cached, analytics.tokens.output, analytics.tokens.reasoning);
   return {
     context: {
       currentUsed: analytics.context.currentUsed,
@@ -408,27 +308,11 @@ export function sessionAnalyticsSummary(analytics) {
       points: analytics.context.points,
       compactions: analytics.context.compactions
     },
-    tokens: {
-      ...token,
-      points: analytics.tokens.points
-    },
-    turns: {
-      completed: analytics.turns.completed,
-      dropped: analytics.turns.dropped,
-      items: analytics.turns.items
-    },
-    tools: {
-      total: analytics.tools.total,
-      byName: analytics.tools.byName,
-      events: analytics.tools.events
-    },
+    tokens: { ...token, points: analytics.tokens.points },
+    turns: { completed: analytics.turns.completed, dropped: analytics.turns.dropped, items: analytics.turns.items },
+    tools: { total: analytics.tools.total, byName: analytics.tools.byName, events: analytics.tools.events },
     signals: analytics.signals
   };
 }
 
-export {
-  DEFAULT_SERIES_LIMIT,
-  DEFAULT_TURN_LIMIT,
-  DEFAULT_TOOL_EVENT_LIMIT,
-  DEFAULT_SIGNAL_LIMIT
-};
+export { DEFAULT_SERIES_LIMIT, DEFAULT_TURN_LIMIT, DEFAULT_TOOL_EVENT_LIMIT, DEFAULT_SIGNAL_LIMIT };
