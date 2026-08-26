@@ -1,6 +1,5 @@
 import {
   buildSessionDashboardModel,
-  rowContextPercent,
   rowTokenActivity,
   rowToolActivity
 } from './dashboard-model.js';
@@ -23,6 +22,16 @@ function liveRows(model) {
   return model.rows.filter((row) => row?.state === 'LIVE');
 }
 
+function rowTurnActivity(row) {
+  const exact = finiteOrNull(row?.turnCount);
+  return exact ?? finiteOrNull(row?.observedTurnCount);
+}
+
+function rowAgentSpawns(row) {
+  const exact = finiteOrNull(row?.agentSpawnCount);
+  return exact ?? finiteOrNull(row?.observedAgentSpawnCount) ?? 0;
+}
+
 function metricMap(rows, metric) {
   const map = new Map();
   for (const row of rows) {
@@ -39,7 +48,8 @@ function baselineFor(model, atMs) {
     key: `${model.query.scope}\u0000${model.query.search}`,
     atMs,
     tokenById: metricMap(active, rowTokenActivity),
-    toolById: metricMap(active, rowToolActivity)
+    toolById: metricMap(active, rowToolActivity),
+    turnById: metricMap(active, rowTurnActivity)
   };
 }
 
@@ -59,6 +69,10 @@ function rateFromDelta(delta, elapsedMs) {
 function sumKnown(values) {
   const known = values.filter((value) => Number.isFinite(value));
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function rollingSum(samples, key) {
+  return sumKnown(samples.map((sample) => finiteOrNull(sample?.[key]))) ?? 0;
 }
 
 export class ManagerTelemetrySeries {
@@ -99,17 +113,17 @@ export class ManagerTelemetrySeries {
       this.markActive(active);
       const sessionPoints = active.map((row) => this.pushSession(row, {
         atMs: nowMs,
+        tokenDelta: null,
         tokenRate: null,
-        context: finiteOrNull(rowContextPercent(row)),
         toolEvents: null,
-        toolRate: null
+        turnEvents: null
       }));
       this.pushAggregate({
         atMs: nowMs,
+        tokenDelta: null,
         tokenRate: null,
-        contextPeak: this.contextPeak(sessionPoints),
         toolEvents: null,
-        toolRate: null,
+        turnEvents: null,
         activeCount: active.length
       });
       return this.snapshot();
@@ -122,22 +136,23 @@ export class ManagerTelemetrySeries {
     const sessionPoints = active.map((row) => {
       const tokenDelta = deltaForId(this.previous.tokenById, nextBaseline.tokenById, row.id);
       const toolEvents = deltaForId(this.previous.toolById, nextBaseline.toolById, row.id);
+      const turnEvents = deltaForId(this.previous.turnById, nextBaseline.turnById, row.id);
       return this.pushSession(row, {
         atMs: nowMs,
+        tokenDelta,
         tokenRate: rateFromDelta(tokenDelta, elapsedMs),
-        context: finiteOrNull(rowContextPercent(row)),
         toolEvents,
-        toolRate: rateFromDelta(toolEvents, elapsedMs)
+        turnEvents
       });
     });
 
     this.previous = nextBaseline;
     this.pushAggregate({
       atMs: nowMs,
+      tokenDelta: sumKnown(sessionPoints.map((point) => point.tokenDelta)),
       tokenRate: sumKnown(sessionPoints.map((point) => point.tokenRate)),
-      contextPeak: this.contextPeak(sessionPoints),
       toolEvents: sumKnown(sessionPoints.map((point) => point.toolEvents)),
-      toolRate: sumKnown(sessionPoints.map((point) => point.toolRate)),
+      turnEvents: sumKnown(sessionPoints.map((point) => point.turnEvents)),
       activeCount: active.length
     });
     this.prune(nowMs);
@@ -156,6 +171,10 @@ export class ManagerTelemetrySeries {
         project: row.project ?? row.name ?? 'session',
         threadId: row.threadId ?? row.name ?? row.id,
         model: row.model ?? '--',
+        context: row?.tokens?.contextUsed != null && row?.tokens?.contextWindow
+          ? Math.max(0, Math.min(100, (Number(row.tokens.contextUsed) / Number(row.tokens.contextWindow)) * 100))
+          : null,
+        agentSpawns: rowAgentSpawns(row),
         active: true
       });
     }
@@ -174,11 +193,6 @@ export class ManagerTelemetrySeries {
     return point;
   }
 
-  contextPeak(points) {
-    const known = points.map((point) => point.context).filter((value) => Number.isFinite(value));
-    return known.length ? Math.max(...known) : null;
-  }
-
   prune(nowMs) {
     const cutoff = nowMs - this.windowMs;
     while (this.samples.length && this.samples[0].atMs < cutoff) this.samples.shift();
@@ -193,28 +207,34 @@ export class ManagerTelemetrySeries {
 
   snapshot() {
     const samples = this.samples.map((sample) => ({ ...sample }));
+    const totalBurn60 = rollingSum(samples, 'tokenDelta');
+    const totalTools60 = rollingSum(samples, 'toolEvents');
+    const totalTurns60 = rollingSum(samples, 'turnEvents');
     const sessions = [...this.sessionMeta.values()]
       .filter((meta) => meta.active)
       .map((meta) => {
         const sessionSamples = (this.sessionSamples.get(meta.id) ?? []).map((sample) => ({ ...sample }));
+        const burn60 = rollingSum(sessionSamples, 'tokenDelta');
         return {
           ...meta,
+          burn60,
+          burnShare: totalBurn60 > 0 ? (burn60 / totalBurn60) * 100 : 0,
+          tools60: rollingSum(sessionSamples, 'toolEvents'),
+          turns60: rollingSum(sessionSamples, 'turnEvents'),
           samples: sessionSamples,
           latest: sessionSamples.at(-1) ?? null
         };
       })
-      .sort((a, b) => {
-        const ar = Number(a.latest?.tokenRate);
-        const br = Number(b.latest?.tokenRate);
-        if (Number.isFinite(ar) || Number.isFinite(br)) return (Number.isFinite(br) ? br : -1) - (Number.isFinite(ar) ? ar : -1);
-        return String(a.project).localeCompare(String(b.project));
-      });
+      .sort((a, b) => b.burn60 - a.burn60 || String(a.project).localeCompare(String(b.project)));
 
     return {
       windowMs: this.windowMs,
       sampleCount: samples.length,
       samples,
       latest: samples.at(-1) ?? null,
+      burn60: totalBurn60,
+      tools60: totalTools60,
+      turns60: totalTurns60,
       sessions
     };
   }
