@@ -43,12 +43,17 @@ function baselineFor(model, atMs) {
   };
 }
 
-function rateForId(previous, next, id, elapsedMs) {
+function deltaForId(previous, next, id) {
   const before = previous.get(id);
   const after = next.get(id);
-  if (!Number.isFinite(before) || !Number.isFinite(after) || elapsedMs <= 0) return null;
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return null;
   if (after < before) return null;
-  return (after - before) * (60_000 / elapsedMs);
+  return after - before;
+}
+
+function rateFromDelta(delta, elapsedMs) {
+  if (!Number.isFinite(delta) || elapsedMs <= 0) return null;
+  return delta * (60_000 / elapsedMs);
 }
 
 function sumKnown(values) {
@@ -96,12 +101,14 @@ export class ManagerTelemetrySeries {
         atMs: nowMs,
         tokenRate: null,
         context: finiteOrNull(rowContextPercent(row)),
+        toolEvents: null,
         toolRate: null
       }));
       this.pushAggregate({
         atMs: nowMs,
         tokenRate: null,
         contextPeak: this.contextPeak(sessionPoints),
+        toolEvents: null,
         toolRate: null,
         activeCount: active.length
       });
@@ -113,13 +120,14 @@ export class ManagerTelemetrySeries {
 
     this.markActive(active);
     const sessionPoints = active.map((row) => {
-      const tokenRate = rateForId(this.previous.tokenById, nextBaseline.tokenById, row.id, elapsedMs);
-      const toolRate = rateForId(this.previous.toolById, nextBaseline.toolById, row.id, elapsedMs);
+      const tokenDelta = deltaForId(this.previous.tokenById, nextBaseline.tokenById, row.id);
+      const toolEvents = deltaForId(this.previous.toolById, nextBaseline.toolById, row.id);
       return this.pushSession(row, {
         atMs: nowMs,
-        tokenRate,
+        tokenRate: rateFromDelta(tokenDelta, elapsedMs),
         context: finiteOrNull(rowContextPercent(row)),
-        toolRate
+        toolEvents,
+        toolRate: rateFromDelta(toolEvents, elapsedMs)
       });
     });
 
@@ -128,6 +136,7 @@ export class ManagerTelemetrySeries {
       atMs: nowMs,
       tokenRate: sumKnown(sessionPoints.map((point) => point.tokenRate)),
       contextPeak: this.contextPeak(sessionPoints),
+      toolEvents: sumKnown(sessionPoints.map((point) => point.toolEvents)),
       toolRate: sumKnown(sessionPoints.map((point) => point.toolRate)),
       activeCount: active.length
     });
