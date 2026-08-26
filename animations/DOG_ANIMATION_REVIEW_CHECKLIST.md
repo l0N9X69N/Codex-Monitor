@@ -67,11 +67,14 @@
 
 ## 1.2 `idle.txt`
 
-- [ ] `idle.stand-breathe`.
-  - [ ] breathe A.
-  - [ ] breathe B.
-  - [ ] loop tự nhiên.
-- [ ] `idle.wander`.
+- [x] `idle.stand-breathe`.
+  - [x] breathe A.
+  - [x] breathe B.
+  - [x] loop tự nhiên.
+- [x] `idle.wander`.
+  - [x] start.
+  - [x] walk local.
+  - [x] stop.
 - [ ] `idle.sit`.
   - [ ] stand -> sit.
   - [ ] sitting loop.
