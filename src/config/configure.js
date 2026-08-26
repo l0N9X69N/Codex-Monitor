@@ -37,9 +37,14 @@ export async function configureMonitor({
     if (config.preset === 'custom') {
       output.write('\nSections / Metrics\n');
       for (const section of CONFIG_VALUES.sections) {
+        if (section === 'system') continue;
         const answer = await rl.question(`${section} [y/n] (${config.sections[section] ? 'y' : 'n'}): `);
         config.sections[section] = yesNo(answer, config.sections[section]);
       }
+
+      const systemMode = (await rl.question(`System [off/auto/on] (${config.systemMode}): `)).trim().toLowerCase();
+      if (CONFIG_VALUES.systemModes.has(systemMode)) config.systemMode = systemMode;
+      config.sections.system = config.systemMode !== 'off';
 
       const beastMode = (await rl.question(`Beast Mode [off/auto/on] (${config.beastMode}): `)).trim().toLowerCase();
       if (CONFIG_VALUES.beastModes.has(beastMode)) config.beastMode = beastMode;
