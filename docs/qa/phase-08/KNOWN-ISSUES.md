@@ -2,39 +2,37 @@
 
 ## BLOCKER
 
-### P0 — Windows Manager misclassified active sessions as ENDED
+**None. P0 = 0 at Phase 08 close.**
 
-Manual test on a real Windows session tree found:
+## Resolved during Phase 08
 
-```text
-Sessions: 63 · LIVE 0 · ENDED 62 · UNKNOWN 1
-```
+### Windows active-session misclassification
 
-while two Codex terminals were actively running.
+Initial real Windows acceptance incorrectly produced mass ENDED states while Codex terminals were active. Root cause was treating a successful global process query as negative evidence for every session whose thread id was absent from process command lines.
 
-Root cause: successful process-tree collection was incorrectly treated as negative evidence for every session whose thread id was not present in a process command line. Normal Codex launches do not guarantee that thread id is visible in the command line.
+Resolved by:
 
-Fix checkpoint:
+- explicit Codex process-family detection;
+- one-to-one nearest process-start/session-start correlation;
+- exact thread evidence when available;
+- sticky session↔root association across polls;
+- session-specific negative evidence only after a previously mapped root disappears;
+- conservative UNKNOWN for active-but-unmapped Codex evidence;
+- lightweight Windows process collection independent of expensive per-process perf counters.
 
-- detect Codex process family explicitly;
-- exact thread-id command match remains strong LIVE evidence;
-- unique process-start/session-start correlation can provide LIVE evidence;
-- if Codex processes exist but a particular session cannot be mapped, state remains UNKNOWN rather than ENDED;
-- only a successful process query with zero Codex processes is strong global negative process evidence;
-- Manager summary now prints Codex process/root diagnostics for manual retest.
+Real Windows retest passed with multi-LIVE, close-one transition and dynamic new-session discovery/remap.
 
-**Status:** FIX IMPLEMENTED — awaiting local verify + real two-terminal retest.
+### Manager one-shot runtime
 
-## Cần nghiệm thu
+Resolved by persistent renderer-neutral `SessionManagerRuntime` using `SessionManagerTracker`; CLI Manager remains alive until stop and emits snapshots when state/diagnostics change.
 
-- Retest 2–3 active Codex terminals on Windows after process-correlation fix.
-- Close one Codex and observe transition without false LIVE persistence.
-- Startup on a large real Codex session tree.
-- Tail growing rollout files on Windows.
-- Parser coverage with rollout event variants from the installed Codex version.
+### Large-tree runtime I/O
 
-## Deferred
+Resolved by bounded identity probing, no repeated unchanged failed probes, bounded fast refresh set, slower full discovery cadence, and selected-only deep parsing. Deterministic 1000+ session instrumentation is part of `verify:phase8`.
 
+## Deferred by roadmap
+
+- Interactive Session Manager dashboard/TUI: Phase 09.
 - Charts: Phase 10.
 - Delete/archive/storage mutation: Phase 11.
-- Không tạo History database.
+- No History database is introduced.
