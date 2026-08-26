@@ -8,14 +8,6 @@ import { renderSessionDashboard } from './dashboard-render.js';
 import { MANAGER_INSPECT_TABS, renderSessionInspect } from './inspect-render.js';
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 
-const FOCUS_ORDER = Object.freeze(['table', 'tokens', 'context', 'tools']);
-
-function nextFocus(current, delta = 1) {
-  const index = FOCUS_ORDER.indexOf(current);
-  const base = index < 0 ? 0 : index;
-  return FOCUS_ORDER[(base + delta + FOCUS_ORDER.length) % FOCUS_ORDER.length];
-}
-
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
   const base = index < 0 ? 0 : index;
@@ -60,7 +52,6 @@ export async function runSessionManagerTui({
   let direction = 'desc';
   let selectedId = null;
   let selectedIndex = 0;
-  let focus = 'table';
   let viewMode = initialViewMode;
   let selectedDetail = null;
   let inspectTab = 'info';
@@ -84,7 +75,6 @@ export async function runSessionManagerTui({
         direction,
         selectedId,
         selectedIndex,
-        focus,
         viewMode
       });
 
@@ -202,18 +192,13 @@ export async function runSessionManagerTui({
       direction = direction === 'desc' ? 'asc' : 'desc';
     } else if (action === 'view') {
       viewMode = nextManagerView(viewMode);
-      focus = 'table';
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
     } else if (action === 'down' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.min(lastFrame.model.rows.length - 1, selectedIndex + 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
-    } else if (action === 'tab' || action === 'right') {
-      focus = nextFocus(focus, 1);
-    } else if (action === 'left') {
-      focus = nextFocus(focus, -1);
-    } else if (action === 'inspect' && focus === 'table') {
+    } else if (action === 'inspect') {
       const selected = lastFrame?.model?.selected;
       if (selected) {
         core.select(selected.id);
@@ -250,5 +235,3 @@ export async function runSessionManagerTui({
     if (!done) await cleanup();
   }
 }
-
-export { FOCUS_ORDER as MANAGER_FOCUS_ORDER };
