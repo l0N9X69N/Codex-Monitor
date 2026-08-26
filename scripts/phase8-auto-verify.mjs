@@ -9,7 +9,8 @@ const steps = [
     'test/unit/phase8-detail-view.test.js',
     'test/unit/phase8-lightweight-summary.test.js',
     'test/unit/phase8-process-evidence.test.js',
-    'test/unit/phase8-runtime.test.js'
+    'test/unit/phase8-runtime.test.js',
+    'test/unit/phase8-io-bounds.test.js'
   ]]
 ];
 
@@ -23,4 +24,4 @@ for (const [label, command, args] of steps) {
 }
 
 process.stdout.write('\nPhase 08 automated verification checkpoint: PASS\n');
-process.stdout.write('Manager core is read-only; persistent multi-session real LIVE/ENDED manual acceptance remains required before Phase 08 closes.\n');
+process.stdout.write('Manager core is read-only at this checkpoint; real multi-session LIVE/ENDED transition acceptance has passed; bounded I/O remains enforced by regression tests.\n');
