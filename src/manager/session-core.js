@@ -111,12 +111,26 @@ function metadata(filePath, fsRef = fs, { enrichIdentity = false, identityBytes 
   }
 }
 
+function mergeMetadata(old, fresh) {
+  if (!old) return fresh;
+  return {
+    ...old,
+    ...fresh,
+    parsed: old.parsed,
+    project: fresh.project ?? old.project,
+    cwd: fresh.cwd ?? old.cwd,
+    threadId: fresh.threadId ?? old.threadId,
+    model: fresh.model ?? old.model,
+    startedAtMs: fresh.startedAtMs ?? old.startedAtMs,
+    identityProbed: old.identityProbed || fresh.identityProbed
+  };
+}
+
 function commandContainsIdentity(command, item) {
   const text = String(command ?? '').toLowerCase();
   if (!text) return false;
   const threadId = String(item?.threadId ?? '').trim().toLowerCase();
-  if (threadId && text.includes(threadId)) return true;
-  return false;
+  return Boolean(threadId && text.includes(threadId));
 }
 
 export function buildProcessEvidence(processes) {
@@ -224,33 +238,16 @@ export class SessionManagerCore {
     this.deep = new HistoryEngine({ sessionsPath, fsRef });
   }
 
-  discover({ limit = Number.POSITIVE_INFINITY, enrichIdentity = true } = {}) {
-    this.index = walkJsonl(this.sessionsPath, this.fs, limit)
-      .map((filePath) => metadata(filePath, this.fs, { enrichIdentity, identityBytes: this.identityBytes }))
-      .sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
-    return this.index;
-  }
-
-  refresh({ processEvidence = null } = {}) {
-    const byPath = new Map(this.index.map((item) => [item.filePath, item]));
+  discover({ limit = Number.POSITIVE_INFINITY, enrichIdentity = true, processEvidence = null } = {}) {
+    const previous = new Map(this.index.map((item) => [item.filePath, item]));
     const next = [];
-    for (const filePath of walkJsonl(this.sessionsPath, this.fs)) {
-      const old = byPath.get(filePath);
+    for (const filePath of walkJsonl(this.sessionsPath, this.fs, limit)) {
+      const old = previous.get(filePath);
       const fresh = metadata(filePath, this.fs, {
-        enrichIdentity: !old?.identityProbed,
+        enrichIdentity: enrichIdentity && !old?.identityProbed,
         identityBytes: this.identityBytes
       });
-      const item = old ? {
-        ...old,
-        ...fresh,
-        parsed: old.parsed,
-        project: fresh.project ?? old.project,
-        cwd: fresh.cwd ?? old.cwd,
-        threadId: fresh.threadId ?? old.threadId,
-        model: fresh.model ?? old.model,
-        startedAtMs: fresh.startedAtMs ?? old.startedAtMs,
-        identityProbed: old.identityProbed || fresh.identityProbed
-      } : fresh;
+      const item = mergeMetadata(old, fresh);
       const evidence = typeof processEvidence === 'function' ? (processEvidence(item) ?? {}) : {};
       item.state = this.activity.resolve(item, evidence);
       next.push(item);
@@ -258,8 +255,33 @@ export class SessionManagerCore {
     const existing = new Set(next.map((item) => item.id));
     for (const old of this.index) if (!existing.has(old.id)) this.activity.forget(old.id);
     this.index = next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
-    if (this.selectedId && !existing.has(this.selectedId)) this.selectedId = null;
+    if (this.selectedId && !existing.has(this.selectedId)) this.releaseSelection();
     return this.index;
+  }
+
+  refreshKnown({ processEvidence = null } = {}) {
+    const next = [];
+    for (const old of this.index) {
+      const fresh = metadata(old.filePath, this.fs, {
+        enrichIdentity: !old.identityProbed,
+        identityBytes: this.identityBytes
+      });
+      if (fresh.error) {
+        this.activity.forget(old.id);
+        if (this.selectedId === old.id) this.releaseSelection();
+        continue;
+      }
+      const item = mergeMetadata(old, fresh);
+      const evidence = typeof processEvidence === 'function' ? (processEvidence(item) ?? {}) : {};
+      item.state = this.activity.resolve(item, evidence);
+      next.push(item);
+    }
+    this.index = next.sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
+    return this.index;
+  }
+
+  refresh(options = {}) {
+    return this.discover({ ...options, enrichIdentity: true });
   }
 
   query(options = {}) { return querySessions([...this.index], options); }
@@ -267,6 +289,7 @@ export class SessionManagerCore {
   select(id) {
     const meta = this.index.find((item) => item.id === id);
     if (!meta) return null;
+    if (this.selectedId && this.selectedId !== id) this.deep.cache.delete(this.selectedId);
     this.selectedId = id;
     const model = this.deep.ensureLoaded(id);
     meta.parsed = true;
@@ -278,7 +301,14 @@ export class SessionManagerCore {
     return model;
   }
 
-  clearSelection() { this.selectedId = null; }
+  releaseSelection() {
+    const id = this.selectedId;
+    this.selectedId = null;
+    if (id) this.deep.cache.delete(id);
+    return id;
+  }
+
+  clearSelection() { return this.releaseSelection(); }
 
   tailSelected() {
     if (!this.selectedId) return { changed: false, reset: false, error: null, model: null };
