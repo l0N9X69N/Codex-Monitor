@@ -98,10 +98,11 @@ export async function runSessionManagerRuntime({
     tracker,
     intervalMs,
     onSnapshot(result) {
-      stdout.write(`${sessionManagerSummaryLines(result.sessions, {
-        ...(result.processDiagnostics ?? {}),
-        processError: result.processError ?? null
-      }).join('\n')}\n`);
+      stdout.write(`${sessionManagerSummaryLines(
+        result.sessions,
+        result.processDiagnostics,
+        result.processError
+      ).join('\n')}\n`);
     }
   });
 
