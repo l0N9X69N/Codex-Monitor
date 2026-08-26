@@ -26,6 +26,31 @@ Manager phải có cảm giác cyberpunk/hacker-futuristic nhưng vẫn professi
 - chart lớn, dễ đọc;
 - movement chỉ từ data thật.
 
+Quyết định visual/view mode được freeze tại `docs/decisions/phase9-manager-view-modes.md`.
+
+Manager có bốn presentation mode trên cùng data/core:
+
+```text
+Operations
+Table
+Charts
+Auto
+```
+
+- **Operations**: balanced default direction; LIVE + context/events + token activity + selected preview + session table.
+- **Table**: power-user/index view; table là surface chính, framing nhẹ, chart secondary/omitted.
+- **Charts**: visual control-room; boxed cards mạnh hơn, primary charts rõ ràng.
+- **Auto**: responsive policy; narrow ưu tiên Table, normal/wide Operations, ultrawide có thể dùng Charts.
+
+Box hierarchy:
+
+```text
+normal panel   ┌ ─ ┐
+focused panel  ╔ ═ ╗
+```
+
+Charts mode box-heavy; Operations dùng ít khung lớn; Table box-light. Không biến UI thành box soup.
+
 ## Dashboard mặc định
 
 Phải trả lời nhanh:
@@ -36,21 +61,22 @@ Phải trả lời nhanh:
 - session nào có error/retry gần đây;
 - local sessions nào tồn tại và lớn bao nhiêu.
 
-Primary areas:
+Primary information set:
 
 ```text
 Live Sessions summary
-Token Activity chart
-Context Pressure chart
-Tool Activity chart
+Token Activity
+Context Pressure
+Tool Activity
 Session Events summary
 Storage summary
+Selected preview
 Session table
 ```
 
-Default tối đa khoảng 3 primary charts. Terminal rộng thì mở rộng chart/panel hiện có, không nhồi thêm chart chỉ vì còn chỗ.
+Không phải view nào cũng hiện toàn bộ các area cùng lúc. Default visible primary charts phải bounded. Terminal rộng thì mở rộng panel hiện có trước, không nhồi chart chỉ vì còn chỗ.
 
-Phase 09 checkpoint 1 dùng cross-section chart từ evidence thật hiện có của từng session. Không dựng historical time-series point giả khi Phase 08 chưa có global historical sample ring.
+Phase 09 chart dùng cross-section từ evidence thật hiện có của từng session. Không dựng historical time-series point giả khi Phase 08 chưa có global historical sample ring.
 
 ## Session table
 
@@ -70,30 +96,53 @@ Columns responsive từ tập:
 STATE PROJECT MODEL DURATION CONTEXT INPUT CACHE TURN TOOLS SIZE
 ```
 
+Global table/search/filter/sort dùng lightweight/indexed rows; không deep-parse toàn bộ history.
+
+## Selected preview / inspect
+
+Moving row phải có visible selection. Operations/Charts view nên có selected preview khi đủ không gian.
+
+`Enter` không được tạo hidden state. Phase 09 có thể show exact-session inspect summary cơ bản; full analytics/timeline sâu thuộc Phase 10.
+
+Deep parse vẫn selected-session-only.
+
 ## Navigation
 
 Manager được quyền sở hữu keyboard/mouse vì độc lập với Codex input.
 
-Minimum:
+Current key direction:
 
 ```text
 ↑/↓          move session
 Enter        inspect
 /            search
-F            filter
+F            filter/scope
+S            sort field
+D            sort direction
+V            change view mode
 Tab/←/→      move applicable panels/tabs
 Q/Esc        back/quit
-mouse        optional when supported
+mouse wheel  move table when supported
 ```
 
 Exact keymap phải được document + test, nhưng không có collision với Live Codex.
 
+Intended product UX after visual acceptance:
+
+```text
+first Manager use -> choose default view
+later launches     -> remember default
+V                  -> change view any time
+```
+
+Persistence/onboarding được sequenced sau khi visual layouts được user duyệt.
+
 ## Responsive
 
-- narrow: stack summary/table/charts theo priority;
-- normal: 2-area/dashboard + table;
-- wide: 3 primary charts + table;
-- ultrawide: control-room layout nhiều panel nhưng vẫn thoáng;
+- narrow: stack theo priority, chart lớn có thể bị bỏ;
+- normal: operations/table priority;
+- wide: operations dashboard + table;
+- ultrawide: control-room layout nhưng vẫn thoáng;
 - no wrap/overflow;
 - Unicode cell width;
 - TRUECOLOR -> 256 -> 16 -> MONO fallback.
@@ -106,20 +155,32 @@ Exact keymap phải được document + test, nhưng không có collision với 
 - optional subtle LIVE pulse chỉ nếu cực nhẹ và theme cho phép;
 - no fake historical chart points.
 
-## Checkpoint 1 — dashboard model + renderer
+## Checkpoints đã triển khai
 
-Đã triển khai:
+### Checkpoint 1 — dashboard model + renderer
 
 - `src/manager/dashboard-model.js` — summary/query/sort/selection/chart projection từ Phase 08 rows;
-- `src/manager/dashboard-render.js` — renderer pure, không file/process I/O;
-- responsive breakpoints narrow/normal/wide/ultrawide;
+- responsive pure renderer;
 - primary chart projection Token Activity / Context Pressure / Tool Activity;
 - responsive session table columns;
-- empty/unmatched state safe;
-- `test/unit/phase9-dashboard.test.js`;
-- `npm run verify:phase9` gate.
+- empty/unmatched state safe.
 
-Checkpoint 1 chưa nối interactive Manager runtime; đó là checkpoint kế tiếp sau local verify.
+### Checkpoint 2 — interactive runtime
+
+- `codexm --manager` full-screen alternate-screen TUI;
+- keyboard/search/filter/sort/focus navigation;
+- changed-evidence repaint signature;
+- terminal cleanup/restore;
+- unknown input crash regression fixed.
+
+### Checkpoint 3 — accepted visual modes, in verification
+
+- Operations/Table/Charts/Auto renderer modes;
+- `V` runtime view cycling;
+- boxed visual hierarchy per mode;
+- selected lightweight preview in Operations/Charts;
+- Auto geometry resolution;
+- no change to Phase 08 collection/deep-parse policy.
 
 ## Không làm trong Phase 09
 
@@ -132,6 +193,7 @@ Checkpoint 1 chưa nối interactive Manager runtime; đó là checkpoint kế t
 
 - dashboard model from known multi-session fixtures;
 - live/ended/search/filter/sort table behavior;
+- Operations/Table/Charts/Auto layout behavior;
 - no-wrap/layout snapshots narrow/normal/wide/ultrawide;
 - active selection visible;
 - color capability fallback giữ semantics;
@@ -143,10 +205,12 @@ Checkpoint 1 chưa nối interactive Manager runtime; đó là checkpoint kế t
 
 - 2–3 Live Codex sessions + ended sessions;
 - normal + ultrawide + narrow terminal;
-- dashboard hierarchy/readability;
+- Operations/Table/Charts/Auto hierarchy/readability;
 - search/filter/sort/navigation;
+- selected preview dễ hiểu;
 - realtime updates không lag/flicker;
-- exit restore terminal sạch.
+- exit restore terminal sạch;
+- user duyệt visual direction.
 
 ## Deliverables
 
