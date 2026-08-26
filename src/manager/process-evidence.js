@@ -121,6 +121,11 @@ export function buildManagerProcessEvidence(processes, {
   );
 
   const evidence = (item) => {
+    // Exact thread evidence must remain usable even when the caller did not
+    // provide the optional sessions list used by nearest-start precomputation.
+    if (codex.some((process) => commandContainsThread(process, item))) {
+      return { processKnown: true, processMatch: true };
+    }
     if (item?.id && matchedSessionIds.has(item.id)) {
       return { processKnown: true, processMatch: true };
     }
