@@ -121,15 +121,24 @@ test('selected inspect is visibly distinct, exact-session scoped and responsive'
     errors: []
   };
   for (const [width, height] of [[60, 22], [120, 32], [180, 40]]) {
-    const frame = renderSessionInspect({ detail, width, height, mode: 'mono' });
-    assert.ok(frame.lines.length <= height);
-    assert.ok(frame.lines.every((line) => cellWidth(line) <= width));
-    const text = stripAnsi(frame.lines.join('\n'));
-    assert.match(text, /SESSION INSPECT/);
-    assert.match(text, /IDENTITY/);
-    assert.match(text, /EXACT TELEMETRY/);
-    assert.match(text, /thread-alpha/);
-    assert.match(text, /Q\/Esc back/);
+    const infoFrame = renderSessionInspect({ detail, width, height, mode: 'mono', activeTab: 'info' });
+    assert.ok(infoFrame.lines.length <= height);
+    assert.ok(infoFrame.lines.every((line) => cellWidth(line) <= width));
+    const infoText = stripAnsi(infoFrame.lines.join('\n'));
+    assert.match(infoText, /SESSION INSPECT/);
+    assert.match(infoText, /IDENTITY/);
+    assert.match(infoText, /thread-alpha/);
+    assert.match(infoText, /Q\/Esc back/);
+    if (width >= 92) assert.match(infoText, /EXACT TELEMETRY/);
+    else assert.doesNotMatch(infoText, /EXACT TELEMETRY/);
+
+    const tokensFrame = renderSessionInspect({ detail, width, height, mode: 'mono', activeTab: 'tokens' });
+    assert.ok(tokensFrame.lines.length <= height);
+    assert.ok(tokensFrame.lines.every((line) => cellWidth(line) <= width));
+    const tokensText = stripAnsi(tokensFrame.lines.join('\n'));
+    assert.match(tokensText, /TOKENS/);
+    assert.match(tokensText, /Context\s+90%/);
+    assert.match(tokensText, /Input\s+1\.0k/);
   }
 });
 
