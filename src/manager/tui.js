@@ -79,6 +79,13 @@ export async function runSessionManagerTui({
     }
   });
 
+  let finish;
+  let fail;
+  const finished = new Promise((resolve, reject) => {
+    finish = resolve;
+    fail = reject;
+  });
+
   const cleanup = async () => {
     if (done) return;
     done = true;
@@ -90,19 +97,25 @@ export async function runSessionManagerTui({
     await platformAdapter.cleanup?.();
   };
 
-  let finish;
-  const finished = new Promise((resolve) => { finish = resolve; });
-
   const quit = async () => {
     await cleanup();
     finish(0);
   };
 
-  const onResize = () => draw(true);
+  const abort = async (error) => {
+    if (done) return;
+    await cleanup();
+    fail(error);
+  };
 
-  const onInput = async (data) => {
+  const onResize = () => {
+    try { draw(true); } catch (error) { void abort(error); }
+  };
+
+  const handleInput = async (data) => {
     if (done) return;
     const normalized = normalizeManagerInput(data, { searching });
+    if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action) return;
 
@@ -164,6 +177,10 @@ export async function runSessionManagerTui({
     draw(false);
   };
 
+  const onInput = (data) => {
+    void handleInput(data).catch((error) => { void abort(error); });
+  };
+
   const onSignal = () => { void quit(); };
   processRef?.once?.('SIGINT', onSignal);
   processRef?.once?.('SIGTERM', onSignal);
@@ -177,12 +194,7 @@ export async function runSessionManagerTui({
     stdin.on?.('data', onInput);
     stdout.on?.('resize', onResize);
     stdout.write('\x1b[2J\x1b[H');
-    void runtime.start().catch(async (error) => {
-      if (!done) {
-        await cleanup();
-        finish(Promise.reject(error));
-      }
-    });
+    void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
     return { code, core, tracker, runtime };
   } finally {
