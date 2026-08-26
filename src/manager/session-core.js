@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HistoryEngine } from '../history/engine.js';
+import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { samePlatformPath } from '../platform/common.js';
 
 export const SESSION_ACTIVITY = Object.freeze({
@@ -8,6 +9,8 @@ export const SESSION_ACTIVITY = Object.freeze({
   ENDED: 'ENDED',
   UNKNOWN: 'UNKNOWN'
 });
+
+const DEFAULT_IDENTITY_BYTES = 64 * 1024;
 
 function walkJsonl(root, fsRef = fs, limit = Number.POSITIVE_INFINITY) {
   const found = [];
@@ -27,9 +30,47 @@ function walkJsonl(root, fsRef = fs, limit = Number.POSITIVE_INFINITY) {
   return found;
 }
 
-function metadata(filePath, fsRef = fs) {
+export function probeSessionIdentity(filePath, fsRef = fs, maxBytes = DEFAULT_IDENTITY_BYTES) {
+  let fd = null;
+  try {
+    fd = fsRef.openSync(filePath, 'r');
+    const stat = fsRef.fstatSync(fd);
+    const length = Math.min(Math.max(0, Number(maxBytes) || 0), stat.size);
+    if (length <= 0) return null;
+    const buffer = Buffer.alloc(length);
+    fsRef.readSync(fd, buffer, 0, length, 0);
+    let identity = null;
+    for (const raw of buffer.toString('utf8').split(/\r?\n/)) {
+      if (!raw.trim()) continue;
+      try {
+        const event = parseRolloutObject(JSON.parse(raw));
+        if (!event) continue;
+        if (event.kind === 'session-meta') {
+          identity = {
+            threadId: event.threadId ?? null,
+            cwd: event.cwd ?? null,
+            project: event.cwd ? path.basename(path.resolve(event.cwd)) : null,
+            model: event.model ?? null,
+            startedAtMs: event.atMs ?? null
+          };
+          if (identity.threadId && identity.cwd && identity.model) break;
+        } else if (identity && event.kind === 'model-settings' && event.model) {
+          identity.model = event.model;
+        }
+      } catch {}
+    }
+    return identity;
+  } catch {
+    return null;
+  } finally {
+    if (fd != null) try { fsRef.closeSync(fd); } catch {}
+  }
+}
+
+function metadata(filePath, fsRef = fs, { enrichIdentity = false, identityBytes = DEFAULT_IDENTITY_BYTES } = {}) {
   try {
     const stat = fsRef.statSync(filePath);
+    const identity = enrichIdentity ? probeSessionIdentity(filePath, fsRef, identityBytes) : null;
     return {
       id: filePath,
       filePath,
@@ -38,12 +79,14 @@ function metadata(filePath, fsRef = fs) {
       createdAtMs: stat.birthtimeMs || stat.ctimeMs || null,
       modifiedAtMs: stat.mtimeMs || null,
       state: SESSION_ACTIVITY.UNKNOWN,
-      project: null,
-      cwd: null,
-      threadId: null,
-      model: null,
+      project: identity?.project ?? null,
+      cwd: identity?.cwd ?? null,
+      threadId: identity?.threadId ?? null,
+      model: identity?.model ?? null,
+      startedAtMs: identity?.startedAtMs ?? null,
       lastActivityAtMs: stat.mtimeMs || null,
       parsed: false,
+      identityProbed: Boolean(identity),
       error: null
     };
   } catch (error) {
@@ -59,11 +102,32 @@ function metadata(filePath, fsRef = fs) {
       cwd: null,
       threadId: null,
       model: null,
+      startedAtMs: null,
       lastActivityAtMs: null,
       parsed: false,
+      identityProbed: false,
       error: error?.message ?? 'stat failed'
     };
   }
+}
+
+function commandContainsIdentity(command, item) {
+  const text = String(command ?? '').toLowerCase();
+  if (!text) return false;
+  const threadId = String(item?.threadId ?? '').trim().toLowerCase();
+  if (threadId && text.includes(threadId)) return true;
+  return false;
+}
+
+export function buildProcessEvidence(processes) {
+  if (!Array.isArray(processes)) return () => ({ processKnown: false, processMatch: false });
+  return (item) => {
+    if (!item?.threadId) return { processKnown: false, processMatch: false };
+    return {
+      processKnown: true,
+      processMatch: processes.some((process) => commandContainsIdentity(process?.command, item))
+    };
+  };
 }
 
 export class SessionActivityResolver {
@@ -143,19 +207,26 @@ export function querySessions(items = [], {
 }
 
 export class SessionManagerCore {
-  constructor({ sessionsPath, fsRef = fs, activityResolver = null, now = () => Date.now() } = {}) {
+  constructor({
+    sessionsPath,
+    fsRef = fs,
+    activityResolver = null,
+    now = () => Date.now(),
+    identityBytes = DEFAULT_IDENTITY_BYTES
+  } = {}) {
     this.sessionsPath = sessionsPath;
     this.fs = fsRef;
     this.now = now;
+    this.identityBytes = identityBytes;
     this.activity = activityResolver ?? new SessionActivityResolver({ now });
     this.index = [];
     this.selectedId = null;
     this.deep = new HistoryEngine({ sessionsPath, fsRef });
   }
 
-  discover({ limit = Number.POSITIVE_INFINITY } = {}) {
+  discover({ limit = Number.POSITIVE_INFINITY, enrichIdentity = true } = {}) {
     this.index = walkJsonl(this.sessionsPath, this.fs, limit)
-      .map((filePath) => metadata(filePath, this.fs))
+      .map((filePath) => metadata(filePath, this.fs, { enrichIdentity, identityBytes: this.identityBytes }))
       .sort((a, b) => (b.modifiedAtMs ?? 0) - (a.modifiedAtMs ?? 0));
     return this.index;
   }
@@ -164,9 +235,22 @@ export class SessionManagerCore {
     const byPath = new Map(this.index.map((item) => [item.filePath, item]));
     const next = [];
     for (const filePath of walkJsonl(this.sessionsPath, this.fs)) {
-      const fresh = metadata(filePath, this.fs);
       const old = byPath.get(filePath);
-      const item = old ? { ...old, ...fresh, parsed: old.parsed } : fresh;
+      const fresh = metadata(filePath, this.fs, {
+        enrichIdentity: !old?.identityProbed,
+        identityBytes: this.identityBytes
+      });
+      const item = old ? {
+        ...old,
+        ...fresh,
+        parsed: old.parsed,
+        project: fresh.project ?? old.project,
+        cwd: fresh.cwd ?? old.cwd,
+        threadId: fresh.threadId ?? old.threadId,
+        model: fresh.model ?? old.model,
+        startedAtMs: fresh.startedAtMs ?? old.startedAtMs,
+        identityProbed: old.identityProbed || fresh.identityProbed
+      } : fresh;
       const evidence = typeof processEvidence === 'function' ? (processEvidence(item) ?? {}) : {};
       item.state = this.activity.resolve(item, evidence);
       next.push(item);
@@ -217,4 +301,4 @@ export class SessionManagerCore {
   }
 }
 
-export { walkJsonl as discoverSessionFiles, metadata as sessionFileMetadata };
+export { walkJsonl as discoverSessionFiles, metadata as sessionFileMetadata, DEFAULT_IDENTITY_BYTES };
