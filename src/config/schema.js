@@ -16,7 +16,7 @@ export const DEFAULT_FIELD_VISIBILITY = Object.freeze({
   context: Object.freeze({ used: true, gauge: true, cache: true, left: true, compaction: true }),
   usage: Object.freeze({
     fiveHour: true, weekly: true, input: true, cache: true, output: true,
-    reasoning: true, turnInput: true, turnOutput: true, model: true, actual: true
+    reasoning: true, turnInput: true, turnOutput: true, model: true, routed: true
   }),
   session: Object.freeze({ elapsed: true, turns: true, last: true, update: true, thread: true, freshness: true, data: true }),
   activity: Object.freeze({ state: true, source: true, tools: true, lastTool: true, approval: true, retry: true, errors: true }),
@@ -72,7 +72,11 @@ function booleanMap(input, keys, fallback) {
 function fieldVisibility(input, fallback = DEFAULT_FIELD_VISIBILITY) {
   const result = {};
   for (const [section, fields] of Object.entries(DEFAULT_FIELD_VISIBILITY)) {
-    result[section] = booleanMap(input?.[section], Object.keys(fields), fallback?.[section] ?? fields);
+    let source = input?.[section];
+    if (section === 'usage' && source && typeof source === 'object' && source.routed === undefined && typeof source.actual === 'boolean') {
+      source = { ...source, routed: source.actual };
+    }
+    result[section] = booleanMap(source, Object.keys(fields), fallback?.[section] ?? fields);
   }
   return result;
 }
