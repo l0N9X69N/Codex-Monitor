@@ -130,7 +130,7 @@ test('Manager TUI switches view at runtime, ignores unknown input and restores t
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('Enter on a chart does not inspect; table Enter opens inspect and inspect tabs navigate', async () => {
+test('Dashboard Enter inspects selected session while inspect tabs own Tab and arrow navigation', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'one.jsonl'), sessionLine());
   const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
@@ -149,9 +149,7 @@ test('Enter on a chart does not inspect; table Enter opens inspect and inspect t
 
   setImmediate(() => {
     stdin.emit('data', Buffer.from('\t'));
-    stdin.emit('data', Buffer.from('\r'));
-    assert.doesNotMatch(stdout.output, /SESSION INSPECT/);
-    stdin.emit('data', Buffer.from('\x1b[D'));
+    stdin.emit('data', Buffer.from('\x1b[C'));
     stdin.emit('data', Buffer.from('\r'));
     setImmediate(() => {
       stdin.emit('data', Buffer.from('\t'));
