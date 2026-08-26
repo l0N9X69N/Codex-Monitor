@@ -3,14 +3,22 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SOURCE = resolve(here, 'eat_preview.txt');
+
+const SOURCE_BY_STATE = {
+  normal: resolve(here, 'normal', 'eat.txt'),
+  'belly-1': resolve(here, 'belly-1', 'eat.txt'),
+  'belly-2': resolve(here, 'belly-2', 'eat.txt'),
+  'belly-max': resolve(here, 'belly-max', 'eat.txt'),
+};
+
+const DEFAULT_SOURCES = Object.values(SOURCE_BY_STATE);
 
 function parseArgs(argv) {
   const options = {
     once: false,
     raw: false,
     speed: 1,
-    source: DEFAULT_SOURCE,
+    sources: DEFAULT_SOURCES,
   };
 
   for (const arg of argv) {
@@ -30,9 +38,19 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg.startsWith('--state=')) {
+      const state = arg.slice('--state='.length).trim();
+      const source = SOURCE_BY_STATE[state];
+      if (!source) {
+        throw new Error(`Unknown body state: ${state}. Use normal, belly-1, belly-2, or belly-max.`);
+      }
+      options.sources = [source];
+      continue;
+    }
+
     if (arg.startsWith('--source=')) {
       const source = arg.slice('--source='.length).trim();
-      if (source) options.source = resolve(process.cwd(), source);
+      if (source) options.sources = [resolve(process.cwd(), source)];
     }
   }
 
@@ -45,7 +63,7 @@ function parseFrames(text) {
   const matches = [...normalized.matchAll(header)];
 
   if (matches.length === 0) {
-    throw new Error('No FRAME sections found in eat_preview.txt');
+    throw new Error('No FRAME sections found in animation source');
   }
 
   return matches.map((match, index) => {
@@ -103,19 +121,19 @@ function getLayout(frames) {
     ...frames.flatMap((frame) => frame.art.split('\n').map(visualWidth)),
   );
   const stateWidth = Math.max(
-    ...frames.map((frame) => visualWidth(`FRAME ${String(frame.number).padStart(2, '0')}  ${frame.title}`)),
+    ...frames.map((frame) => visualWidth(frame.title)),
   );
 
   return {
-    width: Math.max(50, artWidth, stateWidth),
+    width: Math.max(50, artWidth, stateWidth + 16),
     artRows,
   };
 }
 
-function renderBox(frame, layout, totalFrames) {
+function renderBox(frame, layout, totalFrames, playbackNumber) {
   const { width, artRows } = layout;
   const artLines = frame.art.split('\n');
-  const label = `FRAME ${String(frame.number).padStart(2, '0')}/${String(totalFrames).padStart(2, '0')}  ${frame.title}`;
+  const label = `FRAME ${String(playbackNumber).padStart(2, '0')}/${String(totalFrames).padStart(2, '0')}  ${frame.title}`;
   const title = ' MINI CODEX DOG · EAT ';
   const top = `╭${title}${'─'.repeat(Math.max(0, width - visualWidth(title)))}╮`;
   const divider = `├${'─'.repeat(width)}┤`;
@@ -144,8 +162,8 @@ function sleep(ms) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const preview = await readFile(options.source, 'utf8');
-  const frames = parseFrames(preview);
+  const previews = await Promise.all(options.sources.map((source) => readFile(source, 'utf8')));
+  const frames = previews.flatMap(parseFrames);
   const layout = getLayout(frames);
   const isTty = Boolean(process.stdout.isTTY);
   let stopped = false;
@@ -178,12 +196,13 @@ async function main() {
   }
 
   do {
-    for (const frame of frames) {
+    for (let index = 0; index < frames.length; index += 1) {
       if (stopped) break;
 
+      const frame = frames[index];
       const output = options.raw
         ? frame.art
-        : renderBox(frame, layout, frames.length);
+        : renderBox(frame, layout, frames.length, index + 1);
 
       if (isTty) {
         process.stdout.write(`\x1b[H${output}\x1b[J`);
