@@ -181,7 +181,7 @@ export function renderSessionDashboard({
   const model = buildSessionDashboardModel(rows, { scope, search, sortBy, direction, selectedId, selectedIndex });
   const header = truncateCells(`${hpaint('CODEX // SESSION MANAGER', 'strong', mode)}  ${hpaint(`${model.summary.live} LIVE`, model.summary.live ? 'live' : 'dim', mode)}  ${model.summary.total} LOCAL  ${hpaint(layout.toUpperCase(), 'secondary', mode)}`, safeWidth, '');
   const queryLine = truncateCells(`Scope ${model.query.scope.toUpperCase()}  Search ${model.query.search || '--'}  Sort ${model.query.sortBy}:${model.query.direction}`, safeWidth, '');
-  const footer = truncateCells('↑↓ move   Enter inspect   / search   F filter   Tab/←→ panels   Q/Esc quit', safeWidth, '');
+  const footer = truncateCells('↑↓ move  Enter inspect  / search  F scope  S sort  D direction  Tab/←→ panels  Q/Esc back/quit', safeWidth, '');
   const lines = [header, queryLine];
   const bodyHeight = safeHeight - 3;
 
