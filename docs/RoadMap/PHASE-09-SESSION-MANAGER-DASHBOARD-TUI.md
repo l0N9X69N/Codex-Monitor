@@ -1,10 +1,14 @@
 # Phase 09 — Session Manager Dashboard TUI
 
-> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline, frozen 2026-08-25.
+> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline.
 
-## Spec liên quan
+## Trạng thái
 
-Sections 16–23, 25–26, 28, 31 và 42.
+```text
+ACTIVE — 2026-08-26
+```
+
+Phase 08 Session Manager Core đã CLOSED. Old History TUI chỉ là scaffold/regression material, không được tính là Phase 09 completion.
 
 ## Mục tiêu
 
@@ -46,6 +50,8 @@ Session table
 
 Default tối đa khoảng 3 primary charts. Terminal rộng thì mở rộng chart/panel hiện có, không nhồi thêm chart chỉ vì còn chỗ.
 
+Phase 09 checkpoint 1 dùng cross-section chart từ evidence thật hiện có của từng session. Không dựng historical time-series point giả khi Phase 08 chưa có global historical sample ring.
+
 ## Session table
 
 Support:
@@ -86,6 +92,7 @@ Exact keymap phải được document + test, nhưng không có collision với 
 
 - narrow: stack summary/table/charts theo priority;
 - normal: 2-area/dashboard + table;
+- wide: 3 primary charts + table;
 - ultrawide: control-room layout nhiều panel nhưng vẫn thoáng;
 - no wrap/overflow;
 - Unicode cell width;
@@ -98,6 +105,21 @@ Exact keymap phải được document + test, nhưng không có collision với 
 - no global fixed FPS;
 - optional subtle LIVE pulse chỉ nếu cực nhẹ và theme cho phép;
 - no fake historical chart points.
+
+## Checkpoint 1 — dashboard model + renderer
+
+Đã triển khai:
+
+- `src/manager/dashboard-model.js` — summary/query/sort/selection/chart projection từ Phase 08 rows;
+- `src/manager/dashboard-render.js` — renderer pure, không file/process I/O;
+- responsive breakpoints narrow/normal/wide/ultrawide;
+- primary chart projection Token Activity / Context Pressure / Tool Activity;
+- responsive session table columns;
+- empty/unmatched state safe;
+- `test/unit/phase9-dashboard.test.js`;
+- `npm run verify:phase9` gate.
+
+Checkpoint 1 chưa nối interactive Manager runtime; đó là checkpoint kế tiếp sau local verify.
 
 ## Không làm trong Phase 09
 
@@ -133,9 +155,3 @@ Exact keymap phải được document + test, nhưng không có collision với 
 ## Exit gate
 
 Manager dashboard usable/readable, multi-LIVE correct, responsive gate xanh, BLOCKER=0, P0=0, user duyệt visual direction.
-
-## Trạng thái hiện tại
-
-```text
-NOT STARTED — old History TUI is not accepted as Phase 09 completion
-```
