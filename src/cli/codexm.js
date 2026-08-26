@@ -57,7 +57,7 @@ async function main() {
   if (parsed.action === 'manager') {
     const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
     const result = interactive
-      ? await runSessionManagerTui({ platformAdapter })
+      ? await runSessionManagerTui({ platformAdapter, theme: config.theme })
       : await runSessionManagerRuntime({ platformAdapter });
     return result.code;
   }
@@ -120,13 +120,14 @@ async function main() {
     }
   }
 
+  let codexArgsFinal = codexArgs;
   let state = createCurrentRunState({ startedAtMs: Date.now() });
   const auth = detectAuth({ override: parsed.auth, codexPath });
   state = withDetectedAuth(state, auth);
 
   return await runCodexLive({
     codexPath,
-    codexArgs,
+    codexArgs: codexArgsFinal,
     resumeTargetPath,
     auth,
     monitorState: state,
