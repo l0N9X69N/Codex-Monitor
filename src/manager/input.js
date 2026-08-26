@@ -25,6 +25,10 @@ export function normalizeManagerInput(data, { searching = false } = {}) {
   if (text === '\x1b[B') return 'down';
   if (text === '\x1b[C') return 'right';
   if (text === '\x1b[D') return 'left';
+  if (text === '\x1b[5~') return 'page-up';
+  if (text === '\x1b[6~') return 'page-down';
+  if (text === '\x1b[H' || text === '\x1b[1~' || text === '\x1bOH') return 'home';
+  if (text === '\x1b[F' || text === '\x1b[4~' || text === '\x1bOF') return 'end';
   if (text === '\t') return 'tab';
 
   const mouse = text.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
