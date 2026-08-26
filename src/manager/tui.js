@@ -177,6 +177,7 @@ export async function runSessionManagerTui({
       return;
     }
 
+    let forceDraw = false;
     if (action === 'search') {
       searching = true;
       searchDraft = search;
@@ -204,9 +205,10 @@ export async function runSessionManagerTui({
         core.select(selected.id);
         selectedDetail = core.selectedDetail();
         inspectTab = 'info';
+        forceDraw = true;
       }
     }
-    draw(false);
+    draw(forceDraw);
   };
 
   const onInput = (data) => {
