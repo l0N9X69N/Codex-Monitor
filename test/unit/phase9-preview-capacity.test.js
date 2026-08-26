@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { activityPreviewCapacity } from '../../src/manager/activity-preview-capacity.js';
+import { activityPreviewCapacity, activityPreviewPanelHeight } from '../../src/manager/activity-preview-capacity.js';
 import { SelectedActivityPreview } from '../../src/manager/activity-preview.js';
 
 function line(type, payload = {}, timestamp = '2026-08-26T12:00:00.000Z', outer = null) {
@@ -24,6 +24,18 @@ test('activity preview capacity follows the visible ultrawide pane', () => {
   assert.ok(table > operations, `table preview should expose more rows than operations: ${table} <= ${operations}`);
   assert.ok(operations > charts, `operations preview should expose more rows than charts: ${operations} <= ${charts}`);
   assert.ok(charts > 0);
+});
+
+test('short terminals compact selected activity before sacrificing session rows', () => {
+  const telemetry = { sessions: [{ id: 'a' }, { id: 'b' }] };
+  const shortHeight = activityPreviewPanelHeight({ width: 260, height: 36, viewMode: 'table', telemetry });
+  const tallHeight = activityPreviewPanelHeight({ width: 260, height: 48, viewMode: 'table', telemetry });
+  const shortFullLowerPane = (36 - 3) - 4;
+  const tallFullLowerPane = (48 - 3) - 4;
+
+  assert.ok(shortHeight < shortFullLowerPane, `short activity pane should compact before the table: ${shortHeight} >= ${shortFullLowerPane}`);
+  assert.equal(tallHeight, tallFullLowerPane, 'tall terminal may use the full lower-pane height for activity');
+  assert.equal(activityPreviewCapacity({ width: 260, height: 36, viewMode: 'table', telemetry }), shortHeight - 2);
 });
 
 test('selected activity keeps only the visible target event count', () => {
