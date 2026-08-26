@@ -41,9 +41,11 @@ export function normalizeManagerInput(data, { searching = false } = {}) {
     };
   }
 
+  const enter = /^[\r\n]+$/.test(text);
+
   if (searching) {
     if (text === '\x1b') return 'search-cancel';
-    if (text === '\r' || text === '\n') return 'search-accept';
+    if (enter) return 'search-accept';
     if (text === '\x7f' || text === '\b') return 'search-backspace';
     const printable = [...text].filter((symbol) => {
       const code = symbol.codePointAt(0) ?? 0;
@@ -53,7 +55,7 @@ export function normalizeManagerInput(data, { searching = false } = {}) {
   }
 
   if (text === '\x1b' || text.toLowerCase() === 'q') return 'quit';
-  if (text === '\r' || text === '\n') return 'inspect';
+  if (enter) return 'inspect';
   if (text === '/') return 'search';
   if (text.toLowerCase() === 'f') return 'filter';
   if (text.toLowerCase() === 's') return 'sort';
