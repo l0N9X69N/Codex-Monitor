@@ -37,13 +37,24 @@ function allFalse(object) {
   return Object.fromEntries(Object.keys(object).map((key) => [key, false]));
 }
 
-function configForCase({ preset = 'full', theme = 'color', background = 'terminal', beastMode = null, sections = null, metrics = null, fields = null, header = null } = {}) {
+function configForCase({
+  preset = 'full',
+  theme = 'color',
+  background = 'terminal',
+  systemMode = null,
+  beastMode = null,
+  sections = null,
+  metrics = null,
+  fields = null,
+  header = null
+} = {}) {
   const base = configForPreset(preset);
   return normalizeConfig({
     ...base,
     preset,
     theme,
     background,
+    systemMode: systemMode ?? base.systemMode,
     beastMode: beastMode ?? base.beastMode,
     sections: sections ?? base.sections,
     metrics: metrics ?? base.metrics,
@@ -55,11 +66,23 @@ function configForCase({ preset = 'full', theme = 'color', background = 'termina
 const CASES = {
   'color-login-5col': {
     width: 220, height: 50, auth: 'login', state: 'idle',
-    config: () => configForCase({ theme: 'color', background: 'terminal' })
+    config: () => configForCase({ systemMode: 'on', beastMode: 'off' })
   },
-  'beast-ultrawide-6col': {
-    width: 300, height: 50, auth: 'login', state: 'idle',
-    config: () => configForCase({ theme: 'color', background: 'terminal', beastMode: 'auto' })
+  'full-default-6col': {
+    width: 220, height: 50, auth: 'login', state: 'idle',
+    config: () => configForCase()
+  },
+  'full-on-on-4plus2': {
+    width: 180, height: 50, auth: 'login', state: 'idle',
+    config: () => configForCase({ systemMode: 'on', beastMode: 'on' })
+  },
+  'optional-auto-medium': {
+    width: 180, height: 50, auth: 'login', state: 'idle',
+    config: () => configForCase({ preset: 'custom', systemMode: 'auto', beastMode: 'auto' })
+  },
+  'optional-auto-wide': {
+    width: 220, height: 50, auth: 'login', state: 'idle',
+    config: () => configForCase({ preset: 'custom', systemMode: 'auto', beastMode: 'auto' })
   },
   'beast-on-replaces-session': {
     width: 180, height: 50, auth: 'login', state: 'idle',
@@ -68,27 +91,28 @@ const CASES = {
       return normalizeConfig({
         ...base,
         preset: 'custom',
+        systemMode: 'off',
         beastMode: 'on',
-        sections: { ...base.sections, session: false },
-        metrics: { ...base.metrics, session: false }
+        sections: { ...base.sections, session: false, system: false },
+        metrics: { ...base.metrics, session: false, system: false }
       });
     }
   },
-  'beast-off-ultrawide': {
+  'optional-off-ultrawide': {
     width: 300, height: 50, auth: 'login', state: 'idle',
-    config: () => configForCase({ preset: 'custom', beastMode: 'off' })
+    config: () => configForCase({ preset: 'custom', systemMode: 'off', beastMode: 'off' })
   },
   'mono-black-5col': {
     width: 220, height: 50, auth: 'login', state: 'thinking',
-    config: () => configForCase({ theme: 'mono', background: 'black' })
+    config: () => configForCase({ theme: 'mono', background: 'black', systemMode: 'on', beastMode: 'off' })
   },
   'matrix-dark-5col': {
     width: 220, height: 50, auth: 'login', state: 'tool',
-    config: () => configForCase({ theme: 'matrix', background: 'dark' })
+    config: () => configForCase({ theme: 'matrix', background: 'dark', systemMode: 'on', beastMode: 'off' })
   },
   'api-color-5col': {
     width: 220, height: 50, auth: 'api', state: 'idle',
-    config: () => configForCase({ theme: 'color', background: 'terminal' })
+    config: () => configForCase({ systemMode: 'on', beastMode: 'off' })
   },
   'layout-4col': {
     width: 160, height: 45, auth: 'login', state: 'idle', config: () => configForCase()
@@ -105,7 +129,7 @@ const CASES = {
   'fields-5-1-0': {
     width: 180, height: 45, auth: 'login', state: 'idle',
     config: () => {
-      const base = configForCase();
+      const base = configForCase({ systemMode: 'on', beastMode: 'off' });
       return normalizeConfig({
         ...base,
         preset: 'custom',
@@ -123,7 +147,7 @@ const CASES = {
   'fields-empty-cards': {
     width: 180, height: 45, auth: 'login', state: 'idle',
     config: () => {
-      const base = configForCase();
+      const base = configForCase({ systemMode: 'on', beastMode: 'off' });
       return normalizeConfig({
         ...base,
         preset: 'custom',
@@ -135,6 +159,7 @@ const CASES = {
     width: 130, height: 40, auth: 'login', state: 'approval',
     config: () => configForCase({
       preset: 'custom',
+      systemMode: 'off',
       beastMode: 'off',
       sections: { context: true, usage: false, session: true, activity: true, system: false },
       header: ['activity', 'health', 'session-age']
@@ -192,7 +217,7 @@ function renderCase(name, spec) {
   const frame = buildLiveFrame({ state, config, width: spec.width, height: spec.height, nowMs: NOW, projectName: 'Stress Case' });
   process.stdout.write(`\n=== ${name} · ${spec.width}x${spec.height} · ${spec.auth} · ${config.theme}/${config.background} ===\n`);
   process.stdout.write(`${frame.lines.join('\n')}\n`);
-  process.stdout.write(`semantic: columns=${frame.semantic.columns} cap=${frame.semantic.representationCap} rows=${frame.rowCount} beast=${frame.semantic.beastMode}/${frame.semantic.beastVisible ? 'visible' : 'hidden'}\n`);
+  process.stdout.write(`semantic: columns=${frame.semantic.columns} gridRows=${frame.layout.gridRows} cap=${frame.semantic.representationCap} rows=${frame.rowCount} system=${frame.semantic.systemMode}/${frame.semantic.systemVisible ? 'visible' : 'hidden'} beast=${frame.semantic.beastMode}/${frame.semantic.beastVisible ? 'visible' : 'hidden'}\n`);
 }
 
 const args = parseArgs(process.argv.slice(2));
