@@ -3,7 +3,6 @@ export const PLATFORM_METHODS = Object.freeze([
   'getSystemUsage',
   'getProcessTree',
   'getDiskInfo',
-  'openHistoryTerminal',
   'paths',
   'capabilities',
   'cleanup'
@@ -24,7 +23,6 @@ export function normalizeCapabilities(value = {}) {
     systemUsage: value.systemUsage !== false,
     processTree: value.processTree !== false,
     diskInfo: value.diskInfo !== false,
-    historyTerminal: value.historyTerminal !== false,
     mouse: value.mouse !== false,
     truecolor: value.truecolor ?? null,
     caseInsensitivePaths: value.caseInsensitivePaths === true
