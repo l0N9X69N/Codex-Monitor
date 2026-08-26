@@ -124,6 +124,19 @@ export function cumulativeTokenChartModel(analytics, width = 56, { ascii = false
   };
 }
 
+export function tokenIoByTurnChartModel(analytics, width = 56, { ascii = false } = {}) {
+  const turns = Array.isArray(analytics?.turns?.items) ? analytics.turns.items : [];
+  return {
+    line: sparkline(turns, {
+      width,
+      accessor: (turn) => turn?.totalTokens,
+      ascii
+    }),
+    peakTokens: turns.reduce((max, turn) => Math.max(max, finiteOrNull(turn?.totalTokens) ?? 0), 0) || null,
+    turns: turns.length
+  };
+}
+
 export function turnDurationChartModel(analytics, width = 56, { ascii = false } = {}) {
   const turns = Array.isArray(analytics?.turns?.items) ? analytics.turns.items : [];
   return {
@@ -134,6 +147,19 @@ export function turnDurationChartModel(analytics, width = 56, { ascii = false } 
     }),
     completed: turns.filter((turn) => turn?.completed).length,
     maxDurationMs: turns.reduce((max, turn) => Math.max(max, finiteOrNull(turn?.durationMs) ?? 0), 0) || null
+  };
+}
+
+export function toolCallsByTurnChartModel(analytics, width = 56, { ascii = false } = {}) {
+  const turns = Array.isArray(analytics?.turns?.items) ? analytics.turns.items : [];
+  return {
+    line: sparkline(turns, {
+      width,
+      accessor: (turn) => turn?.toolCount,
+      ascii
+    }),
+    peakCalls: turns.reduce((max, turn) => Math.max(max, finiteOrNull(turn?.toolCount) ?? 0), 0) || null,
+    turns: turns.length
   };
 }
 
