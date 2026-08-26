@@ -1,4 +1,4 @@
-import { spawn, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { spawnCodexPty } from './pty.js';
 import { assertPlatformAdapter, normalizeCapabilities, unsupportedResult } from './contract.js';
@@ -108,13 +108,6 @@ async function windowsSystemUsage() {
   };
 }
 
-function spawnDetached(file, args, { cwd, env }) {
-  const child = spawn(file, args, { cwd, env, detached: true, windowsHide: true, stdio: 'ignore' });
-  child.on('error', () => {});
-  child.unref();
-  return { ok: true, launcher: file };
-}
-
 export function createWindowsPlatformAdapter({ env = process.env } = {}) {
   // CIM/PowerShell queries are expensive on Windows. Keep them asynchronous and
   // deduplicate closely spaced requests so collectors never block stdin/PTY I/O.
@@ -142,18 +135,8 @@ export function createWindowsPlatformAdapter({ env = process.env } = {}) {
         return { path: root, totalBytes: Number.isFinite(total) ? total : null, freeBytes: Number.isFinite(free) ? free : null };
       } catch (error) { return unsupportedResult('diskInfo', error?.message ?? 'disk query failed'); }
     },
-    async openHistoryTerminal({ command = 'codexm', args = ['--history'], cwd = process.cwd() } = {}) {
-      try {
-        await execFileText('where.exe', ['wt.exe'], { timeout: 1200 });
-        return spawnDetached('wt.exe', ['new-tab', '--startingDirectory', cwd, command, ...args], { cwd, env });
-      } catch {}
-      try {
-        const comspec = env.ComSpec || env.COMSPEC || 'cmd.exe';
-        return spawnDetached(comspec, ['/d', '/c', 'start', '', command, ...args], { cwd, env });
-      } catch (error) { return { ok: false, error: error?.message ?? 'could not open terminal' }; }
-    },
     paths() { return commonPaths({ env }); },
-    capabilities() { return normalizeCapabilities({ pty: true, systemUsage: true, processTree: true, diskInfo: true, historyTerminal: true, mouse: true, truecolor: null }); },
+    capabilities() { return normalizeCapabilities({ pty: true, systemUsage: true, processTree: true, diskInfo: true, mouse: true, truecolor: null }); },
     async cleanup() { return true; }
   };
   return assertPlatformAdapter(adapter);
