@@ -1,4 +1,4 @@
-import { SessionManagerCore, SESSION_ACTIVITY } from './session-core.js';
+import { buildProcessEvidence, SessionManagerCore, SESSION_ACTIVITY } from './session-core.js';
 
 function summaryLines(items) {
   const counts = { live: 0, ended: 0, unknown: 0 };
@@ -26,7 +26,15 @@ export async function runSessionManager({
   if (!platformAdapter) throw new Error('Session Manager requires platform adapter');
   const sessionsPath = platformAdapter.paths()?.sessions ?? null;
   const core = new SessionManagerCore({ sessionsPath, fsRef, now });
-  const items = core.discover();
+  core.discover();
+
+  let processEvidence = null;
+  try {
+    const processes = await platformAdapter.getProcessTree();
+    if (Array.isArray(processes)) processEvidence = buildProcessEvidence(processes);
+  } catch {}
+
+  const items = core.refresh({ processEvidence });
   stdout.write(`${summaryLines(items).join('\n')}\n`);
   return { code: 0, core, items };
 }
