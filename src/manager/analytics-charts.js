@@ -1,3 +1,4 @@
+const BRAILLE = '⡀⡄⡆⡇⣇⣧⣷⣿';
 const BLOCKS = '▁▂▃▄▅▆▇█';
 const ASCII = ' .:-=+*#';
 
@@ -34,6 +35,12 @@ function scaledGlyph(value, min, max, glyphs) {
   return glyphs[Math.round(ratio * (glyphs.length - 1))];
 }
 
+function glyphSet({ ascii = false, width = 40 } = {}) {
+  if (!ascii) return { glyphs: BRAILLE, marker: '◆', level: 'braille' };
+  if (width >= 24) return { glyphs: BLOCKS, marker: '◆', level: 'block' };
+  return { glyphs: ASCII, marker: '!', level: 'ascii' };
+}
+
 export function sparkline(points, {
   width = 40,
   accessor = (point) => point?.value,
@@ -46,22 +53,26 @@ export function sparkline(points, {
   const values = entries.map((entry) => entry.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const glyphs = ascii ? ASCII : BLOCKS;
+  const { glyphs, marker } = glyphSet({ ascii, width: safeWidth });
   const chars = entries.map((entry) => scaledGlyph(entry.value, min, max, glyphs));
 
   if (Array.isArray(markers) && markers.length && entries.length) {
     const firstAt = finiteOrNull(entries[0].point?.atMs);
     const lastAt = finiteOrNull(entries.at(-1).point?.atMs);
     if (firstAt != null && lastAt != null && lastAt > firstAt) {
-      for (const marker of markers) {
-        const atMs = finiteOrNull(marker?.atMs);
+      for (const item of markers) {
+        const atMs = finiteOrNull(item?.atMs);
         if (atMs == null || atMs < firstAt || atMs > lastAt) continue;
         const index = Math.max(0, Math.min(chars.length - 1, Math.round(((atMs - firstAt) / (lastAt - firstAt)) * (chars.length - 1))));
-        chars[index] = ascii ? '!' : '◆';
+        chars[index] = marker;
       }
     }
   }
   return chars.join('');
+}
+
+export function chartFallbackLevel({ ascii = false, width = 40 } = {}) {
+  return glyphSet({ ascii, width: Math.max(1, Math.floor(Number(width) || 1)) }).level;
 }
 
 export function horizontalBars(items, {
@@ -78,8 +89,9 @@ export function horizontalBars(items, {
   if (!source.length) return [];
   const max = Math.max(...source.map((entry) => entry.value), 1);
   const barWidth = Math.max(4, Math.floor(Number(width) || 32));
-  const fill = ascii ? '#' : '█';
-  const rest = ascii ? '.' : '·';
+  const fallback = glyphSet({ ascii, width: barWidth });
+  const fill = fallback.level === 'ascii' ? '#' : '█';
+  const rest = fallback.level === 'ascii' ? '.' : '·';
   return source.map((entry) => {
     const amount = Math.max(1, Math.round((entry.value / max) * barWidth));
     return {
@@ -93,15 +105,9 @@ export function horizontalBars(items, {
 export function contextChartModel(analytics, width = 56, { ascii = false } = {}) {
   const context = analytics?.context ?? {};
   return {
-    line: sparkline(context.points, {
-      width,
-      accessor: (point) => point?.percent,
-      ascii,
-      markers: context.compactions
-    }),
-    currentPercent: context.currentUsed != null && context.currentWindow > 0
-      ? (context.currentUsed / context.currentWindow) * 100
-      : null,
+    line: sparkline(context.points, { width, accessor: (point) => point?.percent, ascii, markers: context.compactions }),
+    fallback: chartFallbackLevel({ ascii, width }),
+    currentPercent: context.currentUsed != null && context.currentWindow > 0 ? (context.currentUsed / context.currentWindow) * 100 : null,
     peakPercent: finiteOrNull(context.peakPercent),
     compactions: Array.isArray(context.compactions) ? context.compactions.length : 0
   };
@@ -110,11 +116,8 @@ export function contextChartModel(analytics, width = 56, { ascii = false } = {})
 export function cumulativeTokenChartModel(analytics, width = 56, { ascii = false } = {}) {
   const token = analytics?.tokens ?? {};
   return {
-    line: sparkline(token.points, {
-      width,
-      accessor: (point) => point?.total,
-      ascii
-    }),
+    line: sparkline(token.points, { width, accessor: (point) => point?.total, ascii }),
+    fallback: chartFallbackLevel({ ascii, width }),
     total: finiteOrNull(token.total),
     input: finiteOrNull(token.input),
     cached: finiteOrNull(token.cached),
@@ -127,11 +130,8 @@ export function cumulativeTokenChartModel(analytics, width = 56, { ascii = false
 export function tokenIoByTurnChartModel(analytics, width = 56, { ascii = false } = {}) {
   const turns = Array.isArray(analytics?.turns?.items) ? analytics.turns.items : [];
   return {
-    line: sparkline(turns, {
-      width,
-      accessor: (turn) => turn?.totalTokens,
-      ascii
-    }),
+    line: sparkline(turns, { width, accessor: (turn) => turn?.totalTokens, ascii }),
+    fallback: chartFallbackLevel({ ascii, width }),
     peakTokens: turns.reduce((max, turn) => Math.max(max, finiteOrNull(turn?.totalTokens) ?? 0), 0) || null,
     turns: turns.length
   };
@@ -140,11 +140,8 @@ export function tokenIoByTurnChartModel(analytics, width = 56, { ascii = false }
 export function turnDurationChartModel(analytics, width = 56, { ascii = false } = {}) {
   const turns = Array.isArray(analytics?.turns?.items) ? analytics.turns.items : [];
   return {
-    line: sparkline(turns, {
-      width,
-      accessor: (turn) => turn?.durationMs,
-      ascii
-    }),
+    line: sparkline(turns, { width, accessor: (turn) => turn?.durationMs, ascii }),
+    fallback: chartFallbackLevel({ ascii, width }),
     completed: turns.filter((turn) => turn?.completed).length,
     maxDurationMs: turns.reduce((max, turn) => Math.max(max, finiteOrNull(turn?.durationMs) ?? 0), 0) || null
   };
@@ -153,11 +150,8 @@ export function turnDurationChartModel(analytics, width = 56, { ascii = false } 
 export function toolCallsByTurnChartModel(analytics, width = 56, { ascii = false } = {}) {
   const turns = Array.isArray(analytics?.turns?.items) ? analytics.turns.items : [];
   return {
-    line: sparkline(turns, {
-      width,
-      accessor: (turn) => turn?.toolCount,
-      ascii
-    }),
+    line: sparkline(turns, { width, accessor: (turn) => turn?.toolCount, ascii }),
+    fallback: chartFallbackLevel({ ascii, width }),
     peakCalls: turns.reduce((max, turn) => Math.max(max, finiteOrNull(turn?.toolCount) ?? 0), 0) || null,
     turns: turns.length
   };
@@ -167,6 +161,7 @@ export function toolShareChartModel(analytics, width = 28, { ascii = false, maxI
   const byName = Array.isArray(analytics?.tools?.byName) ? analytics.tools.byName : [];
   return {
     bars: horizontalBars(byName, { width, maxItems, ascii }),
+    fallback: chartFallbackLevel({ ascii, width }),
     total: finiteOrNull(analytics?.tools?.total) ?? 0
   };
 }
