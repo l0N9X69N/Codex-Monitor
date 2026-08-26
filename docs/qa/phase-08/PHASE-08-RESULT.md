@@ -2,27 +2,36 @@
 
 ## Trạng thái
 
-**ACTIVE — first Session Manager core checkpoint implemented, verification pending.**
+**ACTIVE — automated core checkpoints PASS; manual multi-terminal/performance acceptance pending.**
 
 ## Đã làm
 
 - `src/manager/session-core.js` làm core mới cho Manager.
 - `SessionActivityResolver`: `LIVE / ENDED / UNKNOWN`, không dùng mtime-only để claim LIVE.
-- Metadata-first discovery, không deep parse body hàng loạt.
+- Metadata-first discovery, không full-read/deep parse body hàng loạt.
+- Bounded identity enrichment cho thread/cwd/project/model.
+- Conservative process/session correlation bằng strong identity evidence.
+- Long-running tracker tách cadence discovery/process/known-refresh/selected-tail.
+- Lightweight global row cho state/project/model/elapsed/tokens/context/turn/tool/last activity/error/retry/compaction/file size.
+- Lightweight bootstrap/tail bounded; incomplete totals giữ unknown thay vì fabricate.
 - Selected-session deep parser tái sử dụng historical parser với provenance `OFFICIAL_HISTORY`.
+- Selected detail contract ổn định cho `Info/Tokens/Turns/Tools/Resources/Errors`.
 - Incremental selected tail giữ partial-line/no-duplicate/truncate behavior.
 - Query model: All/Live/Ended/Search/Sort.
 - External delete degrade an toàn.
 - `codexm --manager` chạy read-only Manager core và không launch Codex.
 - `--history` không còn Monitor-owned semantics.
-- Có `npm run verify:phase8`.
+- `npm run verify:phase8` PASS trên local Windows checkout theo báo cáo người dùng.
 
-## Chưa hoàn tất
+## Exit gate còn lại
 
-- bounded identity enrichment cho global rows;
-- process/session correlation đủ mạnh cho mixed multi-LIVE/mixed ENDED cases;
-- long-running lightweight tracker/cadence/backoff;
-- real 2–3 concurrent Codex manual acceptance;
-- Manager TUI/charts (Phase 09).
+- chạy Manager cùng 2–3 Codex terminals thật;
+- xác nhận từng session LIVE/ENDED hợp lý và independent;
+- đóng một Codex rồi quan sát transition;
+- session folder lớn vẫn khởi động/chạy ổn;
+- selected detail hoạt động nhưng non-selected session không gây CPU/I/O cao;
+- P0 = 0.
 
-Phase 08 không được đánh dấu CLOSED cho tới khi các core/multi-session manual gates hoàn tất.
+Manager TUI/charts là Phase 09, không chặn Phase 08.
+
+Phase 08 chỉ chuyển CLOSED sau khi manual gate trên PASS.
