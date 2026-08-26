@@ -60,18 +60,19 @@ function parseCsvLine(line) {
 }
 
 async function windowsProcessTree() {
+  // Process/session correlation needs identity + start time, not per-process CPU.
+  // Win32_PerfFormattedData_PerfProc_Process can be very slow or unavailable on
+  // some Windows hosts, so keep the critical process-tree query independent of it.
   const script = [
-    '$cores=[Math]::Max(1,[Environment]::ProcessorCount);',
-    '$perf=@{}; Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { if($_.IDProcess -gt 0){$perf[[int]$_.IDProcess]=[double]$_.PercentProcessorTime/$cores} };',
     '$now=Get-Date;',
-    'Get-CimInstance Win32_Process | ForEach-Object {',
+    'Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,Name,CommandLine,WorkingSetSize,CreationDate | ForEach-Object {',
     '$age=$null; if($_.CreationDate){try{$age=[Math]::Max(0,($now-$_.CreationDate).TotalMilliseconds)}catch{}};',
-    '[pscustomobject]@{ProcessId=$_.ProcessId;ParentProcessId=$_.ParentProcessId;Name=$_.Name;CommandLine=$_.CommandLine;WorkingSetSize=$_.WorkingSetSize;AgeMs=$age;CpuPercent=$perf[[int]$_.ProcessId]}',
+    '[pscustomobject]@{ProcessId=$_.ProcessId;ParentProcessId=$_.ParentProcessId;Name=$_.Name;CommandLine=$_.CommandLine;WorkingSetSize=$_.WorkingSetSize;AgeMs=$age;CpuPercent=$null}',
     '} | ConvertTo-Csv -NoTypeInformation'
   ].join(' ');
 
   const text = await execFileText('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    timeout: 4500,
+    timeout: 6000,
     windowsHide: true
   });
   const lines = text.split(/\r?\n/).filter(Boolean);
@@ -83,7 +84,7 @@ async function windowsProcessTree() {
     return normalizeProcessRecord({
       pid: Number(entry.ProcessId), ppid: Number(entry.ParentProcessId), name: entry.Name,
       command: entry.CommandLine || entry.Name,
-      cpuPercent: entry.CpuPercent === '' ? null : Number(entry.CpuPercent),
+      cpuPercent: null,
       memoryBytes: Number(entry.WorkingSetSize), ageMs: entry.AgeMs === '' ? null : Number(entry.AgeMs)
     });
   });
