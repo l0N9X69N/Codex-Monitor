@@ -7,6 +7,7 @@ import { SessionManagerRuntime } from './runtime.js';
 import { renderSessionDashboard } from './dashboard-render.js';
 import { MANAGER_INSPECT_TABS, renderSessionInspect } from './inspect-render.js';
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
+import { ManagerTelemetrySeries } from './telemetry-series.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -31,6 +32,7 @@ export async function runSessionManagerTui({
   colorCapability = detectHistoryColorMode(),
   theme = 'color',
   intervalMs = 250,
+  telemetryIntervalMs = 1000,
   initialViewMode = 'operations'
 } = {}) {
   if (!platformAdapter) throw new Error('Session Manager requires platform adapter');
@@ -42,6 +44,7 @@ export async function runSessionManagerTui({
   const tracker = new SessionManagerTracker({ core, platformAdapter, now });
   const guard = new TerminalGuard({ stdin, stdout });
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
+  const telemetrySeries = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
 
   let rows = [];
   let scope = 'all';
@@ -57,6 +60,8 @@ export async function runSessionManagerTui({
   let inspectTab = 'info';
   let done = false;
   let lastFrame = null;
+  let telemetry = telemetrySeries.snapshot();
+  let telemetryTimer = null;
 
   const draw = (force = false) => {
     if (done) return null;
@@ -75,7 +80,8 @@ export async function runSessionManagerTui({
         direction,
         selectedId,
         selectedIndex,
-        viewMode
+        viewMode,
+        telemetry
       });
 
     if (!core.selectedId && frame.model) {
@@ -88,12 +94,19 @@ export async function runSessionManagerTui({
     return frame;
   };
 
+  const sampleTelemetry = () => {
+    if (done || core.selectedId || searching) return;
+    telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
+    draw(false);
+  };
+
   const runtime = new SessionManagerRuntime({
     tracker,
     intervalMs,
     onSnapshot(result) {
       rows = result.rows ?? [];
       selectedDetail = result.selectedDetail ?? selectedDetail;
+      if (!telemetry.samples.length) telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
       draw(false);
     }
   });
@@ -109,6 +122,10 @@ export async function runSessionManagerTui({
     if (done) return;
     done = true;
     runtime.stop();
+    if (telemetryTimer != null) {
+      clearInterval(telemetryTimer);
+      telemetryTimer = null;
+    }
     try { stdin.off?.('data', onInput); } catch {}
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.pause?.(); } catch {}
@@ -131,6 +148,11 @@ export async function runSessionManagerTui({
     try { draw(true); } catch (error) { void abort(error); }
   };
 
+  const rebaselineTelemetry = () => {
+    telemetrySeries.reset();
+    telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
+  };
+
   const handleInput = async (data) => {
     if (done) return;
     const normalized = normalizeManagerInput(data, { searching });
@@ -143,6 +165,7 @@ export async function runSessionManagerTui({
         core.releaseSelection();
         selectedDetail = null;
         inspectTab = 'info';
+        rebaselineTelemetry();
         draw(true);
       } else if (action === 'tab' || action === 'right') {
         inspectTab = nextInspectTab(inspectTab, 1);
@@ -163,6 +186,7 @@ export async function runSessionManagerTui({
         search = searchDraft.trim();
         selectedId = null;
         selectedIndex = 0;
+        rebaselineTelemetry();
       } else if (action === 'search-backspace') {
         searchDraft = [...searchDraft].slice(0, -1).join('');
       } else if (action === 'search-text') {
@@ -185,6 +209,7 @@ export async function runSessionManagerTui({
       scope = nextManagerScope(scope);
       selectedId = null;
       selectedIndex = 0;
+      rebaselineTelemetry();
     } else if (action === 'sort') {
       sortBy = nextManagerSort(sortBy);
       selectedId = null;
@@ -228,9 +253,11 @@ export async function runSessionManagerTui({
     stdin.on?.('data', onInput);
     stdout.on?.('resize', onResize);
     stdout.write('\x1b[2J\x1b[H');
+    telemetryTimer = setInterval(sampleTelemetry, Math.max(250, Number(telemetryIntervalMs) || 1000));
+    telemetryTimer.unref?.();
     void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
-    return { code, core, tracker, runtime, viewMode, theme, colorMode };
+    return { code, core, tracker, runtime, viewMode, theme, colorMode, telemetry };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
     processRef?.removeListener?.('SIGTERM', onSignal);
