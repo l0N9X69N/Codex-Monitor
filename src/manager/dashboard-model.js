@@ -81,8 +81,17 @@ function storageBytes(rows) {
   return rows.reduce((sum, row) => sum + (numberOrNull(row?.fileSizeBytes) ?? 0), 0);
 }
 
+function shortSession(row) {
+  const value = row?.threadId ?? row?.name ?? '';
+  const text = String(value);
+  if (!text) return '';
+  return text.length <= 8 ? text : text.slice(-8);
+}
+
 function chartLabel(row) {
-  return row?.project ?? row?.name ?? row?.threadId ?? 'session';
+  const project = row?.project ?? row?.name ?? 'session';
+  const suffix = shortSession(row);
+  return suffix && suffix !== project ? `${project} · ${suffix}` : project;
 }
 
 function rankedChart(rows, metric, { limit = 6 } = {}) {
@@ -152,9 +161,9 @@ export function buildSessionDashboardModel(rows = [], {
       highestContextLabel: pressures[0] ? chartLabel(pressures[0].row) : null
     },
     charts: {
-      tokens: rankedChart(source, rowTokenActivity, { limit: chartLimit }),
-      context: rankedChart(source, rowContextPercent, { limit: chartLimit }),
-      tools: rankedChart(source, rowToolActivity, { limit: chartLimit })
+      tokens: rankedChart(filtered, rowTokenActivity, { limit: chartLimit }),
+      context: rankedChart(filtered, rowContextPercent, { limit: chartLimit }),
+      tools: rankedChart(filtered, rowToolActivity, { limit: chartLimit })
     }
   };
 }
