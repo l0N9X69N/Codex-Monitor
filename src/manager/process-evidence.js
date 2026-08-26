@@ -17,12 +17,29 @@ function commandContainsThread(process, item) {
 
 function collapseCodexRoots(processes) {
   const codex = processes.filter(isCodexProcess);
-  const codexPids = new Set(codex.map((process) => Number(process?.pid)).filter(Number.isFinite));
+  const byPid = new Map(codex.map((process) => [Number(process?.pid), process]).filter(([pid]) => Number.isFinite(pid)));
+  const codexPids = new Set(byPid.keys());
   const roots = codex.filter((process) => {
     const ppid = Number(process?.ppid);
     return !Number.isFinite(ppid) || !codexPids.has(ppid);
   });
-  return { codex, roots: roots.length ? roots : codex };
+  return { codex, roots: roots.length ? roots : codex, byPid };
+}
+
+function rootForProcess(process, byPid) {
+  let current = process;
+  const seen = new Set();
+  while (current) {
+    const pid = Number(current?.pid);
+    if (Number.isFinite(pid)) {
+      if (seen.has(pid)) break;
+      seen.add(pid);
+    }
+    const parent = byPid.get(Number(current?.ppid));
+    if (!parent) return current;
+    current = parent;
+  }
+  return process;
 }
 
 function processStartedAtMs(process, nowMs) {
@@ -31,31 +48,82 @@ function processStartedAtMs(process, nowMs) {
   return nowMs - ageMs;
 }
 
+function assignNearestStarts(sessions, roots, usedRootPids, matchedSessionIds, nowMs, toleranceMs) {
+  const pairs = [];
+  for (const root of roots) {
+    const rootPid = Number(root?.pid);
+    if (Number.isFinite(rootPid) && usedRootPids.has(rootPid)) continue;
+    const rootStart = processStartedAtMs(root, nowMs);
+    if (!Number.isFinite(rootStart)) continue;
+    for (const session of sessions) {
+      if (!session?.id || matchedSessionIds.has(session.id)) continue;
+      const sessionStart = Number(session?.startedAtMs);
+      if (!Number.isFinite(sessionStart)) continue;
+      const deltaMs = Math.abs(rootStart - sessionStart);
+      if (deltaMs <= toleranceMs) pairs.push({ root, session, deltaMs });
+    }
+  }
+
+  pairs.sort((a, b) => a.deltaMs - b.deltaMs);
+  const matched = [];
+  for (const pair of pairs) {
+    const rootPid = Number(pair.root?.pid);
+    if (Number.isFinite(rootPid) && usedRootPids.has(rootPid)) continue;
+    if (matchedSessionIds.has(pair.session.id)) continue;
+    if (Number.isFinite(rootPid)) usedRootPids.add(rootPid);
+    matchedSessionIds.add(pair.session.id);
+    matched.push(pair);
+  }
+  return matched;
+}
+
 export function buildManagerProcessEvidence(processes, {
   nowMs = Date.now(),
-  startToleranceMs = 5000
+  sessions = [],
+  startToleranceMs = 120_000
 } = {}) {
   if (!Array.isArray(processes)) {
     const unavailable = () => ({ processKnown: false, processMatch: false });
-    unavailable.diagnostics = { processTelemetry: false, codexProcessCount: null, codexRootCount: null };
+    unavailable.diagnostics = {
+      processTelemetry: false,
+      codexProcessCount: null,
+      codexRootCount: null,
+      mappedSessionCount: null,
+      exactMatchCount: null,
+      startMatchCount: null
+    };
     return unavailable;
   }
 
-  const { codex, roots } = collapseCodexRoots(processes);
+  const { codex, roots, byPid } = collapseCodexRoots(processes);
+  const sessionList = Array.isArray(sessions) ? sessions : [];
+  const matchedSessionIds = new Set();
+  const usedRootPids = new Set();
+  let exactMatchCount = 0;
+
+  for (const session of sessionList) {
+    const matchingProcess = codex.find((process) => commandContainsThread(process, session));
+    if (!matchingProcess || !session?.id) continue;
+    matchedSessionIds.add(session.id);
+    const root = rootForProcess(matchingProcess, byPid);
+    const rootPid = Number(root?.pid);
+    if (Number.isFinite(rootPid)) usedRootPids.add(rootPid);
+    exactMatchCount += 1;
+  }
+
+  const startMatches = assignNearestStarts(
+    sessionList,
+    roots,
+    usedRootPids,
+    matchedSessionIds,
+    nowMs,
+    startToleranceMs
+  );
+
   const evidence = (item) => {
-    if (codex.some((process) => commandContainsThread(process, item))) {
+    if (item?.id && matchedSessionIds.has(item.id)) {
       return { processKnown: true, processMatch: true };
     }
-
-    const startedAtMs = Number(item?.startedAtMs);
-    if (Number.isFinite(startedAtMs)) {
-      const candidates = roots.filter((process) => {
-        const processStart = processStartedAtMs(process, nowMs);
-        return Number.isFinite(processStart) && Math.abs(processStart - startedAtMs) <= startToleranceMs;
-      });
-      if (candidates.length === 1) return { processKnown: true, processMatch: true };
-    }
-
     if (codex.length === 0) return { processKnown: true, processMatch: false };
 
     // A successful process query is not negative evidence for a specific
@@ -66,7 +134,13 @@ export function buildManagerProcessEvidence(processes, {
   evidence.diagnostics = {
     processTelemetry: true,
     codexProcessCount: codex.length,
-    codexRootCount: roots.length
+    codexRootCount: roots.length,
+    mappedSessionCount: matchedSessionIds.size,
+    exactMatchCount,
+    startMatchCount: startMatches.length,
+    startMatchMaxDeltaMs: startMatches.length
+      ? Math.max(...startMatches.map((pair) => pair.deltaMs))
+      : null
   };
   return evidence;
 }
