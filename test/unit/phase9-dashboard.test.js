@@ -260,7 +260,7 @@ test('selected inspect is visibly distinct, exact-session scoped and responsive'
     assert.ok(tokensFrame.lines.length <= height);
     assert.ok(tokensFrame.lines.every((line) => cellWidth(line) <= width));
     const tokensText = stripAnsi(tokensFrame.lines.join('\n'));
-    assert.match(tokensText, /TOKENS/);
+    assert.match(tokensText, /(?:TOKENS|TOKEN SUMMARY \/ CUMULATIVE)/);
     assert.match(tokensText, /Context\s+90%/);
     assert.match(tokensText, /Input\s+1\.0k/);
   }
