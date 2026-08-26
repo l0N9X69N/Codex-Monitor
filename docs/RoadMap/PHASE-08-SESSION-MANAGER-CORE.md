@@ -1,119 +1,105 @@
 # Phase 08 — Session Manager Core
 
-> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline, frozen 2026-08-25.
+> **Nguồn chuẩn:** `PROJECT-SPEC.md` v1.1 — Phase 07 closed, Phase 08 active.
 
-## Spec liên quan
+## Trạng thái
 
-Sections 2.2–3, 16, 21–25, 27–28, 31, 33, 37–42.
+```text
+ACTIVE — 2026-08-26
+```
 
 ## Mục tiêu
 
-Xây data/runtime core cho `codexm --manager` — một process độc lập, không launch Codex, nhìn được tất cả local Codex sessions và theo dõi nhiều session LIVE cùng lúc bằng local evidence.
+Xây data/runtime core cho `codexm --manager` — process độc lập, không launch Codex, nhìn local Codex sessions và theo dõi nhiều session bằng local evidence.
 
 ## CLI contract
-
-Canonical:
 
 ```powershell
 codexm --manager
 ```
 
-Phase này phải loại hoàn toàn public `--history` semantics cũ. Historical sessions là các session `ENDED` bên trong Manager.
+`--history` không phải Monitor-owned feature. Historical sessions là `ENDED` bên trong Manager; `--history` được forward cho official Codex.
 
-## Phạm vi phải làm
-
-### Session discovery
-
-- source of truth: `~/.codex/sessions/**/*.jsonl` hoặc platform-equivalent Codex sessions path;
-- startup discovery metadata-first;
-- RAM-only index/cache;
-- không SQLite/CSV/history DB mặc định;
-- thousands-session discovery không deep parse mọi file.
-
-### SessionActivityResolver
-
-Không dùng mtime-only để claim LIVE.
-
-Kết hợp evidence mạnh nhất có thể:
+## Core architecture
 
 ```text
-Codex process existence
-JSONL growth after observation
-session metadata
-cwd/session/process mapping
+~/.codex/sessions/**/*.jsonl
+            │
+            ▼
+ metadata-first discovery
+            │
+            ▼
+ SessionManagerCore
+ ├── SessionActivityResolver
+ ├── query: All/Live/Ended/Search/Sort
+ ├── lightweight global metadata
+ └── selected session
+          │
+          ▼
+ legacy HistoryEngine parser reused only as deep parser
 ```
 
-States tối thiểu:
+`src/history/` là scaffold/parser cũ. Nó không còn định nghĩa public History product semantics.
+
+## Đã hoàn tất ở checkpoint đầu
+
+- Tạo `src/manager/session-core.js`.
+- Tạo `SessionActivityResolver` với states `LIVE/ENDED/UNKNOWN`.
+- mtime-only không bao giờ đủ để claim LIVE.
+- File growth hoặc process match là strong LIVE evidence.
+- Strong LIVE evidence có grace window, không rơi UNKNOWN ngay ở poll không có append.
+- Metadata discovery không deep parse body session.
+- Query model hỗ trợ All/Live/Ended/Search/Sort deterministic.
+- Chỉ session được chọn mới deep parse bằng historical parser.
+- Selected-session incremental tail giữ partial-line/no-duplicate/truncate semantics.
+- External delete degrade an toàn và clear missing selection.
+- `codexm --manager` đã nối vào read-only Manager core và không spawn Codex.
+- `--history` test đã đổi sang pass-through semantics đúng spec.
+- Thêm `npm run verify:phase8`.
+
+## Việc còn lại của Phase 08
+
+### Lightweight identity enrichment
+
+Global metadata hiện cố ý không deep parse. Cần thêm bounded/shallow identity enrichment để lấy đủ evidence an toàn cho:
 
 ```text
-LIVE
-ENDED
-UNKNOWN/RECENT nếu evidence chưa đủ
+thread id
+cwd/project
+model when cheaply evidenced
 ```
 
-Không confidently claim LIVE khi evidence yếu.
+Không được biến startup thành full parse hàng nghìn file.
 
-### Multi-LIVE lightweight tracking
+### Process/session correlation
 
-Global Manager level chỉ tail/aggregate đủ cho dữ liệu đang hiển thị:
+Kết hợp process tree + cwd/session evidence để LIVE/ENDED mạnh hơn file-growth-only.
+
+Không dùng mtime-only.
+
+### Multi-session tracking loop
+
+- incremental observation nhiều growing sessions;
+- no duplicate work;
+- bounded cadence/backoff;
+- non-selected session không deep aggregate;
+- selected session tail riêng.
+
+### Historical summary model
+
+Global row cần đủ lightweight facts cho Phase 09:
 
 ```text
 state
 project/cwd
 model when evidenced
-elapsed
-tokens/context
-turn count
-tool count
+elapsed/context/tokens summary when cheaply available
+turn/tool/error/compaction counters
 last activity
-recent errors/retries/compactions
 file size
 ```
 
-Không deep-parse continuously mọi session.
-
-### Selected-session deep parser
-
-Khi user chọn một session:
-
-```text
-selected session -> detail aggregation ON
-leave session     -> detail-only work sleeps/releases
-```
-
-Historical model phải tách provenance khỏi current Live Monitor state.
-
-### Query/view model
-
-Core phải support cho UI Phase 09:
-
-```text
-All
-Live
-Ended
-Search
-Filter
-Sort
-Selected row
-```
-
-Không hard-code terminal rendering vào discovery/parser layer.
-
-### Incremental tail
-
-- track byte offset/size;
-- partial line safe;
-- append only parse new bytes;
-- no duplicate events;
-- truncate/rotation reload safely;
-- external delete/permission errors degrade gracefully.
-
-### Historical truth
-
-- missing = `--`;
-- không scan filesystem hiện tại rồi gán resources ngược cho old session;
-- no pricing/cost;
-- no historical machine telemetry invented by Monitor.
+Không manufacture unsupported values.
 
 ## Không làm trong Phase 08
 
@@ -122,22 +108,30 @@ Không hard-code terminal rendering vào discovery/parser layer.
 - Chưa delete session.
 - Chưa generic process manager.
 - Chưa automatic retention/cleanup.
+- Chưa first-install onboarding UI; phần đó đã nằm trong product/config UX roadmap/spec.
 
 ## Auto test bắt buộc
 
 - `--manager` không spawn Codex;
 - `--history` không còn là Monitor feature;
-- 1000+ fake sessions metadata discovery không deep parse;
-- LIVE/ENDED resolver không dùng mtime-only;
+- 1000+ fake sessions discovery không deep parse;
+- LIVE resolver không dùng mtime-only;
+- strong LIVE evidence giữ hợp lý qua idle poll;
 - multiple growing sessions update independently;
 - selected session deep parse only;
 - partial append/no duplicate/truncate/external delete;
-- search/filter/sort model deterministic;
+- search/filter/sort deterministic;
 - no DB/CSV created;
 - historical resources evidence-only;
-- malformed lines/files do not crash Manager core.
+- malformed lines/files không crash Manager core.
 
-## Manual test bắt buộc
+Run:
+
+```powershell
+npm run verify:phase8
+```
+
+## Manual test cuối phase
 
 - mở Manager cùng 2–3 Codex terminals thật;
 - xác nhận từng session LIVE/ENDED hợp lý;
@@ -156,10 +150,4 @@ docs/qa/phase-08/KNOWN-ISSUES.md
 
 ## Exit gate
 
-Manager core đọc/tail/classify sessions đúng, multi-LIVE lightweight, no duplicate DB, P0=0.
-
-## Trạng thái hiện tại
-
-```text
-NOT STARTED — old History implementation is not accepted as Phase 08 completion
-```
+Manager core discover/tail/classify sessions đúng, multi-LIVE lightweight, selected-only deep parse, no duplicate DB, P0=0.
