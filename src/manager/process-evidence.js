@@ -23,7 +23,7 @@ function collapseCodexRoots(processes) {
     const ppid = Number(process?.ppid);
     return !Number.isFinite(ppid) || !codexPids.has(ppid);
   });
-  return { codex, roots: roots.length ? roots : codex, byPid };
+  return { codex, roots: roots.length ? roots : codex, byPid, codexPids };
 }
 
 function rootForProcess(process, byPid) {
@@ -48,7 +48,27 @@ function processStartedAtMs(process, nowMs) {
   return nowMs - ageMs;
 }
 
-function assignNearestStarts(sessions, roots, usedRootPids, matchedSessionIds, nowMs, toleranceMs) {
+function normalizePreviousAssociations(value) {
+  if (!(value instanceof Map)) return new Map();
+  const out = new Map();
+  for (const [sessionId, association] of value) {
+    if (!sessionId) continue;
+    if (Number.isFinite(Number(association))) {
+      out.set(sessionId, { rootPid: Number(association), matchedBy: 'previous', missing: false });
+      continue;
+    }
+    const rootPid = Number(association?.rootPid);
+    if (!Number.isFinite(rootPid)) continue;
+    out.set(sessionId, {
+      rootPid,
+      matchedBy: association?.matchedBy ?? 'previous',
+      missing: association?.missing === true
+    });
+  }
+  return out;
+}
+
+function assignNearestStarts(sessions, roots, usedRootPids, activeAssociations, nowMs, toleranceMs) {
   const pairs = [];
   for (const root of roots) {
     const rootPid = Number(root?.pid);
@@ -56,7 +76,7 @@ function assignNearestStarts(sessions, roots, usedRootPids, matchedSessionIds, n
     const rootStart = processStartedAtMs(root, nowMs);
     if (!Number.isFinite(rootStart)) continue;
     for (const session of sessions) {
-      if (!session?.id || matchedSessionIds.has(session.id)) continue;
+      if (!session?.id || activeAssociations.has(session.id)) continue;
       const sessionStart = Number(session?.startedAtMs);
       if (!Number.isFinite(sessionStart)) continue;
       const deltaMs = Math.abs(rootStart - sessionStart);
@@ -69,9 +89,14 @@ function assignNearestStarts(sessions, roots, usedRootPids, matchedSessionIds, n
   for (const pair of pairs) {
     const rootPid = Number(pair.root?.pid);
     if (Number.isFinite(rootPid) && usedRootPids.has(rootPid)) continue;
-    if (matchedSessionIds.has(pair.session.id)) continue;
+    if (activeAssociations.has(pair.session.id)) continue;
     if (Number.isFinite(rootPid)) usedRootPids.add(rootPid);
-    matchedSessionIds.add(pair.session.id);
+    activeAssociations.set(pair.session.id, {
+      rootPid,
+      matchedBy: 'start',
+      missing: false,
+      deltaMs: pair.deltaMs
+    });
     matched.push(pair);
   }
   return matched;
@@ -80,45 +105,84 @@ function assignNearestStarts(sessions, roots, usedRootPids, matchedSessionIds, n
 export function buildManagerProcessEvidence(processes, {
   nowMs = Date.now(),
   sessions = [],
+  previousAssociations = null,
   startToleranceMs = 120_000
 } = {}) {
   if (!Array.isArray(processes)) {
     const unavailable = () => ({ processKnown: false, processMatch: false });
+    unavailable.associations = normalizePreviousAssociations(previousAssociations);
     unavailable.diagnostics = {
       processTelemetry: false,
       codexProcessCount: null,
       codexRootCount: null,
       mappedSessionCount: null,
       exactMatchCount: null,
-      startMatchCount: null
+      stickyMatchCount: null,
+      startMatchCount: null,
+      missingAssociationCount: null
     };
     return unavailable;
   }
 
-  const { codex, roots, byPid } = collapseCodexRoots(processes);
+  const { codex, roots, byPid, codexPids } = collapseCodexRoots(processes);
   const sessionList = Array.isArray(sessions) ? sessions : [];
-  const matchedSessionIds = new Set();
+  const sessionIds = new Set(sessionList.map((session) => session?.id).filter(Boolean));
+  const previous = normalizePreviousAssociations(previousAssociations);
+  const activeAssociations = new Map();
   const usedRootPids = new Set();
   let exactMatchCount = 0;
+  let stickyMatchCount = 0;
 
+  // Exact thread identity always wins over historical/heuristic association.
   for (const session of sessionList) {
+    if (!session?.id || activeAssociations.has(session.id)) continue;
     const matchingProcess = codex.find((process) => commandContainsThread(process, session));
-    if (!matchingProcess || !session?.id) continue;
-    matchedSessionIds.add(session.id);
+    if (!matchingProcess) continue;
     const root = rootForProcess(matchingProcess, byPid);
     const rootPid = Number(root?.pid);
+    if (Number.isFinite(rootPid) && usedRootPids.has(rootPid)) continue;
     if (Number.isFinite(rootPid)) usedRootPids.add(rootPid);
+    activeAssociations.set(session.id, { rootPid, matchedBy: 'exact', missing: false });
     exactMatchCount += 1;
+  }
+
+  // Preserve a prior one-to-one association while its Codex root still exists.
+  // This prevents nearest-start heuristics from reshuffling sessions each poll.
+  for (const [sessionId, association] of previous) {
+    if (!sessionIds.has(sessionId) || activeAssociations.has(sessionId) || association.missing) continue;
+    const rootPid = Number(association.rootPid);
+    if (!codexPids.has(rootPid) || usedRootPids.has(rootPid)) continue;
+    usedRootPids.add(rootPid);
+    activeAssociations.set(sessionId, { rootPid, matchedBy: 'sticky', missing: false });
+    stickyMatchCount += 1;
   }
 
   const startMatches = assignNearestStarts(
     sessionList,
     roots,
     usedRootPids,
-    matchedSessionIds,
+    activeAssociations,
     nowMs,
     startToleranceMs
   );
+
+  // A previously associated Codex root disappearing is specific negative
+  // process evidence for that session. Keep a tombstone across later polls so
+  // the resolver can reach ENDED after its stale/grace window even while other
+  // Codex sessions remain alive.
+  const missingSessionIds = new Set();
+  const associations = new Map(activeAssociations);
+  for (const [sessionId, association] of previous) {
+    if (!sessionIds.has(sessionId) || activeAssociations.has(sessionId)) continue;
+    const rootPid = Number(association.rootPid);
+    if (codexPids.has(rootPid)) continue;
+    missingSessionIds.add(sessionId);
+    associations.set(sessionId, {
+      rootPid,
+      matchedBy: association.matchedBy ?? 'previous',
+      missing: true
+    });
+  }
 
   const evidence = (item) => {
     // Exact thread evidence must remain usable even when the caller did not
@@ -126,23 +190,29 @@ export function buildManagerProcessEvidence(processes, {
     if (codex.some((process) => commandContainsThread(process, item))) {
       return { processKnown: true, processMatch: true };
     }
-    if (item?.id && matchedSessionIds.has(item.id)) {
+    if (item?.id && activeAssociations.has(item.id)) {
       return { processKnown: true, processMatch: true };
+    }
+    if (item?.id && missingSessionIds.has(item.id)) {
+      return { processKnown: true, processMatch: false };
     }
     if (codex.length === 0) return { processKnown: true, processMatch: false };
 
-    // A successful process query is not negative evidence for a specific
-    // session while some Codex process exists but cannot be mapped to it.
+    // A successful process query is not negative evidence for an unrelated
+    // session while some Codex process exists but has never been mapped to it.
     return { processKnown: false, processMatch: false };
   };
 
+  evidence.associations = associations;
   evidence.diagnostics = {
     processTelemetry: true,
     codexProcessCount: codex.length,
     codexRootCount: roots.length,
-    mappedSessionCount: matchedSessionIds.size,
+    mappedSessionCount: activeAssociations.size,
     exactMatchCount,
+    stickyMatchCount,
     startMatchCount: startMatches.length,
+    missingAssociationCount: missingSessionIds.size,
     startMatchMaxDeltaMs: startMatches.length
       ? Math.max(...startMatches.map((pair) => pair.deltaMs))
       : null
