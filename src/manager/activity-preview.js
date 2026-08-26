@@ -3,6 +3,7 @@ import { parseRolloutObject } from '../parsers/rollout-event.js';
 import { timelineCategoryForTool } from './timeline.js';
 
 export const DEFAULT_ACTIVITY_PREVIEW_BYTES = 512 * 1024;
+export const DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_ACTIVITY_PREVIEW_EVENTS = 128;
 export const DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS = 1000;
 
@@ -147,11 +148,13 @@ export class SelectedActivityPreview {
   constructor({
     fsRef = fs,
     maxBytes = DEFAULT_ACTIVITY_PREVIEW_BYTES,
+    maxBackfillBytes = DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES,
     maxEvents = DEFAULT_ACTIVITY_PREVIEW_EVENTS,
     refreshIntervalMs = DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS
   } = {}) {
     this.fs = fsRef;
     this.maxBytes = Math.max(16 * 1024, Number(maxBytes) || DEFAULT_ACTIVITY_PREVIEW_BYTES);
+    this.maxBackfillBytes = Math.max(this.maxBytes, Number(maxBackfillBytes) || DEFAULT_ACTIVITY_PREVIEW_MAX_BACKFILL_BYTES);
     this.maxEvents = Math.max(8, Number(maxEvents) || DEFAULT_ACTIVITY_PREVIEW_EVENTS);
     this.refreshIntervalMs = Math.max(250, Number(refreshIntervalMs) || DEFAULT_ACTIVITY_PREVIEW_REFRESH_MS);
     this.cached = null;
@@ -174,6 +177,8 @@ export class SelectedActivityPreview {
       offset: size,
       sourceBytes: extras.sourceBytes ?? 0,
       lastReadBytes: extras.lastReadBytes ?? 0,
+      backfillBytes: extras.backfillBytes ?? 0,
+      backfillComplete: extras.backfillComplete ?? false,
       truncated: extras.truncated ?? false,
       gap: extras.gap ?? false,
       events: extras.events ?? [],
@@ -192,17 +197,19 @@ export class SelectedActivityPreview {
     }
   }
 
-  initialize(row, size) {
+  initialize(row, size, { coverageBytes = this.maxBytes } = {}) {
     this.state = createAccumulator();
     if (size == null || size <= 0) {
       this.cached = this.metadata(row, size, {
         events: [],
+        backfillComplete: size === 0,
         error: size == null ? 'preview unavailable' : null
       });
       return this.cached;
     }
 
-    const length = Math.min(size, this.maxBytes);
+    const requestedCoverage = Math.max(this.maxBytes, Number(coverageBytes) || this.maxBytes);
+    const length = Math.min(size, requestedCoverage, this.maxBackfillBytes);
     const start = Math.max(0, size - length);
     try {
       const { text, read } = this.readSegment(row.filePath, start, length);
@@ -214,16 +221,33 @@ export class SelectedActivityPreview {
       this.cached = this.metadata(row, size, {
         sourceBytes: read,
         lastReadBytes: read,
+        backfillBytes: read,
+        backfillComplete: start === 0 || events.length >= this.maxEvents || read >= this.maxBackfillBytes,
         truncated: start > 0,
         events
       });
     } catch (error) {
       this.cached = this.metadata(row, size, {
         events: [],
+        backfillBytes: 0,
         error: error?.message ?? 'preview read failed'
       });
     }
     return this.cached;
+  }
+
+  expandBackfill(row, size) {
+    const current = finiteOrNull(this.cached?.backfillBytes) ?? this.maxBytes;
+    const next = Math.min(
+      size,
+      this.maxBackfillBytes,
+      Math.max(current + this.maxBytes, current * 2)
+    );
+    if (next <= current) {
+      this.cached = { ...this.cached, backfillComplete: true };
+      return this.cached;
+    }
+    return this.initialize(row, size, { coverageBytes: next });
   }
 
   append(row, size) {
@@ -256,6 +280,8 @@ export class SelectedActivityPreview {
       this.cached = this.metadata(row, size, {
         sourceBytes: (finiteOrNull(this.cached?.sourceBytes) ?? 0) + read,
         lastReadBytes: read,
+        backfillBytes: finiteOrNull(this.cached?.backfillBytes) ?? this.maxBytes,
+        backfillComplete: Boolean(this.cached?.backfillComplete || events.length >= this.maxEvents),
         truncated: Boolean(this.cached?.truncated || gap),
         gap: Boolean(this.cached?.gap || gap),
         events
@@ -290,18 +316,20 @@ export class SelectedActivityPreview {
       return result;
     }
 
-    const cachedSize = finiteOrNull(this.cached?.sizeBytes);
-    if (cachedSize === size) return this.cached;
     if (now - this.cachedAtMs < this.refreshIntervalMs) return this.cached;
 
-    let result;
+    const cachedSize = finiteOrNull(this.cached?.sizeBytes);
+    let result = this.cached;
     if (size == null) {
       result = { ...this.cached, error: 'preview unavailable' };
     } else if (cachedSize != null && size > cachedSize) {
       result = this.append(row, size);
-    } else {
+    } else if (cachedSize == null || size < cachedSize) {
       result = this.initialize(row, size);
+    } else if (!this.cached?.backfillComplete && (this.cached?.events?.length ?? 0) < this.maxEvents) {
+      result = this.expandBackfill(row, size);
     }
+
     this.cachedAtMs = now;
     return result;
   }
