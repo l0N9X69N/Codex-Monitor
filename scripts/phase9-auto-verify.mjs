@@ -20,5 +20,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 09 checkpoint 2 automated verification: PASS\n');
-process.stdout.write('Interactive Manager dashboard runtime, input normalization and terminal restore are gated; visual/manual acceptance remains pending.\n');
+process.stdout.write('\nPhase 09 checkpoint 3 automated verification: PASS\n');
+process.stdout.write('Operations/Table/Charts/Auto modes, selected inspect, interactive input and terminal restore are gated; visual/manual acceptance remains pending.\n');
