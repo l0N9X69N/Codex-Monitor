@@ -277,13 +277,23 @@ export class SessionManagerCore {
     return items;
   }
 
-  discover({ limit = Number.POSITIVE_INFINITY, enrichIdentity = true, processEvidence = null } = {}) {
+  discover({
+    limit = Number.POSITIVE_INFINITY,
+    enrichIdentity = true,
+    processEvidence = null,
+    refreshKnownMetadata = false
+  } = {}) {
     const previous = new Map(this.index.map((item) => [item.filePath, item]));
     const next = [];
     for (const filePath of walkJsonl(this.sessionsPath, this.fs, limit)) {
       const old = previous.get(filePath);
-      const fresh = metadata(filePath, this.fs, { enrichIdentity: false, identityBytes: this.identityBytes });
-      const item = mergeMetadata(old, fresh);
+      let item;
+      if (old && !old.error && !refreshKnownMetadata) {
+        item = old;
+      } else {
+        const fresh = metadata(filePath, this.fs, { enrichIdentity: false, identityBytes: this.identityBytes });
+        item = mergeMetadata(old, fresh);
+      }
       const evidence = typeof processEvidence === 'function' ? (processEvidence(item) ?? {}) : {};
       item.state = this.activity.resolve(item, evidence);
       next.push(item);
@@ -337,12 +347,19 @@ export class SessionManagerCore {
   bootstrapRecentSummaries(limit = 8) {
     const bounded = Math.max(0, Number(limit) || 0);
     this.index.slice(0, bounded).forEach((item) => this.summaries.ensure(item, { bootstrap: true }));
-    this.index.slice(bounded).forEach((item) => this.summaries.ensure(item, { bootstrap: false }));
     return this.rows();
   }
 
-  tailSummaries() {
-    for (const item of this.index) this.summaries.tail(item);
+  tailSummaries({ limit = Number.POSITIVE_INFINITY, ids = null, bootstrapLive = true } = {}) {
+    const tailIds = boundedRefreshIds(this.index, limit, ids);
+    for (const item of this.index) {
+      if (tailIds && !tailIds.has(item.id)) continue;
+      if (!this.summaries.has(item.id)) {
+        this.summaries.ensure(item, { bootstrap: bootstrapLive && item.state === SESSION_ACTIVITY.LIVE });
+        continue;
+      }
+      this.summaries.tail(item);
+    }
     return this.rows();
   }
 
