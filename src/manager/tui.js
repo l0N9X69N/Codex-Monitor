@@ -4,7 +4,7 @@ import { detectHistoryColorMode } from '../history/theme.js';
 import { SessionManagerCore } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { SessionManagerRuntime } from './runtime.js';
-import { renderSessionDashboard } from './dashboard-render.js';
+import { renderSessionDashboardWithPreview } from './dashboard-preview-render.js';
 import { MANAGER_INSPECT_TABS, renderSessionInspect } from './inspect-render.js';
 import { nextManagerScope, nextManagerSort, nextManagerView, normalizeManagerInput } from './input.js';
 import { ManagerTelemetrySeries } from './telemetry-series.js';
@@ -100,7 +100,7 @@ export async function runSessionManagerTui({
         timelineSelectedIndex,
         timelineDetail
       })
-      : renderSessionDashboard({
+      : renderSessionDashboardWithPreview({
         rows,
         width,
         height,
