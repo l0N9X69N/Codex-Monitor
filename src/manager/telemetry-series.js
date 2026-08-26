@@ -5,6 +5,7 @@ import {
 } from './dashboard-model.js';
 
 function finiteOrNull(value) {
+  if (value === null || value === undefined) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -20,11 +21,6 @@ function visibleModel(rows, { scope = 'all', search = '' } = {}) {
 
 function liveRows(model) {
   return model.rows.filter((row) => row?.state === 'LIVE');
-}
-
-function rowTurnActivity(row) {
-  const exact = finiteOrNull(row?.turnCount);
-  return exact ?? finiteOrNull(row?.observedTurnCount);
 }
 
 function rowAgentSpawns(row) {
@@ -49,7 +45,7 @@ function baselineFor(model, atMs) {
     atMs,
     tokenById: metricMap(active, rowTokenActivity),
     toolById: metricMap(active, rowToolActivity),
-    turnById: metricMap(active, rowTurnActivity)
+    turnCompletedById: metricMap(active, (row) => row?.lastTurnCompletedAtMs)
   };
 }
 
@@ -71,8 +67,18 @@ function sumKnown(values) {
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 }
 
+function averageKnown(values) {
+  const known = values.filter((value) => Number.isFinite(value));
+  return known.length ? known.reduce((sum, value) => sum + value, 0) / known.length : null;
+}
+
 function rollingSum(samples, key) {
   return sumKnown(samples.map((sample) => finiteOrNull(sample?.[key]))) ?? 0;
+}
+
+function recentTurnaround(samples) {
+  const values = samples.map((sample) => finiteOrNull(sample?.turnaroundMs)).filter(Number.isFinite);
+  return values.length ? values.at(-1) : null;
 }
 
 export class ManagerTelemetrySeries {
@@ -111,19 +117,19 @@ export class ManagerTelemetrySeries {
       this.sessionMeta.clear();
       this.previous = nextBaseline;
       this.markActive(active);
-      const sessionPoints = active.map((row) => this.pushSession(row, {
+      active.forEach((row) => this.pushSession(row, {
         atMs: nowMs,
         tokenDelta: null,
         tokenRate: null,
         toolEvents: null,
-        turnEvents: null
+        turnaroundMs: null
       }));
       this.pushAggregate({
         atMs: nowMs,
         tokenDelta: null,
         tokenRate: null,
         toolEvents: null,
-        turnEvents: null,
+        turnaroundMs: null,
         activeCount: active.length
       });
       return this.snapshot();
@@ -136,13 +142,17 @@ export class ManagerTelemetrySeries {
     const sessionPoints = active.map((row) => {
       const tokenDelta = deltaForId(this.previous.tokenById, nextBaseline.tokenById, row.id);
       const toolEvents = deltaForId(this.previous.toolById, nextBaseline.toolById, row.id);
-      const turnEvents = deltaForId(this.previous.turnById, nextBaseline.turnById, row.id);
+      const previousCompleted = this.previous.turnCompletedById.get(row.id);
+      const nextCompleted = nextBaseline.turnCompletedById.get(row.id);
+      const completedNow = Number.isFinite(nextCompleted)
+        && (!Number.isFinite(previousCompleted) || nextCompleted > previousCompleted);
+      const turnaroundMs = completedNow ? finiteOrNull(row?.lastTurnDurationMs) : null;
       return this.pushSession(row, {
         atMs: nowMs,
         tokenDelta,
         tokenRate: rateFromDelta(tokenDelta, elapsedMs),
         toolEvents,
-        turnEvents
+        turnaroundMs
       });
     });
 
@@ -152,7 +162,7 @@ export class ManagerTelemetrySeries {
       tokenDelta: sumKnown(sessionPoints.map((point) => point.tokenDelta)),
       tokenRate: sumKnown(sessionPoints.map((point) => point.tokenRate)),
       toolEvents: sumKnown(sessionPoints.map((point) => point.toolEvents)),
-      turnEvents: sumKnown(sessionPoints.map((point) => point.turnEvents)),
+      turnaroundMs: averageKnown(sessionPoints.map((point) => point.turnaroundMs)),
       activeCount: active.length
     });
     this.prune(nowMs);
@@ -209,18 +219,20 @@ export class ManagerTelemetrySeries {
     const samples = this.samples.map((sample) => ({ ...sample }));
     const totalBurn60 = rollingSum(samples, 'tokenDelta');
     const totalTools60 = rollingSum(samples, 'toolEvents');
-    const totalTurns60 = rollingSum(samples, 'turnEvents');
+    const turnarounds = samples.map((sample) => finiteOrNull(sample.turnaroundMs)).filter(Number.isFinite);
     const sessions = [...this.sessionMeta.values()]
       .filter((meta) => meta.active)
       .map((meta) => {
         const sessionSamples = (this.sessionSamples.get(meta.id) ?? []).map((sample) => ({ ...sample }));
         const burn60 = rollingSum(sessionSamples, 'tokenDelta');
+        const sessionTurnarounds = sessionSamples.map((sample) => finiteOrNull(sample.turnaroundMs)).filter(Number.isFinite);
         return {
           ...meta,
           burn60,
           burnShare: totalBurn60 > 0 ? (burn60 / totalBurn60) * 100 : 0,
           tools60: rollingSum(sessionSamples, 'toolEvents'),
-          turns60: rollingSum(sessionSamples, 'turnEvents'),
+          turnaroundMs: recentTurnaround(sessionSamples),
+          avgTurnaround60Ms: averageKnown(sessionTurnarounds),
           samples: sessionSamples,
           latest: sessionSamples.at(-1) ?? null
         };
@@ -234,7 +246,8 @@ export class ManagerTelemetrySeries {
       latest: samples.at(-1) ?? null,
       burn60: totalBurn60,
       tools60: totalTools60,
-      turns60: totalTurns60,
+      turnaroundMs: recentTurnaround(samples),
+      avgTurnaround60Ms: averageKnown(turnarounds),
       sessions
     };
   }
