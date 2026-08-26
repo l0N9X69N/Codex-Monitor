@@ -1,10 +1,14 @@
 # Phase 10 — Session Detail Analytics & Live Dynamics
 
-> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline, frozen 2026-08-25.
+> **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline.
 
-## Spec liên quan
+## Trạng thái
 
-Sections 24–26, 28, 31 và 42.
+```text
+IMPLEMENTATION CHECKPOINT — VERIFICATION PENDING — 2026-08-27
+```
+
+Phase 09 Session Manager Dashboard TUI đã được user duyệt và đóng. Phase 10 đang chờ automated + real-session manual gate trước khi CLOSED.
 
 ## Mục tiêu
 
@@ -13,8 +17,10 @@ Hoàn thiện deep-inspection cho một selected session trong Session Manager, 
 ## Detail tabs
 
 ```text
-Info | Tokens | Turns | Tools | Resources | Errors
+Info | Timeline | Tokens | Turns | Tools | Resources | Errors
 ```
+
+`Timeline` là audit surface được đưa lên sớm trong Phase 09; Phase 10 giữ nó làm source để cross-check analytics.
 
 ### Info
 
@@ -80,7 +86,15 @@ Retry/error/tool-failure/stream-failure/compaction timeline.
 - historical resource evidence-only;
 - resize/fallback snapshots;
 - selected-session-only deep work;
-- malformed/missing data safe.
+- malformed/missing data safe;
+- long-session bounded turn state remains correct after ring pruning.
+
+Commands:
+
+```powershell
+npm run test:phase10
+npm run verify:phase10
+```
 
 ## Manual test bắt buộc
 
@@ -93,14 +107,25 @@ Retry/error/tool-failure/stream-failure/compaction timeline.
 
 ## Deliverables
 
-`docs/qa/phase-10/` chứa đủ 4 handoff files + chart snapshots/fixtures.
+`docs/qa/phase-10/` chứa đủ 4 handoff files. Test fixtures nằm trong `test/unit/phase10-*.test.js`.
 
 ## Exit gate
 
-Deep detail correctness + live update + chart semantics PASS, P0=0, no duplicate/memory leak.
+Deep detail correctness + live update + chart semantics PASS, P0=0, no duplicate/memory leak, user manual acceptance.
 
-## Trạng thái hiện tại
+## Checkpoint đã triển khai
 
-```text
-NOT STARTED — old standalone History chart plan superseded
-```
+- selected analytics model từ cùng HistoryEngine event stream;
+- context series + compaction markers;
+- cumulative tokens + uncached + Token I/O / Turn;
+- turn duration + turn evidence table;
+- Tool Calls / Turn + tool share + recent tool events;
+- error/retry/tool-failure/compaction signals;
+- LIVE tail incremental theo file offset;
+- selected-detail repaint signature nhỏ, không serialize toàn timeline;
+- bounded series/turn/tool/signal buffers;
+- Braille/block/ASCII chart fallback;
+- malformed/missing evidence regression;
+- Phase 09 Timeline/Audit preserved.
+
+Chưa được phép đổi trạng thái thành CLOSED trước khi automated gate và manual real-session gate PASS.
