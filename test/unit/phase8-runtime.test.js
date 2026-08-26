@@ -56,14 +56,20 @@ test('SessionManagerRuntime stays alive until stop and emits only changed snapsh
 
   let resolved = false;
   const running = runtime.start().then(() => { resolved = true; });
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(runtime.running, true);
   assert.equal(resolved, false);
   assert.equal(ticks, 1);
   assert.equal(snapshots.length, 1);
   assert.equal(typeof scheduled, 'function');
+
+  const scheduledTick = scheduled;
+  scheduled = null;
+  await scheduledTick();
+  assert.equal(ticks, 2);
+  assert.equal(snapshots.length, 1, 'unchanged snapshot must not emit again');
+  assert.equal(typeof scheduled, 'function', 'runtime must schedule the next tick');
 
   runtime.stop();
   await running;
