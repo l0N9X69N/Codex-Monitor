@@ -157,6 +157,20 @@ function boundedRefreshIds(items, limit, extraIds) {
   return ids;
 }
 
+function adoptDeepIdentity(meta, model) {
+  if (!meta || !model) return meta;
+  const info = model.info ?? {};
+  meta.parsed = true;
+  meta.threadId = info.threadId ?? meta.threadId ?? null;
+  meta.cwd = info.cwd ?? meta.cwd ?? null;
+  if (info.cwd) meta.project = path.basename(path.resolve(info.cwd));
+  else if (!meta.project && meta.cwd) meta.project = path.basename(path.resolve(meta.cwd));
+  meta.model = info.model ?? meta.model ?? null;
+  meta.startedAtMs = info.startedAtMs ?? meta.startedAtMs ?? null;
+  meta.lastActivityAtMs = info.lastEventAtMs ?? meta.lastActivityAtMs ?? meta.modifiedAtMs;
+  return meta;
+}
+
 export function buildProcessEvidence(processes, options = {}) {
   return buildManagerProcessEvidence(processes, options);
 }
@@ -374,12 +388,7 @@ export class SessionManagerCore {
     if (this.selectedId && this.selectedId !== id) this.deep.cache.delete(this.selectedId);
     this.selectedId = id;
     const model = this.deep.ensureLoaded(id);
-    meta.parsed = true;
-    meta.threadId = model.info.threadId;
-    meta.cwd = model.info.cwd;
-    meta.project = model.info.cwd ? path.basename(path.resolve(model.info.cwd)) : null;
-    meta.model = model.info.model;
-    meta.lastActivityAtMs = model.info.lastEventAtMs ?? meta.modifiedAtMs;
+    adoptDeepIdentity(meta, model);
     this.summaries.adoptDeepModel(meta, model);
     return model;
   }
@@ -398,11 +407,7 @@ export class SessionManagerCore {
     const result = this.deep.tail(this.selectedId);
     const meta = this.index.find((item) => item.id === this.selectedId);
     if (meta && result.model) {
-      meta.threadId = result.model.info.threadId;
-      meta.cwd = result.model.info.cwd;
-      meta.project = result.model.info.cwd ? path.basename(path.resolve(result.model.info.cwd)) : null;
-      meta.model = result.model.info.model;
-      meta.lastActivityAtMs = result.model.info.lastEventAtMs ?? meta.modifiedAtMs;
+      adoptDeepIdentity(meta, result.model);
       this.summaries.adoptDeepModel(meta, result.model);
     }
     return result;
