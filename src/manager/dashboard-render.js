@@ -177,50 +177,56 @@ function graphColumns(values, width) {
   return [...Array(Math.max(0, count - source.length)).fill(null), ...source];
 }
 
-function telemetryGraphLines(telemetry, key, width, height, mode, {
-  token = 'secondary',
-  formatter = fmtNum,
-  fixedMax = null,
-  suffix = '',
-  emptyLabel = 'collecting samples…'
-} = {}) {
-  const innerWidth = Math.max(8, width);
-  const graphHeight = Math.max(2, height - 3);
-  const values = telemetryValues(telemetry, key);
-  const scaleMax = peakValue(values, fixedMax);
-  const current = latestKnown(values);
-  const known = values.filter((value) => Number.isFinite(value));
-  const observedPeak = known.length ? Math.max(...known) : null;
-  const header = `${hpaint('NOW', 'dim', mode)} ${hpaint(current == null ? '--' : `${formatter(current)}${suffix}`, token, mode)}   ${hpaint('PEAK', 'dim', mode)} ${hpaint(observedPeak == null ? '--' : `${formatter(observedPeak)}${suffix}`, token, mode)}   ${hpaint('SCALE', 'dim', mode)} 0–${formatter(scaleMax)}${suffix}`;
-  const plotWidth = Math.max(4, innerWidth - 1);
-  const columns = graphColumns(values, plotWidth);
-  const lines = [header];
-  for (let row = 0; row < graphHeight; row += 1) {
-    const threshold = (graphHeight - row) / graphHeight;
-    const pixels = columns.map((value) => {
-      if (!Number.isFinite(value)) return ' ';
-      const ratio = Math.max(0, Math.min(1, value / scaleMax));
-      return ratio >= threshold ? '█' : ' ';
-    }).join('');
-    lines.push(hpaint(pixels, token, mode));
-  }
-  if (!known.length) lines.push(hpaint(emptyLabel, 'dim', mode));
-  else lines.push(`${hpaint('−60s', 'dim', mode)}${hpaint('─'.repeat(Math.max(1, plotWidth - 9)), 'panel', mode)}${hpaint('now', 'dim', mode)}`);
-  return lines;
-}
-
-function miniTelemetryLine(telemetry, key, width, mode, token, formatter, suffix = '') {
+function sparkline(telemetry, key, width, mode, token, { fixedMax = null } = {}) {
   const blocks = '▁▂▃▄▅▆▇█';
   const values = telemetryValues(telemetry, key);
-  const scaleMax = peakValue(values);
+  const scaleMax = peakValue(values, fixedMax);
   const columns = graphColumns(values, Math.max(8, width));
-  const spark = columns.map((value) => {
+  const text = columns.map((value) => {
     if (!Number.isFinite(value)) return ' ';
-    const index = Math.max(0, Math.min(blocks.length - 1, Math.round((value / scaleMax) * (blocks.length - 1))));
+    if (value <= 0) return '▁';
+    const ratio = Math.max(0, Math.min(1, value / scaleMax));
+    const index = Math.max(0, Math.min(blocks.length - 1, Math.round(ratio * (blocks.length - 1))));
     return blocks[index];
   }).join('');
+  return hpaint(text, token, mode);
+}
+
+function telemetryStripLine(telemetry, key, width, mode, {
+  label,
+  token,
+  formatter,
+  suffix = '',
+  fixedMax = null
+}) {
+  const values = telemetryValues(telemetry, key);
   const current = latestKnown(values);
-  return `${hpaint(spark, token, mode)} ${hpaint(current == null ? '--' : `${formatter(current)}${suffix}`, token, mode)}`;
+  const known = values.filter((value) => Number.isFinite(value));
+  const peak = known.length ? Math.max(...known) : null;
+  const prefix = `${hpaint(label.padEnd(12), 'dim', mode)} ${hpaint(current == null ? '--' : `${formatter(current)}${suffix}`, token, mode).padEnd(12)}`;
+  const statsWidth = 24;
+  const chartWidth = Math.max(12, width - statsWidth - 4);
+  const graph = sparkline(telemetry, key, chartWidth, mode, token, { fixedMax });
+  const peakText = peak == null ? '--' : `${formatter(peak)}${suffix}`;
+  return `${prefix} ${graph}  ${hpaint(`peak ${peakText}`, 'dim', mode)}`;
+}
+
+function telemetryStripLines(telemetry, width, mode) {
+  const latest = telemetry?.latest ?? null;
+  const active = Number(latest?.activeCount);
+  return [
+    `${hpaint('LIVE FEED', 'dim', mode)} ${hpaint(Number.isFinite(active) ? String(active) : '--', 'live', mode)} active    ${hpaint('window', 'dim', mode)} 60s    ${hpaint('samples', 'dim', mode)} ${telemetry?.sampleCount ?? 0}`,
+    telemetryStripLine(telemetry, 'tokenRate', width, mode, { label: 'TOKEN RATE', token: 'secondary', formatter: fmtNum, suffix: '/min' }),
+    telemetryStripLine(telemetry, 'contextPeak', width, mode, { label: 'CONTEXT', token: 'pressure', formatter: fmtPercent, fixedMax: 100 }),
+    telemetryStripLine(telemetry, 'toolRate', width, mode, { label: 'TOOL RATE', token: 'live', formatter: fmtNum, suffix: '/min' }),
+    `${hpaint('−60s', 'dim', mode)}${hpaint('─'.repeat(Math.max(1, width - 12)), 'panel', mode)}${hpaint('now', 'dim', mode)}`
+  ];
+}
+
+function miniTelemetryLine(telemetry, key, width, mode, token, formatter, suffix = '', fixedMax = null) {
+  const values = telemetryValues(telemetry, key);
+  const current = latestKnown(values);
+  return `${sparkline(telemetry, key, Math.max(8, width), mode, token, { fixedMax })} ${hpaint(current == null ? '--' : `${formatter(current)}${suffix}`, token, mode)}`;
 }
 
 const COLUMN_SPECS = Object.freeze({
@@ -340,7 +346,7 @@ function renderOperationsView(lines, model, safeWidth, bodyHeight, mode, layout,
   const activity = panel([
     `${hpaint('TOKEN RATE', 'dim', mode)}  ${miniTelemetryLine(telemetry, 'tokenRate', Math.max(12, leftWidth - 30), mode, 'secondary', fmtNum, '/min')}`,
     '',
-    `${hpaint('CONTEXT', 'dim', mode)}     ${miniTelemetryLine(telemetry, 'contextPeak', Math.max(12, leftWidth - 30), mode, 'pressure', fmtPercent)}`,
+    `${hpaint('CONTEXT', 'dim', mode)}     ${miniTelemetryLine(telemetry, 'contextPeak', Math.max(12, leftWidth - 30), mode, 'pressure', fmtPercent, '', 100)}`,
     '',
     `${hpaint('TOOLS', 'dim', mode)}       ${miniTelemetryLine(telemetry, 'toolRate', Math.max(12, leftWidth - 30), mode, 'live', fmtNum, '/min')}`
   ], leftWidth, activityHeight, { title: 'ROLLING 60s', mode });
@@ -356,41 +362,35 @@ function renderChartsView(lines, model, safeWidth, bodyHeight, mode, layout, tel
     return;
   }
 
-  const tokenHeight = Math.max(9, Math.min(12, Math.floor(bodyHeight * 0.34)));
-  const secondaryHeight = Math.max(8, Math.min(10, Math.floor(bodyHeight * 0.28)));
-  const recentHeight = Math.max(5, bodyHeight - tokenHeight - secondaryHeight);
+  const feedHeight = 7;
+  const rankingHeight = Math.max(8, Math.min(10, Math.floor(bodyHeight * 0.28)));
+  const recentHeight = Math.max(5, bodyHeight - feedHeight - rankingHeight);
 
   lines.push(...panel(
-    telemetryGraphLines(telemetry, 'tokenRate', safeWidth - 2, tokenHeight - 2, mode, {
-      token: 'secondary', formatter: fmtNum, suffix: '/min', emptyLabel: 'Waiting for token deltas from the current Manager run.'
-    }),
+    telemetryStripLines(telemetry, safeWidth - 4, mode),
     safeWidth,
-    tokenHeight,
-    { title: 'TOKEN RATE · ROLLING 60s', mode }
+    feedHeight,
+    { title: 'LIVE TELEMETRY · ROLLING 60s', mode }
   ));
 
   const leftWidth = Math.max(34, Math.floor(safeWidth * 0.5));
   const rightWidth = safeWidth - leftWidth - 1;
-  const context = panel(
-    telemetryGraphLines(telemetry, 'contextPeak', leftWidth - 2, secondaryHeight - 2, mode, {
-      token: 'pressure', formatter: fmtPercent, fixedMax: 100, emptyLabel: 'No context evidence in current scope.'
-    }),
+  const tokenRank = panel(
+    chartLines(model.charts.tokens, leftWidth - 2, fmtNum, mode, 'secondary'),
     leftWidth,
-    secondaryHeight,
-    { title: 'CONTEXT PEAK · 0–100%', mode }
+    rankingHeight,
+    { title: 'TOP TOKEN SESSIONS · current scope', mode }
   );
-  const tools = panel(
-    telemetryGraphLines(telemetry, 'toolRate', rightWidth - 2, secondaryHeight - 2, mode, {
-      token: 'live', formatter: fmtNum, suffix: '/min', emptyLabel: 'Waiting for tool deltas from the current Manager run.'
-    }),
+  const contextRank = panel(
+    chartLines(model.charts.context, rightWidth - 2, fmtPercent, mode, 'pressure'),
     rightWidth,
-    secondaryHeight,
-    { title: 'TOOL RATE · ROLLING 60s', mode }
+    rankingHeight,
+    { title: 'TOP CONTEXT · current scope', mode }
   );
-  lines.push(...joinPanels(context, tools, leftWidth, secondaryHeight));
+  lines.push(...joinPanels(tokenRank, contextRank, leftWidth, rankingHeight));
 
   lines.push(...panel(
-    tableLines(model, safeWidth - 2, Math.min(recentHeight - 2, 6), mode),
+    tableLines(model, safeWidth - 2, Math.min(recentHeight - 2, 7), mode),
     safeWidth,
     recentHeight,
     { title: tablePanelTitle('RECENT / SELECT', model), mode }
