@@ -16,7 +16,6 @@ export function createDemoState(kind = 'idle', { authMode = 'login', nowMs = Dat
   current(state.auth, 'mode', authMode, nowMs);
   current(state.model, 'requested', 'gpt-5.6-luna', nowMs);
   current(state.model, 'reasoning', 'high', nowMs);
-  if (authMode === 'api') current(state.model, 'actual', 'gpt-5.6-luna', nowMs);
 
   current(state.context, 'windowTokens', 258_000, nowMs);
   current(state.context, 'usedTokens', 95_600, nowMs);
