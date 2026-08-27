@@ -5,7 +5,7 @@ import { childOutputMayClobberHud, runCodexLive } from '../../src/runtime/live-r
 import { createCurrentRunState } from '../../src/core/state.js';
 import { normalizeConfig, configForPreset } from '../../src/config/schema.js';
 import { MonitorIngestPipeline } from '../../src/core/ingest.js';
-import { buildLiveFrame } from '../../src/ui/live-renderer.js';
+import { buildLiveFrame } from '../../src/ui/live-renderer-responsive.js';
 
 function fakeIo() {
   const stdin = new EventEmitter();
@@ -59,10 +59,10 @@ test('Live HUD is non-interactive: every stdin byte is forwarded to Codex unchan
   await new Promise((resolve) => setImmediate(resolve));
   const chunks = [
     Buffer.from('hello'),
-    Buffer.from('\x07'),       // Ctrl+G - belongs to Codex now
-    Buffer.from('\x0c'),       // Ctrl+L
-    Buffer.from('\x1bOQ'),     // F2/xterm sequence
-    Buffer.from('\x1b[1;3C'),  // Alt+Right/xterm sequence
+    Buffer.from('\x07'),
+    Buffer.from('\x0c'),
+    Buffer.from('\x1bOQ'),
+    Buffer.from('\x1b[1;3C'),
     Buffer.from(' world\r')
   ];
   for (const chunk of chunks) io.stdin.emit('data', chunk);
@@ -107,11 +107,12 @@ test('embedded TokenCount rate_limits populate semantic quota buckets and normal
   assert.equal(state.quota.weekly.value.resetsAtMs, 1788114221900);
 });
 
-test('single Live dashboard hides dead tab/hotkey UI and formats quota reset/RAM for humans', () => {
+test('single Live dashboard hides dead navigation UI and formats quota reset/RAM for humans', () => {
   const state = createCurrentRunState({ startedAtMs: 1787620000000 });
   state.auth.mode.value = 'login';
   state.system.cpuPercent.value = 20;
   state.system.memoryBytes.value = 13_701_000_000;
+  state.system.totalMemoryBytes.value = 34_100_000_000;
   state.session.turnCount.value = 2;
   state.session.lastTurnDurationMs.value = 1000;
   state.session.lastEventAtMs.value = 1787623196000;
@@ -133,11 +134,12 @@ test('single Live dashboard hides dead tab/hotkey UI and formats quota reset/RAM
   });
   const text = frame.lines.join('\n');
 
-  assert.doesNotMatch(text, /performance|processes|tools|resources|Ctrl\+G|F2|F3|Alt\+/i);
+  assert.doesNotMatch(text, /\[overview\]|performance|processes|resources|Ctrl\+G|F2|F3|Alt\+|F4 History/i);
   assert.doesNotMatch(text, /17881142219/);
   assert.match(text, /WEEK.*84% left.*↻/);
-  assert.match(text, /5H n\/a/);
-  assert.match(text, /RAM 13\.7 GB/);
+  assert.match(text, /5H.*waiting/i);
+  assert.match(text, /13\.7 GB\/34\.1 GB/);
+  assert.equal(frame.semantic.interactive, false);
 });
 
 test('normal Codex output stays on zero-extra-repaint fast path; destructive VT output repairs HUD', async () => {
