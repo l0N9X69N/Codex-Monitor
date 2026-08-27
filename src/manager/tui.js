@@ -1,3 +1,4 @@
+import { renderConfigPreview } from '../config/preview.js';
 import { TerminalGuard } from '../terminal/guard.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { detectHistoryColorMode, hpaint } from '../history/theme.js';
@@ -109,6 +110,8 @@ export async function runSessionManagerTui({
   let viewMode = initialViewMode;
   let storageOpen = false;
   let configOpen = false;
+  let configPreviewOpen = false;
+  let configPreviewKind = 'live';
   let storageCursorIndex = 0;
   let deleteScope = MANAGER_DELETE_SCOPE.RAW;
   let clearConfirming = false;
@@ -178,8 +181,17 @@ export async function runSessionManagerTui({
     const selectedSummary = summarizeSelectedSessions(rows, clearSelectedIds);
     let frame;
 
-    if (configOpen) {
-      frame = renderManagerConfig({ controller: configController, width, height, mode: colorMode });
+    if (configPreviewOpen) {
+      frame = renderConfigPreview({
+        kind: configPreviewKind,
+        config: configController.draftConfig,
+        width,
+        height,
+        mode: colorMode,
+        nowMs: now()
+      });
+    } else if (configOpen) {
+      frame = renderManagerConfig({ controller: configController, width, height, mode: colorMode, previewAvailable: true });
     } else if (clearConfirming) {
       frame = renderClearConfirmation({ rows, selectedIds: clearSelectedIds, selectedSummary, deleteScope, width, height, mode: colorMode });
     } else if (storageOpen) {
@@ -387,15 +399,27 @@ export async function runSessionManagerTui({
       searching: searching || timelineSearching,
       confirmingDelete: clearConfirming,
       storageOpen,
-      configOpen
+      configOpen,
+      configPreviewOpen,
+      configPreviewAvailable: true
     });
     if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action) return;
 
+    if (configPreviewOpen) {
+      if (action === 'config-preview-close') configPreviewOpen = false;
+      else if (action === 'config-preview-live') configPreviewKind = 'live';
+      else if (action === 'config-preview-manager') configPreviewKind = 'manager';
+      draw(true);
+      return;
+    }
+
     if (configOpen) {
-      if (action === 'config-close') configOpen = false;
-      else if (action === 'config-tab-next') configController.moveTab(1);
+      if (action === 'config-close') {
+        configOpen = false;
+        configPreviewOpen = false;
+      } else if (action === 'config-tab-next') configController.moveTab(1);
       else if (action === 'config-tab-prev') configController.moveTab(-1);
       else if (action === 'up') configController.moveCursor(-1);
       else if (action === 'down') configController.moveCursor(1);
@@ -404,7 +428,14 @@ export async function runSessionManagerTui({
       else if (action === 'config-edit') configController.editCurrent(1);
       else if (action === 'config-save') configController.save();
       else if (action === 'config-revert') configController.revert();
-      draw(action === 'config-close' || action === 'config-save');
+      else if (action === 'config-preview-live') {
+        configPreviewOpen = true;
+        configPreviewKind = 'live';
+      } else if (action === 'config-preview-manager') {
+        configPreviewOpen = true;
+        configPreviewKind = 'manager';
+      }
+      draw(action === 'config-close' || action === 'config-save' || configPreviewOpen);
       return;
     }
 
@@ -471,6 +502,7 @@ export async function runSessionManagerTui({
 
     if (action === 'config-view') {
       configOpen = true;
+      configPreviewOpen = false;
       draw(true);
       return;
     }
@@ -651,6 +683,8 @@ export async function runSessionManagerTui({
       storageCursorIndex,
       deleteScope,
       configOpen,
+      configPreviewOpen,
+      configPreviewKind,
       archiveInspectOpen,
       configDirty: configController.dirty,
       config: configController.savedConfig,
