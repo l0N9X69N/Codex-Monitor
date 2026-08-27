@@ -50,7 +50,8 @@ export function renderManagerConfig({
   controller,
   width = 120,
   height = 36,
-  mode = 'mono'
+  mode = 'mono',
+  previewAvailable = false
 } = {}) {
   const safeWidth = Math.max(44, Number(width) || 120);
   const safeHeight = Math.max(16, Number(height) || 36);
@@ -82,7 +83,13 @@ export function renderManagerConfig({
   while (lines.length < safeHeight - 3) lines.push('');
   if (controller?.status) lines.push(padLine(hpaint(controller.status, controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
   else lines.push('');
-  lines.push(padLine(hpaint('Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint(
+    previewAvailable
+      ? 'Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview'
+      : 'Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change',
+    'dim',
+    mode
+  ), safeWidth));
   lines.push(padLine(hpaint('S save · R revert · Esc/Q back · Archive lifecycle changes run only after Save.', 'dim', mode), safeWidth));
 
   return {
