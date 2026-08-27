@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeConfig, configForPreset } from '../../src/config/schema.js';
 import { createDemoState } from '../../src/ui/demo.js';
-import { buildLiveFrame } from '../../src/ui/live-renderer.js';
+import { buildLiveFrame } from '../../src/ui/live-renderer-responsive.js';
 import { stripAnsi } from '../../src/ui/cell-width.js';
 
 const NOW = Date.parse('2026-08-25T00:00:00Z');
@@ -27,6 +27,8 @@ for (const [name, spec] of Object.entries(snapshots)) {
       health: 'OK'
     });
     assert.deepEqual(canonicalLines(frame), spec.lines);
+    assert.equal(frame.semantic.interactive, false);
+    assert.equal(frame.semantic.cardGrid, true);
   });
 }
 
