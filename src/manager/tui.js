@@ -17,6 +17,12 @@ import { deleteSelectedSessions } from './delete-safety.js';
 import { renderClearConfirmation, renderStorageManager } from './storage-render.js';
 import { ManagerConfigController } from './config-controller.js';
 import { renderManagerConfig } from './config-render.js';
+import {
+  managerArchiveBadge,
+  managerArchiveStatusFromResult,
+  managerArchiveStatusToken,
+  managerSelectedArchiveBadge
+} from './index-status.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -115,6 +121,7 @@ export async function runSessionManagerTui({
   let lastInspectFrame = null;
   let telemetry = telemetrySeries.snapshot();
   let telemetryTimer = null;
+  let archiveStatus = managerArchiveStatusFromResult({ archiveEnabled: monitorConfig?.archive?.enabled === true });
 
   const selectedDashboardRow = () => {
     if (!lastFrame?.model?.rows?.length) return null;
@@ -214,6 +221,12 @@ export async function runSessionManagerTui({
         activityPreview
       });
       if (frame.lines?.length) {
+        const indexBadge = managerArchiveBadge(archiveStatus);
+        frame.lines[0] = truncateCells(`${frame.lines[0]}  ${hpaint(indexBadge, managerArchiveStatusToken(archiveStatus), colorMode)}`, width, '');
+        const selectedIndexBadge = managerSelectedArchiveBadge(frame.model?.selected);
+        if (selectedIndexBadge && frame.lines[1] != null) {
+          frame.lines[1] = truncateCells(`${frame.lines[1]}  ${hpaint(selectedIndexBadge, 'dim', colorMode)}`, width, '');
+        }
         frame.lines[frame.lines.length - 1] = truncateCells(`${frame.lines.at(-1)}  ${hpaint('M storage', 'dim', colorMode)}  ${hpaint('C config', 'dim', colorMode)}`, width, '');
       }
     }
@@ -243,6 +256,7 @@ export async function runSessionManagerTui({
     intervalMs,
     onSnapshot(result) {
       rows = result.rows ?? [];
+      archiveStatus = managerArchiveStatusFromResult(result);
       selectedDetail = result.selectedDetail ?? selectedDetail;
       storageSummaryCache.invalidate();
       clampStorageCursor();
@@ -262,6 +276,7 @@ export async function runSessionManagerTui({
     if (done) return;
     done = true;
     runtime.stop();
+    tracker.close?.();
     if (telemetryTimer != null) {
       clearInterval(telemetryTimer);
       telemetryTimer = null;
@@ -601,7 +616,8 @@ export async function runSessionManagerTui({
       storageCursorIndex,
       configOpen,
       configDirty: configController.dirty,
-      config: configController.savedConfig
+      config: configController.savedConfig,
+      archiveStatus
     };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
