@@ -77,6 +77,7 @@ test('storage summary and storage surface stay bounded with ten thousand metadat
   const nowMs = Date.UTC(2026, 7, 27, 2, 0, 0);
   const rows = Array.from({ length: 10_000 }, (_, index) => ({
     id: `s-${index}`,
+    filePath: `/sessions/s-${index}.jsonl`,
     threadId: `thread-${index}`,
     state: index % 17 === 0 ? 'LIVE' : index % 19 === 0 ? 'UNKNOWN' : 'ENDED',
     project: `project-${index % 31}`,
@@ -180,7 +181,7 @@ test('partial unlink failure is reported while independent selected files contin
   }
 });
 
-test('storage clear cancellation keeps the selected temp session and restores terminal state', async () => {
+test('storage delete cancellation keeps the selected temp session and restores terminal state', async () => {
   const root = tempRoot();
   try {
     const filePath = writeEndedSession(root, 'cancel-me').filePath;
@@ -211,8 +212,8 @@ test('storage clear cancellation keeps the selected temp session and restores te
     const result = await running;
     assert.equal(result.code, 0);
     assert.equal(fs.existsSync(filePath), true);
-    assert.match(stdout.output, /STORAGE CLEAR CONFIRMATION/);
-    assert.match(stdout.output, /Clear cancelled/);
+    assert.match(stdout.output, /STORAGE DELETE CONFIRMATION/);
+    assert.match(stdout.output, /Delete cancelled/);
     assert.equal(stdin.isRaw, false);
     assert.match(stdout.output, /\x1b\[\?1049l/);
     assert.match(stdout.output, /\x1b\[\?25h/);
@@ -221,13 +222,10 @@ test('storage clear cancellation keeps the selected temp session and restores te
   }
 });
 
-test('storage clear confirmation deletes exactly the highlighted temp ENDED session and restores terminal state', async () => {
+test('storage RAW delete confirmation deletes exactly the highlighted temp ENDED session and restores terminal state', async () => {
   const root = tempRoot();
   try {
     const base = Date.now() - 60_000;
-    // Storage intentionally syncs its cursor to the current Dashboard row.
-    // Make the target unambiguously newest so Dashboard selection and the
-    // destructive expectation refer to the same exact session identity.
     const untouchedPath = writeEndedSession(root, 'untouched', { payloadBytes: 128, atMs: base - 5_000 }).filePath;
     const selectedPath = writeEndedSession(root, 'selected', { payloadBytes: 512, atMs: base }).filePath;
     const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
@@ -256,10 +254,11 @@ test('storage clear confirmation deletes exactly the highlighted temp ENDED sess
 
     const result = await running;
     assert.equal(result.code, 0);
+    assert.equal(result.deleteScope, 'raw');
     assert.equal(fs.existsSync(selectedPath), false);
     assert.equal(fs.existsSync(untouchedPath), true);
-    assert.match(stdout.output, /STORAGE CLEAR CONFIRMATION/);
-    assert.match(stdout.output, /Cleared 1/);
+    assert.match(stdout.output, /STORAGE DELETE CONFIRMATION/);
+    assert.match(stdout.output, /Deleted 1/);
     assert.equal(stdin.isRaw, false);
     assert.match(stdout.output, /\x1b\[\?1049l/);
     assert.match(stdout.output, /\x1b\[\?25h/);
