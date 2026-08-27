@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 
 export const DEFAULT_ARCHIVE_CHUNK_BYTES = 256 * 1024;
 export const DEFAULT_ARCHIVE_RECORD_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_ARCHIVE_OVERSIZE_SCAN_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_ARCHIVE_OVERSIZE_SCAN_BYTES = 4 * 1024 * 1024;
 
 const READ_BLOCK_BYTES = 256 * 1024;
 
@@ -93,11 +93,7 @@ async function readRecordBeyondSoftLimit(handle, {
   let cursor = offset + initialChunk.length;
 
   while (cursor < observedSize && retainedBytes < recordLimit) {
-    const request = Math.min(
-      READ_BLOCK_BYTES,
-      recordLimit - retainedBytes,
-      observedSize - cursor
-    );
+    const request = Math.min(READ_BLOCK_BYTES, recordLimit - retainedBytes, observedSize - cursor);
     const block = await readBlock(handle, cursor, request);
     if (!block.length) break;
     bytesRead += block.length;
@@ -136,11 +132,7 @@ async function readRecordBeyondSoftLimit(handle, {
 
   const maximumScanBytes = Math.max(recordLimit, oversizeScanLimit);
   while (cursor < observedSize && bytesRead < maximumScanBytes) {
-    const request = Math.min(
-      READ_BLOCK_BYTES,
-      maximumScanBytes - bytesRead,
-      observedSize - cursor
-    );
+    const request = Math.min(READ_BLOCK_BYTES, maximumScanBytes - bytesRead, observedSize - cursor);
     const block = await readBlock(handle, cursor, request);
     if (!block.length) break;
     bytesRead += block.length;
@@ -151,10 +143,7 @@ async function readRecordBeyondSoftLimit(handle, {
         bytesRead,
         commitCandidateOffset: nextOffset,
         pendingPartialBytes: Math.max(0, bytesRead - (nextOffset - offset)),
-        lines: [oversizedMarker(offset, nextOffset, {
-          completeRecord: true,
-          byteLength: nextOffset - offset
-        })],
+        lines: [oversizedMarker(offset, nextOffset, { completeRecord: true, byteLength: nextOffset - offset })],
         expandedRecord: true,
         oversizedLineCount: 1,
         recordTooLarge: false,
@@ -170,10 +159,7 @@ async function readRecordBeyondSoftLimit(handle, {
       bytesRead,
       commitCandidateOffset: nextOffset,
       pendingPartialBytes: 0,
-      lines: [oversizedMarker(offset, nextOffset, {
-        completeRecord: false,
-        byteLength: nextOffset - offset
-      })],
+      lines: [oversizedMarker(offset, nextOffset, { completeRecord: false, byteLength: nextOffset - offset })],
       expandedRecord: true,
       oversizedLineCount: 1,
       recordTooLarge: true,
