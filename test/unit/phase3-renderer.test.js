@@ -38,3 +38,22 @@ test('renderer batches all dirty rows into one stdout write and instruments repa
   assert.equal(writes.length, 2);
   assert.equal(instrumentation.snapshot().repaintCount, 2);
 });
+
+test('forced repaint writes blank rows so a standalone screen clears the previous frame', () => {
+  const writes = [];
+  const renderer = new AnsiDiffRenderer({
+    stdout: { write(value) { writes.push(value); } },
+    originRow: 1
+  });
+
+  renderer.render(['dashboard header', 'dashboard body', 'dashboard footer']);
+  renderer.reset([]);
+  const result = renderer.render(['config header', '', 'config footer']);
+
+  assert.equal(result.written, true);
+  assert.deepEqual(result.dirtyRows, [0, 1, 2]);
+  assert.equal(writes.length, 2);
+  assert.match(writes[1], /\x1b\[1;1Hconfig header\x1b\[K/);
+  assert.match(writes[1], /\x1b\[2;1H\x1b\[K/);
+  assert.match(writes[1], /\x1b\[3;1Hconfig footer\x1b\[K/);
+});
