@@ -84,31 +84,37 @@ test('fast known-session refresh stats only the bounded recent set plus explicit
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('non-selected sessions stay shallow while selected session alone triggers deep read', () => {
+test('non-selected sessions stay shallow while selected session alone triggers deep stream reads', () => {
   const root = tempDir();
   for (let i = 0; i < 20; i += 1) {
     fs.writeFileSync(path.join(root, `s-${i}.jsonl`), sampleSession(`thread-${i}`));
   }
 
+  let streamReads = 0;
   let fullReads = 0;
   const fsRef = {
     ...fs,
+    readSync(...args) { streamReads += 1; return fs.readSync(...args); },
     readFileSync(...args) { fullReads += 1; return fs.readFileSync(...args); }
   };
   const core = new SessionManagerCore({ sessionsPath: root, fsRef, identityEnrichLimit: 4 });
   const items = core.discover();
+  const readsAfterDiscovery = streamReads;
 
-  assert.equal(fullReads, 0, 'global discovery must never deep read session bodies');
+  assert.equal(fullReads, 0, 'global discovery must never whole-file read session bodies');
   assert.equal(core.deep.cache.size, 0);
   assert.ok(items.every((item) => item.parsed === false));
 
   core.select(items[0].id);
-  assert.equal(fullReads, 1, 'selecting one session should deep read exactly that session');
+  assert.ok(streamReads > readsAfterDiscovery, 'selecting one session should stream-read that session');
+  assert.equal(fullReads, 0, 'selected deep parser must remain bounded-stream based');
   assert.equal(core.deep.cache.size, 1);
   assert.equal(items.filter((item) => item.parsed).length, 1);
 
+  const readsAfterSelect = streamReads;
   core.refreshKnown();
-  assert.equal(fullReads, 1, 'non-selected refresh must not deep read additional sessions');
+  assert.equal(streamReads, readsAfterSelect, 'non-selected refresh must not deep read additional sessions');
+  assert.equal(fullReads, 0);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
