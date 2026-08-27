@@ -25,25 +25,29 @@ Expensive breakdown chỉ tính khi Storage được mở/requested và phải c
 
 ## Selection semantics
 
+Public UX hiện tại:
+
 ```text
-Space  toggle current row
-A      select all visible/filtered eligible ENDED sessions
+M      mở/đóng Storage Manager
+↑/↓    di chuyển Storage cursor
+Space  toggle current ENDED row
+A      select all eligible ENDED sessions trong Storage
 N      select none
-I      invert visible selection
-D      delete selected
+I      invert ENDED selection trong Storage
+C      Clear selected
 ```
 
-LIVE sessions không eligible cho deletion.
+`Space/A/N/I/C` chỉ có hiệu lực bên trong Storage Manager; Dashboard chỉ dùng `M` để vào Storage. Legacy `V` view cycle không đổi.
 
-Footer luôn hiện:
+LIVE/UNKNOWN/uncertain-active sessions không eligible cho deletion.
 
-```text
-Selected: <count> sessions · <size>
-```
+Storage summary luôn hiện selected count/size; help nằm ở footer của Storage view.
 
-## Delete confirmation
+## Clear confirmation
 
 Phải nói rõ underlying Codex session files sẽ bị xóa vĩnh viễn khỏi sessions root. Default Manager là read-only; không auto cleanup/retention/background delete.
+
+Confirmation dùng `Y` để xác nhận và `N/Esc` để hủy.
 
 ## Pre-delete safety
 
@@ -58,7 +62,7 @@ Phải nói rõ underlying Codex session files sẽ bị xóa vĩnh viễn khỏ
 ## Manager stress QA
 
 - thousands sessions;
-- huge JSONL;
+- huge JSONL / bounded reads;
 - malformed/truncated file;
 - external file deletion;
 - multiple LIVE tails + search/filter/sort;
@@ -72,18 +76,23 @@ Phải nói rõ underlying Codex session files sẽ bị xóa vĩnh viễn khỏ
 - Không automatic retention.
 - Không backup ngầm.
 - Không test destructive lần đầu trên real important sessions.
+- Không polish lại palette/màu toàn Manager trong phase này.
 
 ## Auto test bắt buộc
 
 - delete selected only;
-- A/N/I semantics;
+- A/N/I semantics và Storage-only key scope;
 - LIVE protected;
 - filtered-out protected;
 - cancel/confirm;
 - path escape/symlink cases rejected;
 - size/count accuracy;
 - delete error handling;
-- stress Manager state/layout/tails.
+- external file deletion;
+- partial unlink failure;
+- 10k metadata rows + responsive Storage bounds;
+- bounded history/preview I/O regressions;
+- terminal restore sau destructive workflow.
 
 ## Manual test hai tầng
 
@@ -92,14 +101,22 @@ Phải nói rõ underlying Codex session files sẽ bị xóa vĩnh viễn khỏ
 
 ## Deliverables
 
-`docs/qa/phase-11/` chứa đủ 4 handoff files + destructive temp-session suite.
+`docs/qa/phase-11/` chứa đủ 4 handoff files + destructive temp-session/stress suite.
 
 ## Exit gate
 
 0 delete-safety P0, LIVE protection PASS, Manager stress PASS, terminal restore PASS.
 
+Commands:
+
+```powershell
+npm run test:phase11
+npm run verify:phase11
+```
+
 ## Trạng thái hiện tại
 
 ```text
-NOT STARTED — old History storage plan superseded by Session Manager semantics
+FINAL VERIFICATION PENDING
+Implementation scope complete; waiting current-HEAD automated gate before closure and Phase 11-1 activation.
 ```
