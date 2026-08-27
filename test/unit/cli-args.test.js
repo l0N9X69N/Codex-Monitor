@@ -24,10 +24,15 @@ test('monitor auth option is consumed while Codex args remain intact', () => {
 test('-- escape hatch passes monitor-looking flags to Codex', () => {
   assert.deepEqual(parseMonitorArgs(['--', '--help']), base({ codexArgs: ['--help'] }));
   assert.deepEqual(parseMonitorArgs(['--', '--background', 'dark']), base({ codexArgs: ['--background', 'dark'] }));
+  assert.deepEqual(parseMonitorArgs(['--', '--version']), base({ codexArgs: ['--version'] }));
 });
 
-test('--version remains a Codex argument', () => {
-  assert.deepEqual(parseMonitorArgs(['--version']), base({ codexArgs: ['--version'] }));
+test('Phase 13 product control actions are Monitor-owned', () => {
+  assert.deepEqual(parseMonitorArgs(['--version']), base({ action: 'monitor-version' }));
+  assert.deepEqual(parseMonitorArgs(['--monitor-version']), base({ action: 'monitor-version' }));
+  assert.deepEqual(parseMonitorArgs(['--diagnostics']), base({ action: 'doctor' }));
+  assert.deepEqual(parseMonitorArgs(['--update']), base({ action: 'update' }));
+  assert.deepEqual(parseMonitorArgs(['--uninstall']), base({ action: 'uninstall' }));
 });
 
 test('runtime overrides are consumed by Monitor', () => {
@@ -59,6 +64,7 @@ test('--manager-view is Monitor-owned only with Manager action', () => {
 test('conflicting Monitor actions fail instead of last-action-wins routing', () => {
   assert.throws(() => parseMonitorArgs(['--manager', '--doctor']), /Conflicting Monitor actions/);
   assert.throws(() => parseMonitorArgs(['--config', '--reset']), /Conflicting Monitor actions/);
+  assert.throws(() => parseMonitorArgs(['--update', '--uninstall']), /Conflicting Monitor actions/);
 });
 
 test('--history is no longer Monitor-owned and is forwarded to official Codex', () => {
