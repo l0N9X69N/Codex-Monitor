@@ -63,7 +63,7 @@ test('API UX never leaks Login quota across representative dimensions', () => {
   const config = normalizeConfig(configForPreset('recommended'));
   for (const [width, height] of [[36, 18], [60, 24], [90, 24], [120, 35], [180, 50]]) {
     const state = createDemoState('idle', { authMode: 'api', nowMs: NOW });
-    const frame = buildLiveFrame({ state, config, width, height, nowMs });
+    const frame = buildLiveFrame({ state, config, width, height, nowMs: NOW });
     const text = stripAnsi(frame.lines.join('\n'));
     assert.doesNotMatch(text, /\b5H\b/);
     assert.doesNotMatch(text, /\bWEEK\b/);
