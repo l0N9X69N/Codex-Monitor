@@ -17,13 +17,32 @@ export function nextManagerView(view = 'operations') {
   return VIEW_MODES[(index < 0 ? 0 : index + 1) % VIEW_MODES.length];
 }
 
-export function normalizeManagerInput(data, { searching = false, confirmingDelete = false } = {}) {
+export function normalizeManagerInput(data, {
+  searching = false,
+  confirmingDelete = false,
+  storageOpen = false,
+  configOpen = false
+} = {}) {
   const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!text) return null;
 
   if (confirmingDelete) {
     if (text === '\x1b' || text.toLowerCase() === 'n' || text.toLowerCase() === 'q') return 'delete-cancel';
     if (text.toLowerCase() === 'y') return 'delete-confirm';
+    return null;
+  }
+
+  if (configOpen) {
+    if (text === '\x1b' || text.toLowerCase() === 'q' || text.toLowerCase() === 'c') return 'config-close';
+    if (text === '\x1b[A') return 'up';
+    if (text === '\x1b[B') return 'down';
+    if (text === '\x1b[C' || text === '\t') return 'config-tab-next';
+    if (text === '\x1b[D') return 'config-tab-prev';
+    if (text === '\x1b[H' || text === '\x1b[1~' || text === '\x1bOH') return 'home';
+    if (text === '\x1b[F' || text === '\x1b[4~' || text === '\x1bOF') return 'end';
+    if (/^[\r\n]+$/.test(text) || text === ' ') return 'config-edit';
+    if (text.toLowerCase() === 's') return 'config-save';
+    if (text.toLowerCase() === 'r') return 'config-revert';
     return null;
   }
 
@@ -71,7 +90,7 @@ export function normalizeManagerInput(data, { searching = false, confirmingDelet
   if (text === 'A' || text === 'a') return 'select-all';
   if (text === 'N' || text === 'n') return 'select-none';
   if (text === 'I' || text === 'i') return 'select-invert';
-  if (text === 'C' || text === 'c') return 'delete-selected';
+  if (text === 'C' || text === 'c') return storageOpen ? 'delete-selected' : 'config-view';
   return null;
 }
 
