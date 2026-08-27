@@ -179,7 +179,15 @@ function rowsForTab(tab, config, archivePanel = null) {
     ];
   }
   if (tab === 'archive') return archivePanel?.rows?.(config) ?? [];
-  if (tab === 'manager') return [{ id: 'manager-status', label: 'Manager preferences', value: 'No persisted Manager-only fields in v1 schema yet', editable: false }];
+  if (tab === 'manager') {
+    return [{
+      id: 'manager:view',
+      label: 'Default view',
+      value: config.manager?.view ?? 'operations',
+      editable: true,
+      description: 'View opened by codexm --manager; pressing V only changes the current Manager run.'
+    }];
+  }
   if (tab === 'updates') {
     return [toggleRow({
       id: 'updateCheck',
@@ -339,6 +347,8 @@ export class ManagerConfigController {
     } else if (id === 'archive:enabled') {
       this.archivePanel?.cancelConfirmation?.();
       this.draftConfig.archive.enabled = !this.draftConfig.archive.enabled;
+    } else if (id === 'manager:view') {
+      this.draftConfig.manager.view = cycle(CONFIG_VALUES.managerViews, this.draftConfig.manager?.view ?? 'operations', delta);
     } else if (id === 'updateCheck') {
       this.draftConfig.updateCheck = !this.draftConfig.updateCheck;
     }
@@ -359,8 +369,9 @@ export class ManagerConfigController {
   save() {
     const before = clone(this.savedConfig);
     try {
-      const result = this.saveConfig(this.draftConfig, { filePath: this.filePath });
-      const next = normalizeConfig(result?.config ?? this.draftConfig);
+      const intended = normalizeConfig({ ...this.draftConfig, setupComplete: true });
+      const result = this.saveConfig(intended, { filePath: this.filePath });
+      const next = normalizeConfig(result?.config ?? intended);
       const effects = this.applyArchiveEffects(before, next);
       this.savedConfig = clone(next);
       this.draftConfig = clone(next);
