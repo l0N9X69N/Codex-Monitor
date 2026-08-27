@@ -14,7 +14,8 @@ const steps = [
     'test/unit/phase11-1-archive-integration.test.js',
     'test/unit/phase11-1-archive-config-effects.test.js',
     'test/unit/phase11-1-archive-hooks.test.js',
-    'test/unit/phase11-1-manager-config.test.js'
+    'test/unit/phase11-1-manager-config.test.js',
+    'test/unit/phase11-1-manager-archive-index.test.js'
   ]],
   ['Phase 11 storage/delete/input safety regression', process.execPath, ['--test',
     'test/unit/phase11-storage-delete.test.js',
@@ -34,5 +35,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 Manager Config shared-engine checkpoint verification: PASS\n');
-process.stdout.write('Gate covers dashboard C→Config with Storage C→Clear preservation, canonical nine-tab Config screen, draft/edit/save/revert behavior, shared config schema and Archive side-effect engine, Codex hook lifecycle, SQLite/service lifecycle, bounded fair reconcile, atomic committed offsets, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 Manager SQLite-first startup checkpoint verification: PASS\n');
+process.stdout.write('Gate covers SQLite-first Manager history before raw discovery, metadata verification into READY/CATCHING_UP/UNINDEXED/STALE/ARCHIVED states, raw LIVE overlay over archive summaries, archive-only history retention, shared Manager Config lifecycle, Codex hooks, service/reconcile/checkpoint safety, and Phase 11 storage/delete regressions.\n');
