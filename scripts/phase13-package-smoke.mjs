@@ -3,15 +3,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const result = spawnSync(npmCommand, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
-  cwd: process.cwd(),
-  encoding: 'utf8',
-  env: process.env
-});
+function runNpm(args) {
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath && fs.existsSync(npmExecPath)) {
+    return spawnSync(process.execPath, [npmExecPath, ...args], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: process.env
+    });
+  }
+
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  return spawnSync(npmCommand, args, {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: process.env,
+    shell: process.platform === 'win32'
+  });
+}
+
+const result = runNpm(['pack', '--dry-run', '--json', '--ignore-scripts']);
 
 if (result.status !== 0) {
-  process.stderr.write(result.stderr || result.stdout || 'npm pack --dry-run failed\n');
+  const detail = result.stderr || result.stdout || result.error?.message || 'npm pack --dry-run failed';
+  process.stderr.write(`${String(detail).trimEnd()}\n`);
   process.exit(result.status ?? 1);
 }
 
@@ -20,11 +35,12 @@ try {
   payload = JSON.parse(result.stdout);
 } catch {
   process.stderr.write('Could not parse npm pack --dry-run JSON output.\n');
+  if (result.stdout) process.stderr.write(`${result.stdout.trimEnd()}\n`);
   process.exit(1);
 }
 
 const pack = Array.isArray(payload) ? payload[0] : payload;
-const files = (pack?.files ?? []).map((entry) => String(entry.path ?? entry));
+const files = (pack?.files ?? []).map((entry) => String(entry.path ?? entry).replaceAll('\\', '/'));
 const required = ['package.json', 'src/cli/codexm.js', 'README.md', 'LICENSE'];
 for (const file of required) {
   if (!files.includes(file)) {
