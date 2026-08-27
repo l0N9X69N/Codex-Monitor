@@ -1,6 +1,8 @@
 import { kickArchiveService } from '../archive/integration.js';
 import { loadMonitorConfig } from '../config/store.js';
-import { ManagerArchiveIndex, mergeManagerArchiveRows } from './archive-index.js';
+import { mergeManagerArchiveRows } from './archive-index.js';
+import { readManagerArchiveDetail } from './archive-detail.js';
+import { ManagerArchiveVerifiedIndex } from './archive-verified-index.js';
 import { buildProcessEvidence } from './session-core.js';
 
 const REAL_MANAGER_PLATFORMS = new Set(['win32', 'linux', 'darwin']);
@@ -10,7 +12,7 @@ function defaultArchiveIndex(core, platformAdapter) {
   if (!core?.sessionsPath || !REAL_MANAGER_PLATFORMS.has(platformAdapter?.id)) return null;
   try {
     const loaded = loadMonitorConfig();
-    return new ManagerArchiveIndex({ config: loaded?.config ?? loaded, sessionsPath: core.sessionsPath });
+    return new ManagerArchiveVerifiedIndex({ config: loaded?.config ?? loaded, sessionsPath: core.sessionsPath });
   } catch {
     return null;
   }
@@ -150,6 +152,14 @@ export class SessionManagerTracker {
     return this.archiveSnapshot?.available
       ? mergeManagerArchiveRows(rawRows, this.archiveRows())
       : rawRows;
+  }
+
+  archiveDetailForRow(row) {
+    try {
+      return readManagerArchiveDetail(this.archiveIndex, row);
+    } catch {
+      return null;
+    }
   }
 
   maybeWakeArchive(nowMs) {
