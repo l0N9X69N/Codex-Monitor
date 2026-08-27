@@ -1,6 +1,6 @@
 # Phase 11-1 — Result
 
-Status: **FINAL CANDIDATE — AUTO VERIFY + MANUAL QA PENDING**
+Status: **IMPLEMENTED — AUTO VERIFIED; MANUAL CLOSEOUT PENDING**
 
 Implemented scope:
 
@@ -19,17 +19,19 @@ Implemented scope:
 - RAW / ARCHIVE / EVERYTHING deletion semantics with raw-first full-delete safety and persistent suppression for intentional archive-only removal.
 - Phase 11 raw storage/delete safety regressions remain part of the Phase 11-1 verifier.
 
-Current automated closure command:
+Automated closure command:
 
 ```text
 npm run verify:phase11-1
 ```
 
-This result must not be changed to `COMPLETE — CLOSED` until:
+Recorded on 2026-08-27: **PASS on the target machine**.
 
-1. the current branch passes `npm run verify:phase11-1` on the target machine;
-2. required Windows manual lifecycle/hook/delete QA is completed;
-3. performance observations in `MANUAL-TEST-REQUIRED.md` are acceptable, especially Manager raw-summary I/O and large-archive Compact behavior;
+Phase 11-1 implementation/correctness is therefore auto-verified. It must not be changed to `COMPLETE — CLOSED` until:
+
+1. required Windows manual lifecycle/hook/delete QA is completed;
+2. performance observations in `MANUAL-TEST-REQUIRED.md` are acceptable, especially Manager raw-summary I/O and large-archive Compact behavior;
+3. network/privacy spot checks are completed;
 4. cross-platform verification status is recorded honestly.
 
 Known non-correctness blockers/limits are documented in `KNOWN-ISSUES.md`.
