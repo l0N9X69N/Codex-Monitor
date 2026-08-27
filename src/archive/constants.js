@@ -1,4 +1,4 @@
-export const ARCHIVE_SCHEMA_VERSION = 1;
+export const ARCHIVE_SCHEMA_VERSION = 2;
 export const ARCHIVE_PARSER_VERSION = 1;
 
 export const ARCHIVE_SYNC_STATE = Object.freeze({
