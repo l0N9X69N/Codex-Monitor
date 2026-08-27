@@ -67,6 +67,7 @@ export function normalizeManagerInput(data, { searching = false, confirmingDelet
   if (text.toLowerCase() === 'd') return 'direction';
   if (text.toLowerCase() === 'r') return 'direction';
   if (text.toLowerCase() === 'v') return 'view';
+  if (text.toLowerCase() === 'm') return 'storage-view';
   if (text === 'A' || text === 'a') return 'select-all';
   if (text === 'N' || text === 'n') return 'select-none';
   if (text === 'I' || text === 'i') return 'select-invert';
