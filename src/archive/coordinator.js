@@ -31,6 +31,22 @@ function normalizeScanResult(value) {
   };
 }
 
+function sourcePriority(source, ingest) {
+  const indexed = Boolean(ingest?.sessionId) || Number(ingest?.committedOffset ?? 0) > 0;
+  const mtime = Number(source?.mtimeMs ?? 0) || 0;
+  return { indexed, mtime };
+}
+
+function compareQueuedSources(leftPath, rightPath, sourceByKey, ingestByKey) {
+  const leftKey = queueKey(leftPath);
+  const rightKey = queueKey(rightPath);
+  const left = sourcePriority(sourceByKey.get(leftKey), ingestByKey.get(leftKey));
+  const right = sourcePriority(sourceByKey.get(rightKey), ingestByKey.get(rightKey));
+  if (left.indexed !== right.indexed) return left.indexed ? -1 : 1;
+  if (left.mtime !== right.mtime) return right.mtime - left.mtime;
+  return leftKey.localeCompare(rightKey);
+}
+
 export class ArchiveReconcileCoordinator {
   constructor({
     sessionsPath,
@@ -91,14 +107,16 @@ export class ArchiveReconcileCoordinator {
     const suppressions = this.suppressionKeys();
     const sources = scan.sources.filter((source) => !suppressions.has(queueKey(source?.filePath)));
     const sourceByKey = new Map(sources.map((source) => [queueKey(source.filePath), source]));
+    const ingestByKey = new Map(sources.map((source) => [queueKey(source.filePath), this.repository.getIngestState(source.filePath)]));
     const tracked = this.health.listTrackedRawSources().filter((item) => !suppressions.has(queueKey(item?.sourcePath)));
     const trackedKeys = new Set(tracked.map((item) => queueKey(item.sourcePath)));
 
     for (const source of sources) {
-      const ingest = this.repository.getIngestState(source.filePath);
+      const ingest = ingestByKey.get(queueKey(source.filePath)) ?? null;
       if (needsArchiveSourceReconcile(source, ingest, { parserVersion: this.parserVersion })) this.enqueue(source.filePath);
     }
     for (const item of tracked) if (!sourceByKey.has(queueKey(item.sourcePath))) this.enqueue(item.sourcePath);
+    this.queue.sort((left, right) => compareQueuedSources(left, right, sourceByKey, ingestByKey));
 
     const generation = this.health.beginGeneration({ sourceCount: sources.length });
     const results = [];
