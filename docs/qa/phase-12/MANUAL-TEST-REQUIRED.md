@@ -1,36 +1,40 @@
 # Phase 12 Manual Test Required
 
-Status: **SOURCE-RUNTIME UX CLOSEOUT REQUIRED AFTER LATEST AUTO PASS**
+Status: **PASS — FOCUSED WINDOWS SOURCE-RUNTIME UX CLOSEOUT COMPLETE**
 
-This Phase 12 gate is for the repository/source runtime. Do not assume a globally installed `codexm` yet. Use the repository entry point on Windows Terminal, for example:
+Recorded: **2026-08-27**
 
-```bash
-node ./src/cli/codexm.js --manager
-node ./src/cli/codexm.js --configure
-node ./src/cli/codexm.js --doctor
-node ./src/cli/codexm.js --repair
-```
+This Phase 12 gate covers the repository/source runtime only. It does not claim a globally installed `codexm`, packaging/signing, native service installation, or release artifacts.
 
-Use disposable/temp config or Archive fixtures for destructive checks. Do not casually delete real `~/.codex/sessions` data.
+## Manual evidence recorded
 
-## Focused Windows Terminal checklist
+The target-machine developer exercised the Phase 12 interactive paths in Windows Terminal / PowerShell and approved the focused closeout.
 
-1. Start from a clean disposable Monitor config state and launch `node ./src/cli/codexm.js`; verify first-run onboarding appears before Codex starts.
-2. Save Recommended + Operations; verify Archive remains Disabled.
-3. Relaunch and verify first-run does not appear again.
-4. Launch `--manager`; verify the saved default Manager view is used. Press `V`, exit, relaunch, and verify runtime cycling did not silently persist.
-5. In Manager press `C`; verify shared Config opens. Use `P` Live preview and `M` Manager preview, then Esc back to Config. Verify tab/cursor/draft state remains usable and nothing saves merely by previewing.
-6. Run `--configure`; verify the same current settings/tabs are presented. Exercise Save, Revert and Esc/Cancel.
-7. Change to Custom + another Theme/Background + another Manager default view, preview both renderers, Save, and verify the next Manager launch uses the saved view.
-8. With a disposable malformed config, launch an interactive recovery path. Verify the original malformed file remains unchanged until explicit Save.
-9. With a disposable future `configVersion`, verify the newer file is not silently downgraded/overwritten before explicit Save.
-10. Run `--reset`. Verify the confirmation clearly states that Codex auth, Codex sessions/history and Local Session Archive SQLite data are preserved. Cancel once and confirm nothing changes. Confirm again, enter Config, then Esc without Save and confirm nothing changes. Finally Save defaults and verify only Monitor preferences reset; Archive background indexing is disabled if it had been enabled, while SQLite archive data remains.
-11. Run `--doctor`; verify output is local/sanitized and does not contain prompts, assistant responses, full tool output, tokens/secrets, or transcript contents. If Archive is enabled/degraded, verify the status is reported honestly rather than forced to READY.
-12. Run `--repair` while Archive is Disabled; verify it is a no-op. On disposable Archive-enabled state, verify it repairs only Monitor-owned Archive hook integration and wakes reconcile; unrelated Codex hooks/plugins, auth, sessions and archive data must remain untouched.
-13. Pipe/redirect non-interactive control commands where applicable; verify no alternate-screen wizard opens and nothing waits for a keypress.
-14. Press Ctrl+C during onboarding/config and verify raw mode, cursor and alternate screen are restored cleanly.
-15. Check narrow, normal and wide terminal sizes for onboarding, Config and Preview readability/no wrapping corruption.
-16. Toggle Archive ON/OFF through Config on disposable data and verify lifecycle effects happen only after Save; Cancel/Revert must not change service/hook state.
-17. If Archive runtime is intentionally degraded, verify Config/Doctor reports ATTENTION/degraded state instead of silently changing the saved preference.
+Observed functional evidence includes:
 
-Linux/macOS real-machine behavior remains **UNVERIFIED PLATFORM** unless tested on actual target machines. Do not infer PASS from Windows or fake adapters.
+- clean first-run onboarding opened before Codex and the real-console Enter/Esc path was exercised;
+- a Windows TTY blocker was found during manual testing, fixed with portable key decoding, and re-tested successfully;
+- Session Manager real-console Enter/Esc behavior was confirmed after the fix;
+- Manager shared Config remained reachable and preview/navigation input continued to work after the input fix;
+- `npm run verify:phase12` was re-run after the TTY fix and reported PASS on implementation head `245b49f740f2e238654abd690d8905f6a27fc817`;
+- standalone Config / Reset were included in the final focused manual closeout with no new blocker reported;
+- `node ./src/cli/codexm.js --doctor` reported local/sanitized state without transcript/prompt/tool-output/secrets and honestly represented Archive as Disabled with unavailable SQLite health;
+- `node ./src/cli/codexm.js --repair` while Archive was Disabled returned a safe no-op: `Archive: Disabled; no Monitor-owned hook/service repair was needed.`;
+- no destructive Codex auth/session/archive-data action was observed during the closeout.
+
+## Close decision
+
+Phase 12 blocking functional/manual gate is accepted with:
+
+- **BLOCKER = 0**
+- **P0 = 0**
+
+The following remain intentionally outside this close decision and continue into Phase 13/final cross-phase review:
+
+- broad visual/copy/localization polish;
+- exhaustive narrow/normal/wide terminal visual review;
+- packaging/install/PATH/signing/update/uninstall productization;
+- real-machine Linux/macOS validation beyond existing adapter/unit coverage;
+- final Phase 11-1/12 cross-phase Archive/service/performance review.
+
+If a later Phase 13 test exposes a correctness, data-loss, privacy, destructive-safety, or terminal-restoration regression, reopen the owning phase rather than treating this closeout as a waiver.
