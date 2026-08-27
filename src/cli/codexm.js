@@ -3,9 +3,9 @@ import process from 'node:process';
 import { kickArchiveService } from '../archive/integration.js';
 import { detectAuth } from '../core/auth.js';
 import { createCurrentRunState, withDetectedAuth } from '../core/state.js';
-import { applyRuntimeOverrides, DEFAULT_CONFIG } from '../config/schema.js';
+import { applyRuntimeOverrides, DEFAULT_CONFIG, normalizeConfig } from '../config/schema.js';
 import { configureMonitor } from '../config/configure.js';
-import { getMonitorConfigPath, loadMonitorConfig, resetMonitorConfig } from '../config/store.js';
+import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
@@ -25,6 +25,8 @@ function printHelp() {
   process.stdout.write('Monitor options:\n');
   process.stdout.write('  --help                        Show Monitor help\n');
   process.stdout.write('  --manager                     Open Session Manager\n');
+  process.stdout.write('  --manager-view operations|table|charts|auto\n');
+  process.stdout.write('                                Override Manager view for this run only\n');
   process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
   process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
@@ -32,8 +34,8 @@ function printHelp() {
   process.stdout.write('  --theme color|mono|matrix\n');
   process.stdout.write('  --background terminal|black|dark\n');
   process.stdout.write('  --lang vi|en\n');
-  process.stdout.write('  --configure                   Interactive Monitor setup\n');
-  process.stdout.write('  --reset                       Reset Monitor config and rerun setup\n');
+  process.stdout.write('  --configure                   Open the shared Monitor Config screen\n');
+  process.stdout.write('  --reset                       Open Config with Monitor defaults; saves only on explicit Save\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
   process.stdout.write('  --demo                        Render passive Live HUD demo\n');
@@ -63,7 +65,8 @@ async function main() {
         platformAdapter,
         theme: config.theme,
         monitorConfig: loaded.config,
-        configPath
+        configPath,
+        initialViewMode: config.manager?.view ?? 'operations'
       })
       : await runSessionManagerRuntime({ platformAdapter });
     return result.code;
@@ -78,17 +81,15 @@ async function main() {
   if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
   if (parsed.action === 'configure') {
     const result = await configureMonitor({ currentConfig: loaded.config, previousConfig: loaded.config, filePath: configPath });
-    return result.saved ? 0 : 1;
+    return result.code;
   }
   if (parsed.action === 'reset') {
-    const previousConfig = loaded.config;
-    const reset = resetMonitorConfig({ filePath: configPath });
     const result = await configureMonitor({
-      currentConfig: reset ?? DEFAULT_CONFIG,
-      previousConfig,
+      currentConfig: normalizeConfig(DEFAULT_CONFIG),
+      previousConfig: loaded.config,
       filePath: configPath
     });
-    return result.saved ? 0 : 1;
+    return result.code;
   }
   if (parsed.action === 'demo') {
     const width = Math.max(20, process.stdout.columns || 100);
@@ -134,7 +135,7 @@ async function main() {
     }
   }
 
-  let codexArgsFinal = codexArgs;
+  const codexArgsFinal = codexArgs;
   let state = createCurrentRunState({ startedAtMs: Date.now() });
   const auth = detectAuth({ override: parsed.auth, codexPath });
   state = withDetectedAuth(state, auth);
