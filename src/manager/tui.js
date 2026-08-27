@@ -13,7 +13,12 @@ import { nextTimelineFilter } from './timeline.js';
 import { SelectedActivityPreview } from './activity-preview.js';
 import { activityPreviewCapacity } from './activity-preview-capacity.js';
 import { SessionStorageSummaryCache, summarizeSelectedSessions } from './storage-summary.js';
-import { deleteSelectedSessions } from './delete-safety.js';
+import {
+  deleteManagerSessions,
+  managerDeleteRowEligible,
+  MANAGER_DELETE_SCOPE,
+  nextManagerDeleteScope
+} from './storage-delete.js';
 import { renderClearConfirmation, renderStorageManager } from './storage-render.js';
 import { ManagerConfigController } from './config-controller.js';
 import { renderManagerConfig } from './config-render.js';
@@ -37,9 +42,9 @@ function managerPaintMode(theme, capability) {
   return capability;
 }
 
-function clearReportStatus(report) {
+function deleteReportStatus(report) {
   if (!report) return '';
-  const parts = [`Cleared ${report.deleted?.length ?? 0}`];
+  const parts = [`Deleted ${report.deletedIds?.length ?? 0}`];
   if (report.rejected?.length) parts.push(`protected ${report.rejected.length}`);
   if (report.errors?.length) parts.push(`failed ${report.errors.length}`);
   return parts.join(' · ');
@@ -105,6 +110,7 @@ export async function runSessionManagerTui({
   let storageOpen = false;
   let configOpen = false;
   let storageCursorIndex = 0;
+  let deleteScope = MANAGER_DELETE_SCOPE.RAW;
   let clearConfirming = false;
   let clearStatus = '';
   const clearSelectedIds = new Set();
@@ -158,7 +164,7 @@ export async function runSessionManagerTui({
     storageCursorIndex = match >= 0 ? match : Math.max(0, Math.min(storageCursorIndex, list.length - 1));
   };
   const pruneClearSelection = () => {
-    const valid = new Set(rows.filter((row) => row?.state === 'ENDED').map((row) => row.id));
+    const valid = new Set(rows.filter((row) => managerDeleteRowEligible(row, deleteScope)).map((row) => row.id));
     for (const id of clearSelectedIds) if (!valid.has(id)) clearSelectedIds.delete(id);
   };
 
@@ -175,7 +181,7 @@ export async function runSessionManagerTui({
     if (configOpen) {
       frame = renderManagerConfig({ controller: configController, width, height, mode: colorMode });
     } else if (clearConfirming) {
-      frame = renderClearConfirmation({ rows, selectedIds: clearSelectedIds, selectedSummary, width, height, mode: colorMode });
+      frame = renderClearConfirmation({ rows, selectedIds: clearSelectedIds, selectedSummary, deleteScope, width, height, mode: colorMode });
     } else if (storageOpen) {
       frame = renderStorageManager({
         summary: storageSummary,
@@ -183,6 +189,7 @@ export async function runSessionManagerTui({
         selectedIds: clearSelectedIds,
         rows: currentStorageRows(),
         cursorIndex: storageCursorIndex,
+        deleteScope,
         width,
         height,
         mode: colorMode,
@@ -319,18 +326,18 @@ export async function runSessionManagerTui({
 
   const toggleClearSelection = (row) => {
     if (!row) return;
-    if (row.state !== 'ENDED') {
-      clearStatus = `${row.state ?? 'UNKNOWN'} session is protected`;
+    if (!managerDeleteRowEligible(row, deleteScope)) {
+      clearStatus = `${row.state ?? 'UNKNOWN'} session is protected in ${deleteScope.toUpperCase()} mode`;
       return;
     }
     if (clearSelectedIds.has(row.id)) clearSelectedIds.delete(row.id);
     else clearSelectedIds.add(row.id);
-    clearStatus = `${clearSelectedIds.size} ENDED selected`;
+    clearStatus = `${clearSelectedIds.size} selected · ${deleteScope.toUpperCase()}`;
   };
 
-  const selectEnded = (mode, sourceRows = null) => {
+  const selectEligible = (mode, sourceRows = null) => {
     const source = Array.isArray(sourceRows) ? sourceRows : visibleDashboardRows();
-    const eligible = source.filter((row) => row?.state === 'ENDED');
+    const eligible = source.filter((row) => managerDeleteRowEligible(row, deleteScope));
     if (mode === 'none') clearSelectedIds.clear();
     else if (mode === 'all') for (const row of eligible) clearSelectedIds.add(row.id);
     else if (mode === 'invert') {
@@ -339,7 +346,7 @@ export async function runSessionManagerTui({
         else clearSelectedIds.add(row.id);
       }
     }
-    clearStatus = `${clearSelectedIds.size} ENDED selected`;
+    clearStatus = `${clearSelectedIds.size} selected · ${deleteScope.toUpperCase()}`;
   };
 
   const confirmClear = async () => {
@@ -350,15 +357,25 @@ export async function runSessionManagerTui({
       sessions: core.index,
       previousAssociations: tracker.processAssociations
     });
-    const report = deleteSelectedSessions(rows, clearSelectedIds, { sessionsPath, fsRef, processEvidence: freshEvidence });
-    for (const item of report.deleted) clearSelectedIds.delete(item.id);
-    clearStatus = clearReportStatus(report);
+    const report = deleteManagerSessions(rows, clearSelectedIds, {
+      scope: deleteScope,
+      sessionsPath,
+      fsRef,
+      processEvidence: freshEvidence
+    });
+    for (const id of report.deletedIds ?? []) clearSelectedIds.delete(id);
+    clearStatus = deleteReportStatus(report);
     clearConfirming = false;
     storageOpen = true;
+
     core.discover({ processEvidence: freshEvidence, refreshKnownMetadata: true });
-    rows = core.rows();
-    tracker.cachedRows = rows;
-    tracker.hasCachedRows = true;
+    tracker.lastArchiveRefreshAtMs = Number.NEGATIVE_INFINITY;
+    tracker.lastArchiveOverlayAtMs = Number.NEGATIVE_INFINITY;
+    tracker.archiveLiveOverlay?.reset?.();
+    tracker.hasCachedRows = false;
+    const refreshed = await tracker.tick();
+    rows = refreshed.rows ?? core.rows();
+    archiveStatus = managerArchiveStatusFromResult(refreshed);
     storageSummaryCache.invalidate();
     clampStorageCursor();
     draw(true);
@@ -394,7 +411,7 @@ export async function runSessionManagerTui({
     if (clearConfirming) {
       if (action === 'delete-cancel') {
         clearConfirming = false;
-        clearStatus = 'Clear cancelled';
+        clearStatus = 'Delete cancelled';
         draw(true);
       } else if (action === 'delete-confirm') {
         await confirmClear();
@@ -431,17 +448,22 @@ export async function runSessionManagerTui({
         toggleClearSelection(currentStorageRow());
         draw(false);
       } else if (action === 'select-none') {
-        selectEnded('none', storageRows);
+        selectEligible('none', storageRows);
         draw(false);
       } else if (action === 'select-all') {
-        selectEnded('all', storageRows);
+        selectEligible('all', storageRows);
         draw(false);
       } else if (action === 'select-invert') {
-        selectEnded('invert', storageRows);
+        selectEligible('invert', storageRows);
         draw(false);
+      } else if (action === 'delete-scope') {
+        deleteScope = nextManagerDeleteScope(deleteScope);
+        pruneClearSelection();
+        clearStatus = `Delete mode · ${deleteScope.toUpperCase()}`;
+        draw(true);
       } else if (action === 'delete-selected') {
         if (clearSelectedIds.size) clearConfirming = true;
-        else clearStatus = 'No ENDED sessions selected';
+        else clearStatus = `No eligible sessions selected for ${deleteScope.toUpperCase()}`;
         draw(true);
       }
       return;
@@ -558,7 +580,7 @@ export async function runSessionManagerTui({
     else if (action === 'storage-view') {
       syncStorageCursorToDashboard();
       storageOpen = true;
-      clearStatus = '';
+      clearStatus = `Delete mode · ${deleteScope.toUpperCase()}`;
       forceDraw = true;
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
@@ -627,6 +649,7 @@ export async function runSessionManagerTui({
       clearSelectedIds,
       clearStatus,
       storageCursorIndex,
+      deleteScope,
       configOpen,
       archiveInspectOpen,
       configDirty: configController.dirty,
