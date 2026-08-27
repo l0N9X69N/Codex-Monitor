@@ -8,25 +8,44 @@ function finiteLimit(value) {
   return Number.isSafeInteger(number) && number >= 0 ? number : Number.POSITIVE_INFINITY;
 }
 
-export async function scanArchiveSources(rootPath, {
+function scanError(error, target, operation) {
+  return {
+    path: target,
+    operation,
+    code: error?.code ?? null,
+    error: error?.message ?? String(error ?? 'archive source scan failed')
+  };
+}
+
+export async function scanArchiveSourcesWithHealth(rootPath, {
   fsRef = fs,
   maxFiles = Number.POSITIVE_INFINITY
 } = {}) {
-  if (!rootPath) return [];
+  if (!rootPath) return { sources: [], complete: true, errors: [], limited: false };
   const root = path.resolve(rootPath);
   const limit = finiteLimit(maxFiles);
-  if (limit === 0) return [];
+  if (limit === 0) return { sources: [], complete: false, errors: [], limited: true };
 
   const found = [];
+  const errors = [];
   const stack = [root];
+  let limited = false;
 
-  while (stack.length && found.length < limit) {
+  while (stack.length) {
+    if (found.length >= limit) {
+      limited = true;
+      break;
+    }
+
     const current = stack.pop();
     let entries;
     try {
       entries = await fsRef.readdir(current, { withFileTypes: true });
     } catch (error) {
-      if (current === root && error?.code === 'ENOENT') return [];
+      if (current === root && error?.code === 'ENOENT') {
+        return { sources: [], complete: true, errors: [], limited: false };
+      }
+      errors.push(scanError(error, current, 'readdir'));
       continue;
     }
 
@@ -47,9 +66,14 @@ export async function scanArchiveSources(rootPath, {
           size: Number(stat.size),
           mtimeMs: Number(stat.mtimeMs)
         });
-      } catch {}
+      } catch (error) {
+        errors.push(scanError(error, fullPath, 'stat'));
+      }
 
-      if (found.length >= limit) break;
+      if (found.length >= limit) {
+        limited = true;
+        break;
+      }
     }
   }
 
@@ -57,5 +81,15 @@ export async function scanArchiveSources(rootPath, {
     const byMtime = Number(right.mtimeMs ?? 0) - Number(left.mtimeMs ?? 0);
     return byMtime || left.filePath.localeCompare(right.filePath);
   });
-  return found;
+
+  return {
+    sources: found,
+    complete: errors.length === 0 && !limited,
+    errors,
+    limited
+  };
+}
+
+export async function scanArchiveSources(rootPath, options = {}) {
+  return (await scanArchiveSourcesWithHealth(rootPath, options)).sources;
 }
