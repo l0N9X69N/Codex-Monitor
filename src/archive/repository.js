@@ -10,7 +10,7 @@ function integer(value, fallback = null) {
 function timestamp(value, fallback) {
   if (value === null || value === undefined || value === '') return fallback;
   const number = Number(value);
-  return Number.isFinite(number) ? Math.trunc(Number(value)) : fallback;
+  return Number.isFinite(number) ? Math.trunc(number) : fallback;
 }
 
 function changes(result) {
@@ -79,9 +79,9 @@ function toolGroup(event) {
   const leaf = name.split(/[.:/\\]/).filter(Boolean).at(-1) ?? name;
   if (leaf === 'spawn_agent') return 'agent';
   if (rawType.includes('patch_apply') || /(^|[_:/])(read|write|edit)_file($|[_:/])/.test(name) || name.includes('apply_patch')) return 'file';
-  if (rawType.includes('exec_command') || rawType.includes('local_shell') || name.includes('shell') || name.includes('exec_command')) return 'shell';
-  if (rawType.includes('web_search') || name.includes('web_search')) return 'web';
-  if (rawType.includes('image_generation') || name.includes('image_generation')) return 'image';
+  if (rawType.includes('exec_command') || rawType.includes('local_shell') || ['exec', 'shell', 'exec_command'].includes(leaf) || name.includes('shell')) return 'shell';
+  if (rawType.includes('web_search') || leaf === 'web_search') return 'web';
+  if (rawType.includes('image_generation') || leaf === 'image_generation') return 'image';
   if (rawType.includes('mcp_tool_call')) return 'mcp';
   return 'tool';
 }
@@ -99,8 +99,8 @@ export class ArchiveRepository {
     for (const pragma of ARCHIVE_PRAGMAS) this.db.exec(pragma);
     const nowMs = timestamp(this.now(), Date.now());
     this.db.exec(archiveBootstrapSql(nowMs));
-    this.db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at, status) VALUES (?, ?, ?)')
-      .run(ARCHIVE_SCHEMA_VERSION, nowMs, 'applied');
+    const insertMigration = this.db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at, status) VALUES (?, ?, ?)');
+    for (let version = 1; version <= ARCHIVE_SCHEMA_VERSION; version += 1) insertMigration.run(version, nowMs, 'applied');
     this.db.prepare('UPDATE archive_meta SET schema_version = ? WHERE singleton_id = 1').run(ARCHIVE_SCHEMA_VERSION);
     return this;
   }
