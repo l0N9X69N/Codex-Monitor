@@ -7,6 +7,7 @@ import { monitorDataDir } from '../platform/common.js';
 
 export const ARCHIVE_SERVICE_LOCK_FILENAME = 'archive-service.lock';
 export const ARCHIVE_SERVICE_WAKE_FILENAME = 'archive-service.wake';
+export const ARCHIVE_SERVICE_STOP_FILENAME = 'archive-service.stop';
 export const ARCHIVE_SERVICE_ENTRY_PATH = fileURLToPath(new URL('./service-entry.js', import.meta.url));
 
 function resolvedDataDir({ dataDir = null, ...pathOptions } = {}) {
@@ -18,7 +19,8 @@ export function getArchiveServicePaths(options = {}) {
   return {
     dataDir,
     lockPath: path.join(dataDir, ARCHIVE_SERVICE_LOCK_FILENAME),
-    wakePath: path.join(dataDir, ARCHIVE_SERVICE_WAKE_FILENAME)
+    wakePath: path.join(dataDir, ARCHIVE_SERVICE_WAKE_FILENAME),
+    stopPath: path.join(dataDir, ARCHIVE_SERVICE_STOP_FILENAME)
   };
 }
 
@@ -37,6 +39,19 @@ function parseLock(raw) {
   }
 }
 
+function parseStopRequest(raw) {
+  try {
+    const value = JSON.parse(String(raw));
+    if (!value?.targetInstanceId) return null;
+    return {
+      targetInstanceId: String(value.targetInstanceId),
+      requestedAt: Number.isFinite(Number(value.requestedAt)) ? Math.trunc(Number(value.requestedAt)) : null
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function readArchiveServiceLock({
   lockPath = null,
   fsRef = fs,
@@ -45,6 +60,20 @@ export function readArchiveServiceLock({
   const resolvedPath = lockPath ? path.resolve(lockPath) : getArchiveServicePaths(pathOptions).lockPath;
   try {
     return parseLock(fsRef.readFileSync(resolvedPath, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export function readArchiveServiceStopRequest({
+  stopPath = null,
+  fsRef = fs,
+  ...pathOptions
+} = {}) {
+  const resolvedPath = stopPath ? path.resolve(stopPath) : getArchiveServicePaths(pathOptions).stopPath;
+  try {
+    return parseStopRequest(fsRef.readFileSync(resolvedPath, 'utf8'));
   } catch (error) {
     if (error?.code === 'ENOENT') return null;
     throw error;
@@ -165,6 +194,65 @@ export function wakeArchiveService({
   fsRef.mkdirSync(path.dirname(resolvedWakePath), { recursive: true, mode: 0o700 });
   fsRef.writeFileSync(resolvedWakePath, `${Math.trunc(Number(now()))}\n`, { encoding: 'utf8', mode: 0o600 });
   return resolvedWakePath;
+}
+
+export function requestArchiveServiceStop({
+  dataDir = null,
+  stopPath = null,
+  fsRef = fs,
+  processRef = process,
+  now = () => Date.now(),
+  env = process.env
+} = {}) {
+  const paths = getArchiveServicePaths({ dataDir, env });
+  const status = getArchiveServiceStatus({
+    dataDir: paths.dataDir,
+    lockPath: paths.lockPath,
+    fsRef,
+    processRef
+  });
+  if (!status.running || !status.owner?.instanceId) {
+    return {
+      requested: false,
+      running: false,
+      reason: status.owner ? 'stale-lock' : 'not-running',
+      owner: status.owner ?? null
+    };
+  }
+
+  const resolvedStopPath = stopPath ? path.resolve(stopPath) : paths.stopPath;
+  fsRef.mkdirSync(path.dirname(resolvedStopPath), { recursive: true, mode: 0o700 });
+  const request = {
+    targetInstanceId: status.owner.instanceId,
+    requestedAt: Math.trunc(Number(now()))
+  };
+  fsRef.writeFileSync(resolvedStopPath, `${JSON.stringify(request)}\n`, { encoding: 'utf8', mode: 0o600 });
+  return {
+    requested: true,
+    running: true,
+    reason: 'stop-requested',
+    owner: status.owner,
+    stopPath: resolvedStopPath
+  };
+}
+
+export function consumeArchiveServiceStopRequest({
+  instanceId,
+  stopPath = null,
+  fsRef = fs,
+  ...pathOptions
+} = {}) {
+  if (!instanceId) return false;
+  const paths = getArchiveServicePaths(pathOptions);
+  const resolvedStopPath = stopPath ? path.resolve(stopPath) : paths.stopPath;
+  const request = readArchiveServiceStopRequest({ stopPath: resolvedStopPath, fsRef });
+  if (!request || request.targetInstanceId !== String(instanceId)) return false;
+  try {
+    fsRef.unlinkSync(resolvedStopPath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return true;
 }
 
 export function ensureArchiveService({
