@@ -1,12 +1,19 @@
 import { kickArchiveService } from '../archive/integration.js';
 import { loadMonitorConfig } from '../config/store.js';
-import { mergeManagerArchiveRows } from './archive-index.js';
+import {
+  applyManagerArchiveOverlay,
+  ManagerArchiveLiveOverlay,
+  managerArchiveOverlayPathKey
+} from './archive-live-overlay.js';
+import { mergeManagerArchiveRows } from './archive-row-merge.js';
 import { readManagerArchiveDetail } from './archive-detail.js';
 import { ManagerArchiveVerifiedIndex } from './archive-verified-index.js';
 import { buildProcessEvidence } from './session-core.js';
 
 const REAL_MANAGER_PLATFORMS = new Set(['win32', 'linux', 'darwin']);
 const DEFAULT_ARCHIVE_WAKE_INTERVAL_MS = 5000;
+const DEFAULT_ARCHIVE_REFRESH_INTERVAL_MS = 2500;
+const DEFAULT_ARCHIVE_OVERLAY_INTERVAL_MS = 500;
 
 function defaultArchiveIndex(core, platformAdapter) {
   if (!core?.sessionsPath || !REAL_MANAGER_PLATFORMS.has(platformAdapter?.id)) return null;
@@ -33,6 +40,9 @@ export class SessionManagerTracker {
     archiveIndex = undefined,
     archiveWake = undefined,
     archiveWakeIntervalMs = DEFAULT_ARCHIVE_WAKE_INTERVAL_MS,
+    archiveRefreshIntervalMs = DEFAULT_ARCHIVE_REFRESH_INTERVAL_MS,
+    archiveOverlayIntervalMs = DEFAULT_ARCHIVE_OVERLAY_INTERVAL_MS,
+    archiveLiveOverlay = undefined,
     now = () => Date.now(),
     discoveryIntervalMs = 5000,
     coldSweepIntervalMs = 60_000,
@@ -51,10 +61,18 @@ export class SessionManagerTracker {
       ? (usesDefaultArchiveIndex ? kickArchiveService : null)
       : (typeof archiveWake === 'function' ? archiveWake : null);
     this.archiveWakeIntervalMs = Math.max(1000, Number(archiveWakeIntervalMs) || DEFAULT_ARCHIVE_WAKE_INTERVAL_MS);
+    this.archiveRefreshIntervalMs = Math.max(500, Number(archiveRefreshIntervalMs) || DEFAULT_ARCHIVE_REFRESH_INTERVAL_MS);
+    this.archiveOverlayIntervalMs = Math.max(100, Number(archiveOverlayIntervalMs) || DEFAULT_ARCHIVE_OVERLAY_INTERVAL_MS);
+    this.archiveLiveOverlay = archiveLiveOverlay === undefined
+      ? new ManagerArchiveLiveOverlay()
+      : archiveLiveOverlay;
     this.archivePrimed = false;
     this.archiveSnapshot = this.archiveIndex?.lastSnapshot ?? null;
+    this.archiveOverlays = new Map();
     this.lastArchiveWakeAtMs = Number.NEGATIVE_INFINITY;
     this.lastArchiveWake = null;
+    this.lastArchiveRefreshAtMs = Number.NEGATIVE_INFINITY;
+    this.lastArchiveOverlayAtMs = Number.NEGATIVE_INFINITY;
     this.now = now;
     this.discoveryIntervalMs = Math.max(1000, Number(discoveryIntervalMs) || 5000);
     this.coldSweepIntervalMs = Math.max(this.discoveryIntervalMs, Number(coldSweepIntervalMs) || 60_000);
@@ -147,10 +165,16 @@ export class SessionManagerTracker {
     return this.archiveSnapshot?.available ? (this.archiveSnapshot.rows ?? []) : [];
   }
 
-  mergedRows() {
-    const rawRows = this.core.rows();
+  archiveRowsWithOverlay() {
+    return this.archiveRows().map((row) => {
+      const key = managerArchiveOverlayPathKey(row?.filePath ?? row?.sourcePath);
+      return applyManagerArchiveOverlay(row, key ? this.archiveOverlays.get(key) : null);
+    });
+  }
+
+  mergedRows(rawRows = this.core.rows()) {
     return this.archiveSnapshot?.available
-      ? mergeManagerArchiveRows(rawRows, this.archiveRows())
+      ? mergeManagerArchiveRows(rawRows, this.archiveRowsWithOverlay())
       : rawRows;
   }
 
@@ -178,6 +202,28 @@ export class SessionManagerTracker {
       };
     }
     return true;
+  }
+
+  async maybeRefreshArchive(nowMs) {
+    if (!this.archiveEnabled()) return false;
+    if (nowMs - this.lastArchiveRefreshAtMs < this.archiveRefreshIntervalMs) return false;
+    this.lastArchiveRefreshAtMs = nowMs;
+    this.archiveSnapshot = await this.archiveIndex.refresh();
+    this.maybeWakeArchive(nowMs);
+    return true;
+  }
+
+  async maybeUpdateArchiveOverlay(nowMs, rawRows) {
+    if (!this.archiveSnapshot?.available || !this.archiveLiveOverlay?.update) return false;
+    if (nowMs - this.lastArchiveOverlayAtMs < this.archiveOverlayIntervalMs) return false;
+    this.lastArchiveOverlayAtMs = nowMs;
+    try {
+      const result = await this.archiveLiveOverlay.update(rawRows, this.archiveRows());
+      this.archiveOverlays = result?.overlays instanceof Map ? result.overlays : new Map();
+      return Boolean(result?.changed);
+    } catch {
+      return false;
+    }
   }
 
   archiveResultFields() {
@@ -221,6 +267,8 @@ export class SessionManagerTracker {
           knownRefreshed: false,
           summariesTailed: false,
           selectedTailed: false,
+          archiveRefreshed: false,
+          archiveOverlayChanged: false,
           sessions: this.core.index,
           rows: this.cachedRows,
           selected: null,
@@ -232,11 +280,7 @@ export class SessionManagerTracker {
       }
     }
 
-    if (this.archiveEnabled()) {
-      this.archiveSnapshot = await this.archiveIndex.refresh();
-      this.maybeWakeArchive(nowMs);
-    }
-
+    const archiveRefreshed = await this.maybeRefreshArchive(nowMs);
     const discoveryDue = nowMs - this.lastDiscoveryAtMs >= this.discoveryIntervalMs;
     const firstDiscovery = discoveryDue && this.core.index.length === 0;
     const coldSweepDue = nowMs - this.lastColdSweepAtMs >= this.coldSweepIntervalMs;
@@ -289,9 +333,19 @@ export class SessionManagerTracker {
       selectedTailed = Boolean(selectedResult?.changed || selectedResult?.reset || selectedResult?.error);
     }
 
-    const changed = firstDiscovery || discovered || coldSwept || knownRefreshed || summariesTailed || selectedTailed || processPolled || this.archiveEnabled();
+    const rawRows = this.core.rows();
+    const archiveOverlayChanged = await this.maybeUpdateArchiveOverlay(nowMs, rawRows);
+    const changed = firstDiscovery
+      || discovered
+      || coldSwept
+      || knownRefreshed
+      || summariesTailed
+      || selectedTailed
+      || processPolled
+      || archiveRefreshed
+      || archiveOverlayChanged;
     if (changed || !this.hasCachedRows) {
-      this.cachedRows = this.mergedRows();
+      this.cachedRows = this.mergedRows(rawRows);
       this.hasCachedRows = true;
     }
 
@@ -304,6 +358,8 @@ export class SessionManagerTracker {
       knownRefreshed,
       summariesTailed,
       selectedTailed,
+      archiveRefreshed,
+      archiveOverlayChanged,
       sessions: this.core.index,
       rows: this.cachedRows,
       selected: this.core.selectedModel(),
@@ -315,6 +371,7 @@ export class SessionManagerTracker {
   }
 
   close() {
+    try { this.archiveLiveOverlay?.reset?.(); } catch {}
     try { this.archiveIndex?.close?.(); } catch {}
   }
 }
