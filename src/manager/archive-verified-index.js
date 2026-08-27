@@ -41,7 +41,7 @@ function normalizeServiceStatus(status, metadataInstanceId = null) {
 export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
   constructor({
     scanSourcesWithHealth = scanArchiveSourcesWithHealth,
-    readServiceStatus = getArchiveServiceStatus,
+    readServiceStatus = undefined,
     ...options
   } = {}) {
     let lastScan = { sources: [], complete: false, errors: [], limited: false };
@@ -49,9 +49,12 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
       lastScan = normalizedScan(await scanSourcesWithHealth(rootPath));
       return lastScan.sources;
     };
+    const usesDefaultDatabase = options.openDatabase === undefined;
     super({ ...options, scanSources });
     this.scanSourcesWithHealth = scanSourcesWithHealth;
-    this.readServiceStatus = typeof readServiceStatus === 'function' ? readServiceStatus : null;
+    this.readServiceStatus = readServiceStatus === undefined
+      ? (usesDefaultDatabase ? getArchiveServiceStatus : null)
+      : (typeof readServiceStatus === 'function' ? readServiceStatus : null);
     this.lastVerifiedScan = lastScan;
     this.lastServiceStatus = {
       checked: false,
