@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { ARCHIVE_PARSER_VERSION, ARCHIVE_SYNC_STATE } from '../archive/constants.js';
-import { openArchiveDatabase } from '../archive/database.js';
+import { openArchiveDatabaseReadOnly } from '../archive/database.js';
 import { ArchiveHealthStore } from '../archive/health-store.js';
 import { scanArchiveSources } from '../archive/source-scan.js';
 import { classifyArchiveSyncState } from '../archive/sync-state.js';
@@ -243,7 +243,7 @@ export class ManagerArchiveIndex {
   constructor({
     config = null,
     sessionsPath = null,
-    openDatabase = openArchiveDatabase,
+    openDatabase = openArchiveDatabaseReadOnly,
     scanSources = scanArchiveSources,
     HealthStore = ArchiveHealthStore,
     parserVersion = ARCHIVE_PARSER_VERSION
