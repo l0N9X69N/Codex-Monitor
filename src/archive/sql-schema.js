@@ -167,6 +167,21 @@ CREATE TABLE IF NOT EXISTS archive_suppressions (
 );
 CREATE INDEX IF NOT EXISTS idx_archive_suppressions_session ON archive_suppressions(session_id);
 
+CREATE TRIGGER IF NOT EXISTS trg_archive_suppressed_session_insert
+BEFORE INSERT ON sessions
+WHEN NEW.source_path IS NOT NULL
+  AND EXISTS (SELECT 1 FROM archive_suppressions WHERE source_path = NEW.source_path)
+BEGIN
+  SELECT RAISE(ABORT, 'archive source suppressed');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_archive_suppressed_ingest_insert
+BEFORE INSERT ON ingest_state
+WHEN EXISTS (SELECT 1 FROM archive_suppressions WHERE source_path = NEW.source_path)
+BEGIN
+  SELECT RAISE(IGNORE);
+END;
+
 CREATE TABLE IF NOT EXISTS archive_meta (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   schema_version INTEGER NOT NULL,
