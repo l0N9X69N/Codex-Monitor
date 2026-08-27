@@ -72,12 +72,17 @@ async function main() {
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
   if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
   if (parsed.action === 'configure') {
-    const result = await configureMonitor({ currentConfig: loaded.config, filePath: configPath });
+    const result = await configureMonitor({ currentConfig: loaded.config, previousConfig: loaded.config, filePath: configPath });
     return result.saved ? 0 : 1;
   }
   if (parsed.action === 'reset') {
+    const previousConfig = loaded.config;
     const reset = resetMonitorConfig({ filePath: configPath });
-    const result = await configureMonitor({ currentConfig: reset ?? DEFAULT_CONFIG, filePath: configPath });
+    const result = await configureMonitor({
+      currentConfig: reset ?? DEFAULT_CONFIG,
+      previousConfig,
+      filePath: configPath
+    });
     return result.saved ? 0 : 1;
   }
   if (parsed.action === 'demo') {
