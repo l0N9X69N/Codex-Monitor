@@ -43,13 +43,15 @@ export async function runFirstRunOnboarding({
   save,
   applyArchiveEffects,
   controller = null,
-  colorCapability = detectHistoryColorMode()
+  colorCapability = detectHistoryColorMode(),
+  notice = ''
 } = {}) {
   if (!stdin?.isTTY || !stdout?.isTTY) {
     return { code: 0, saved: false, cancelled: false, skipped: true, config: currentConfig, error: null };
   }
 
   const activeController = controller ?? new OnboardingController({ currentConfig, previousConfig, filePath, save, applyArchiveEffects });
+  if (notice) activeController.status = notice;
   const guard = new TerminalGuard({ stdin, stdout });
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
   let previewKind = null;
