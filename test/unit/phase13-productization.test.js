@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { kickArchiveService } from '../../src/archive/integration.js';
 import { compareVersions, checkForUpdates } from '../../src/product/update.js';
 import { shouldCheckForUpdates, scheduleBackgroundUpdateCheck, UPDATE_CHECK_INTERVAL_MS } from '../../src/product/update-scheduler.js';
-import { uninstallMonitorIntegration } from '../../src/product/uninstall.js';
+import { scheduleProductRemoval, uninstallMonitorIntegration } from '../../src/product/uninstall.js';
 import { PRODUCT_VERSION } from '../../src/product/meta.js';
 import { archiveDoctorReport, sanitizeArchiveError } from '../../src/runtime/archive-control.js';
 
@@ -128,6 +128,33 @@ test('uninstall removes only Monitor-owned integration and preserves all user da
     archiveDatabase: true,
     monitorConfig: true
   });
+});
+
+test('Windows product uninstall is deferred outside the running codexm process', () => {
+  let call = null;
+  let unrefCalls = 0;
+  const result = scheduleProductRemoval({
+    platform: 'win32',
+    parentPid: 4242,
+    scriptPath: 'C:\\CodexMonitor\\scripts\\uninstall.ps1',
+    spawnProcess(command, args, options) {
+      call = { command, args, options };
+      return { pid: 5000, once() {}, unref() { unrefCalls += 1; } };
+    }
+  });
+
+  assert.equal(result.scheduled, true);
+  assert.equal(result.pid, 5000);
+  assert.equal(call.command, 'powershell.exe');
+  assert.ok(call.args.includes('-IntegrationAlreadyClean'));
+  assert.ok(call.args.includes('4242'));
+  assert.equal(call.options.detached, true);
+  assert.equal(call.options.stdio, 'ignore');
+  assert.equal(unrefCalls, 1);
+
+  const otherPlatform = scheduleProductRemoval({ platform: 'linux', spawnProcess() { throw new Error('must not spawn'); } });
+  assert.equal(otherPlatform.scheduled, false);
+  assert.equal(otherPlatform.reason, 'package-manager-required');
 });
 
 test('package manifest exposes codexm and excludes local runtime data by allowlist', () => {
