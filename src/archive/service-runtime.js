@@ -25,6 +25,7 @@ export class ArchiveServiceRuntime {
     instanceId,
     now = () => Date.now(),
     waitForSignal = null,
+    shouldStop = () => false,
     activeDelayMs = ARCHIVE_SERVICE_DEFAULTS.activeDelayMs,
     stalledDelayMs = ARCHIVE_SERVICE_DEFAULTS.stalledDelayMs,
     safetySweepMs = ARCHIVE_SERVICE_DEFAULTS.safetySweepMs,
@@ -39,6 +40,7 @@ export class ArchiveServiceRuntime {
     this.instanceId = String(instanceId);
     this.now = now;
     this.waitForSignal = waitForSignal;
+    this.shouldStop = typeof shouldStop === 'function' ? shouldStop : () => false;
     this.activeDelayMs = positiveMs(activeDelayMs, ARCHIVE_SERVICE_DEFAULTS.activeDelayMs);
     this.stalledDelayMs = positiveMs(stalledDelayMs, ARCHIVE_SERVICE_DEFAULTS.stalledDelayMs);
     this.safetySweepMs = positiveMs(safetySweepMs, ARCHIVE_SERVICE_DEFAULTS.safetySweepMs);
@@ -67,8 +69,21 @@ export class ArchiveServiceRuntime {
     this.wake('stop');
   }
 
+  _stopRequested() {
+    if (this.stopped) return true;
+    try {
+      if (this.shouldStop()) {
+        this.stop();
+        return true;
+      }
+    } catch (error) {
+      try { this.onError(error); } catch {}
+    }
+    return this.stopped;
+  }
+
   async _wait(timeoutMs) {
-    if (this.stopped) return 'stop';
+    if (this._stopRequested()) return 'stop';
     if (this.pendingSignal) {
       const signal = this.pendingSignal;
       this.pendingSignal = null;
@@ -102,7 +117,7 @@ export class ArchiveServiceRuntime {
 
     this.health.markServiceStarted?.(this.instanceId);
     try {
-      while (!this.stopped) {
+      while (!this._stopRequested()) {
         let cycle = null;
         let cycleFailed = false;
         try {
@@ -115,7 +130,7 @@ export class ArchiveServiceRuntime {
           cycle = { pendingFileCount: 1, results: [] };
         }
         cycles += 1;
-        if (this.stopped) break;
+        if (this._stopRequested()) break;
 
         const progressed = !cycleFailed && cycleMadeProgress(cycle);
         if (progressed) lastActiveAt = Number(this.now());
@@ -129,7 +144,7 @@ export class ArchiveServiceRuntime {
           : this.safetySweepMs;
         const delay = Math.max(1, Math.min(baseDelay, remainingIdle));
         const signal = await this._wait(delay);
-        if (signal === 'stop' || this.stopped) break;
+        if (signal === 'stop' || this._stopRequested()) break;
         if (signal && signal !== 'timeout') lastActiveAt = Number(this.now());
         if (signal === 'timeout' && Number(this.now()) - lastActiveAt >= this.idleGraceMs) break;
       }
