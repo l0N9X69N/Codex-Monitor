@@ -173,19 +173,26 @@ test('multiple growing sessions update independently and retain LIVE briefly acr
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('only selected session is deep parsed and releaseSelection frees detail cache', () => {
+test('only selected session is deep parsed through bounded stream reads and releaseSelection frees detail cache', () => {
   const root = tempDir();
   const a = path.join(root, 'a.jsonl');
   const b = path.join(root, 'b.jsonl');
   fs.writeFileSync(a, sampleSession({ threadId: 'thread-a', cwd: 'C:/a' }));
   fs.writeFileSync(b, sampleSession({ threadId: 'thread-b', cwd: 'C:/b' }));
-  let reads = 0;
-  const fsRef = { ...fs, readFileSync: (...args) => { reads += 1; return fs.readFileSync(...args); } };
+  let streamReads = 0;
+  let fullReads = 0;
+  const fsRef = {
+    ...fs,
+    readSync: (...args) => { streamReads += 1; return fs.readSync(...args); },
+    readFileSync: (...args) => { fullReads += 1; return fs.readFileSync(...args); }
+  };
   const core = new SessionManagerCore({ sessionsPath: root, fsRef });
   const items = core.discover();
-  assert.equal(reads, 0);
+  const readsAfterDiscovery = streamReads;
+  assert.equal(fullReads, 0);
   const selected = core.select(items[0].id);
-  assert.equal(reads, 1);
+  assert.ok(streamReads > readsAfterDiscovery, 'selection must stream-read the selected session');
+  assert.equal(fullReads, 0, 'deep parser must not fall back to whole-file readFileSync');
   assert.equal(selected.normalized.session.threadId.provenance.source, PROVENANCE.OFFICIAL_HISTORY);
   assert.equal(items.filter((item) => item.parsed).length, 1);
   assert.equal(core.deep.cache.size, 1);
@@ -254,6 +261,12 @@ test('tracker separates discovery, process, known refresh and selected-tail cade
     processTree: [{ pid: 1, ppid: 0, name: 'codex.exe', command: 'codex resume thread-track', ageMs: 0 }]
   });
   const core = new SessionManagerCore({ sessionsPath: root, now: () => nowMs });
+  let tailCalls = 0;
+  const originalTailSelected = core.tailSelected.bind(core);
+  core.tailSelected = () => {
+    tailCalls += 1;
+    return originalTailSelected();
+  };
   const tracker = new SessionManagerTracker({
     core,
     platformAdapter: adapter,
@@ -288,13 +301,15 @@ test('tracker separates discovery, process, known refresh and selected-tail cade
   core.select(core.index[0].id);
   nowMs = 1300;
   result = await tracker.tick();
-  assert.equal(result.selectedTailed, true);
+  assert.equal(tailCalls, 1, 'selected-tail cadence must poll once when due');
+  assert.equal(result.selectedTailed, false, 'unchanged tail is not a changed-tail event');
   assert.ok(result.selected);
 
   nowMs = 2600;
   result = await tracker.tick();
   assert.equal(result.processPolled, true);
   assert.equal(processCalls(), 2);
+  assert.equal(tailCalls, 2, 'selected-tail cadence must continue independently of process cadence');
 
   nowMs = 5000;
   result = await tracker.tick();
