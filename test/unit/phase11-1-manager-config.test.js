@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../src/config/schema.js';
+import { ArchiveConfigPanel } from '../../src/manager/archive-config-panel.js';
 import {
   MANAGER_CONFIG_TABS,
   ManagerConfigController
@@ -14,22 +15,36 @@ function config(enabled = false) {
   });
 }
 
+function panel(overrides = {}) {
+  return new ArchiveConfigPanel({
+    readHealth: () => ({
+      serviceRunning: false,
+      hookInstalled: true,
+      hookComplete: true,
+      sqliteHealthy: true,
+      syncLabel: 'READY',
+      sessions: 3,
+      suppressions: 0,
+      pendingFiles: 0,
+      pendingBytes: 0,
+      display: { watcher: 'now', database: '12.0 KB', lastReconcile: 'now', pendingBytes: '0 B' }
+    }),
+    reconcile: () => ({ ok: true, reason: 'wake-requested' }),
+    compact: () => ({ ok: true, reason: 'compacted' }),
+    repairHook: () => ({ ok: true }),
+    clear: () => ({ ok: true, cleared: 3, suppressed: 3 }),
+    ...overrides
+  });
+}
+
 test('Manager Config exposes the canonical nine top-level tabs', () => {
   assert.deepEqual(MANAGER_CONFIG_TABS, [
-    'live-view',
-    'cards',
-    'fields',
-    'header',
-    'companion',
-    'appearance',
-    'archive',
-    'manager',
-    'updates'
+    'live-view', 'cards', 'fields', 'header', 'companion', 'appearance', 'archive', 'manager', 'updates'
   ]);
 });
 
 test('Manager Config edits a draft and revert restores saved config', () => {
-  const controller = new ManagerConfigController({ config: config(false), filePath: '/tmp/config.json' });
+  const controller = new ManagerConfigController({ config: config(false), filePath: '/tmp/config.json', archivePanel: panel() });
   assert.equal(controller.dirty, false);
   controller.moveTab(6);
   assert.equal(controller.activeTab, 'archive');
@@ -48,6 +63,7 @@ test('Manager Config save uses the same archive transition engine as CLI configu
   const controller = new ManagerConfigController({
     config: config(false),
     filePath: '/virtual/config.json',
+    archivePanel: panel(),
     save(next, { filePath }) {
       order.push('save');
       saved.push({ next, filePath });
@@ -72,8 +88,30 @@ test('Manager Config save uses the same archive transition engine as CLI configu
   assert.match(controller.status, /Archive enabled/);
 });
 
+test('Archive Config exposes health, reconcile, compact, hook repair and double-confirm clear actions', () => {
+  let clears = 0;
+  const archivePanel = panel({ clear: () => { clears += 1; return { ok: true, cleared: 3, suppressed: 3 }; } });
+  const controller = new ManagerConfigController({ config: config(true), archivePanel });
+  controller.moveTab(6);
+  const rows = controller.rows();
+  assert.ok(rows.some((row) => row.id === 'archive:health:service' && row.value === 'Idle'));
+  assert.ok(rows.some((row) => row.id === 'archive:health:hook' && row.value === 'Installed'));
+  assert.ok(rows.some((row) => row.id === 'archive:action:reconcile'));
+  assert.ok(rows.some((row) => row.id === 'archive:action:compact'));
+  assert.ok(rows.some((row) => row.id === 'archive:action:repair-hook'));
+
+  controller.cursorEnd();
+  assert.equal(controller.currentRow().id, 'archive:action:clear');
+  assert.equal(controller.editCurrent(), true);
+  assert.equal(clears, 0);
+  assert.match(controller.status, /press Enter\/Space again/i);
+  assert.equal(controller.currentRow().value, 'CONFIRM AGAIN');
+  assert.equal(controller.editCurrent(), true);
+  assert.equal(clears, 1);
+});
+
 test('Manager Config keeps non-schema future tabs informational instead of inventing persistence', () => {
-  const controller = new ManagerConfigController({ config: config(false) });
+  const controller = new ManagerConfigController({ config: config(false), archivePanel: panel() });
   controller.moveTab(4);
   assert.equal(controller.activeTab, 'companion');
   assert.equal(controller.currentRow().editable, false);
@@ -83,13 +121,15 @@ test('Manager Config keeps non-schema future tabs informational instead of inven
   assert.equal(controller.currentRow().editable, false);
 });
 
-test('Manager Config renderer is a standalone screen with Archive controls and config-specific footer', () => {
-  const controller = new ManagerConfigController({ config: config(true) });
+test('Manager Config renderer is a standalone screen with Archive health/actions and config-specific footer', () => {
+  const controller = new ManagerConfigController({ config: config(true), archivePanel: panel() });
   controller.moveTab(6);
-  const frame = renderManagerConfig({ controller, width: 100, height: 24, mode: 'mono' });
+  const frame = renderManagerConfig({ controller, width: 100, height: 30, mode: 'mono' });
   const text = frame.lines.join('\n');
   assert.match(text, /CODEX MONITOR · CONFIG/);
   assert.match(text, /Archive/);
+  assert.match(text, /Service/);
+  assert.match(text, /Reconcile Now/);
   assert.match(text, /S save/);
   assert.match(text, /same lifecycle engine/);
   assert.equal(frame.activeTab, 'archive');
