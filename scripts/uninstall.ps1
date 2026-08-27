@@ -1,8 +1,14 @@
 [CmdletBinding()]
-param()
+param(
+  [switch]$IntegrationAlreadyClean,
+  [int]$ParentPid = 0
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$BootstrapInstallRoot = Join-Path $env:LOCALAPPDATA 'CodexMonitor\app'
 
 function Test-OwnedCodexmShim {
   param([string]$Path)
@@ -15,19 +21,42 @@ function Test-OwnedCodexmShim {
   return $text -match 'node_modules[\\/](codex-monitor|codex-monitor-wrapper)[\\/]'
 }
 
-Write-Host 'Codex Monitor uninstaller'
-Write-Host 'This keeps Monitor config, Archive SQLite, official Codex auth and official Codex sessions.'
-
-$codexm = Get-Command codexm -ErrorAction SilentlyContinue
-if ($codexm) {
-  Write-Host 'Removing Monitor-owned Archive hook/service integration...'
-  & codexm --uninstall
-  if ($LASTEXITCODE -ne 0) {
-    throw "codexm --uninstall failed with exit code $LASTEXITCODE. Package removal was stopped."
+function Test-SamePath {
+  param([string]$A, [string]$B)
+  try {
+    return [IO.Path]::GetFullPath($A).TrimEnd('\\') -ieq [IO.Path]::GetFullPath($B).TrimEnd('\\')
+  } catch {
+    return $false
   }
-} else {
-  Write-Warning 'codexm command was not found; skipping built-in integration cleanup.'
 }
+
+function Wait-ForParentExit {
+  param([int]$ProcessId)
+  if ($ProcessId -le 0) { return }
+  $deadline = [DateTime]::UtcNow.AddSeconds(15)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { return }
+    Start-Sleep -Milliseconds 100
+  }
+  throw "Timed out waiting for codexm process $ProcessId to exit."
+}
+
+Write-Host 'Codex Monitor uninstaller'
+Write-Host 'Preserving Monitor config, Archive SQLite, official Codex auth and official Codex sessions.'
+
+if (-not $IntegrationAlreadyClean) {
+  $cleanupScript = Join-Path $RepoRoot 'scripts\uninstall-integration.mjs'
+  if (-not (Test-Path -LiteralPath $cleanupScript -PathType Leaf)) {
+    throw "Integration cleanup entrypoint was not found: $cleanupScript"
+  }
+  Write-Host 'Removing Monitor-owned Archive hook/service integration...'
+  & node.exe $cleanupScript
+  if ($LASTEXITCODE -ne 0) {
+    throw "Archive integration cleanup failed with exit code $LASTEXITCODE. Package removal was stopped."
+  }
+}
+
+Wait-ForParentExit -ProcessId $ParentPid
 
 Write-Host 'Removing global codex-monitor package/link...'
 & npm.cmd uninstall -g codex-monitor
@@ -56,6 +85,12 @@ foreach ($shim in $shimPaths) {
   Remove-Item -LiteralPath $shim -Force
 }
 
+if (Test-SamePath -A $RepoRoot -B $BootstrapInstallRoot) {
+  Write-Host "Removing GitHub bootstrap source: $RepoRoot"
+  Set-Location $env:TEMP
+  Remove-Item -LiteralPath $RepoRoot -Recurse -Force -ErrorAction Stop
+}
+
 Write-Host ''
-Write-Host 'Codex Monitor package/link removal complete.'
+Write-Host 'Codex Monitor uninstall complete.'
 Write-Host 'Preserved: Monitor config, Archive SQLite, official Codex auth, official Codex sessions.'
