@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { monitorConfigDir } from '../platform/common.js';
-import { DEFAULT_CONFIG, normalizeConfig } from './schema.js';
+import { DEFAULT_CONFIG, migrateConfig, normalizeConfig } from './schema.js';
 
 export function getMonitorConfigDir(options = {}) {
   return monitorConfigDir(options);
@@ -14,10 +14,32 @@ export function getMonitorConfigPath(options = {}) {
 export function loadMonitorConfig({ filePath = getMonitorConfigPath(), fsRef = fs } = {}) {
   try {
     const raw = fsRef.readFileSync(filePath, 'utf8');
-    return { config: normalizeConfig(JSON.parse(raw)), filePath, exists: true, error: null };
+    const parsed = JSON.parse(raw);
+    const config = migrateConfig(parsed, { existing: true });
+    const sourceVersion = Number.isSafeInteger(Number(parsed?.configVersion)) ? Number(parsed.configVersion) : null;
+    const needsMigration = JSON.stringify(parsed) !== JSON.stringify(config);
+    return { config, filePath, exists: true, valid: true, sourceVersion, needsMigration, error: null };
   } catch (error) {
-    if (error?.code === 'ENOENT') return { config: normalizeConfig(DEFAULT_CONFIG), filePath, exists: false, error: null };
-    return { config: normalizeConfig(DEFAULT_CONFIG), filePath, exists: false, error };
+    if (error?.code === 'ENOENT') {
+      return {
+        config: normalizeConfig(DEFAULT_CONFIG),
+        filePath,
+        exists: false,
+        valid: true,
+        sourceVersion: null,
+        needsMigration: false,
+        error: null
+      };
+    }
+    return {
+      config: normalizeConfig(DEFAULT_CONFIG),
+      filePath,
+      exists: true,
+      valid: false,
+      sourceVersion: null,
+      needsMigration: false,
+      error
+    };
   }
 }
 
