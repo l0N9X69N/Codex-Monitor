@@ -1,5 +1,8 @@
 import { normalizeArchiveLines } from '../archive/event-normalizer.js';
-import { readCommittedJsonlChunk } from '../archive/source-reader.js';
+import {
+  DEFAULT_ARCHIVE_RECORD_BYTES,
+  readCommittedJsonlChunk
+} from '../archive/source-reader.js';
 import { normalizePlatformPath } from '../platform/common.js';
 
 export const DEFAULT_MANAGER_OVERLAY_BYTES = 512 * 1024;
@@ -246,6 +249,40 @@ function candidateOrder(left, right) {
     - Number(left.raw?.lastActivityAtMs ?? left.raw?.modifiedAtMs ?? 0);
 }
 
+export function applyManagerArchiveOverlay(row, overlay) {
+  if (!row || !overlay) return row;
+  return {
+    ...row,
+    threadId: overlay.threadId ?? row.threadId,
+    model: overlay.model ?? row.model,
+    reasoning: overlay.reasoning ?? row.reasoning,
+    tokens: { ...row.tokens, ...overlay.tokens },
+    turnCount: overlay.turnCount,
+    toolCount: overlay.toolCount,
+    agentSpawnCount: overlay.agentSpawnCount ?? row.agentSpawnCount,
+    errorCount: overlay.errorCount,
+    retryCount: overlay.retryCount,
+    compactionCount: overlay.compactionCount,
+    observedTurnCount: overlay.turnCount,
+    observedToolCount: overlay.toolCount,
+    observedAgentSpawnCount: overlay.agentSpawnCount ?? row.observedAgentSpawnCount ?? 0,
+    lastTurnCompletedAtMs: overlay.lastTurnCompletedAtMs ?? row.lastTurnCompletedAtMs,
+    lastTurnDurationMs: overlay.lastTurnDurationMs ?? row.lastTurnDurationMs,
+    lastActivityAtMs: Math.max(numberOrNull(row.lastActivityAtMs) ?? 0, numberOrNull(overlay.lastEventAtMs) ?? 0) || null,
+    recentErrors: overlay.recentErrors.length ? overlay.recentErrors : row.recentErrors,
+    recentRetries: overlay.recentRetries.length ? overlay.recentRetries : row.recentRetries,
+    recentCompactions: overlay.recentCompactions.length ? overlay.recentCompactions : row.recentCompactions,
+    observationGap: Boolean(row.observationGap || overlay.observationGap),
+    archiveOverlayBaseOffset: overlay.baseOffset,
+    archiveOverlayOffset: overlay.parsedOffset,
+    archiveOverlayObservedSize: overlay.observedSize,
+    archiveOverlayPendingBytes: overlay.pendingByteCount,
+    archiveOverlayPendingPartialBytes: overlay.pendingPartialBytes,
+    archiveOverlayCaughtUp: overlay.caughtUp,
+    archiveOverlayError: overlay.error ?? null
+  };
+}
+
 export class ManagerArchiveLiveOverlay {
   constructor({
     readChunk = readCommittedJsonlChunk,
@@ -300,14 +337,13 @@ export class ManagerArchiveLiveOverlay {
     let budget = this.maxBytesPerUpdate;
     while (state.parsedOffset < rawSize && budget > 0) {
       const beforeOffset = state.parsedOffset;
-      const chunkBudget = Math.max(1, budget);
       let chunk;
       try {
         chunk = await this.readChunk(state.filePath, {
           committedOffset: beforeOffset,
-          maxBytes: Math.min(OVERLAY_READ_CHUNK_BYTES, chunkBudget),
-          maxRecordBytes: chunkBudget,
-          maxOversizeScanBytes: chunkBudget
+          maxBytes: Math.min(OVERLAY_READ_CHUNK_BYTES, budget),
+          maxRecordBytes: DEFAULT_ARCHIVE_RECORD_BYTES,
+          maxOversizeScanBytes: DEFAULT_ARCHIVE_RECORD_BYTES
         });
       } catch (error) {
         state.error = error?.message ?? String(error);
