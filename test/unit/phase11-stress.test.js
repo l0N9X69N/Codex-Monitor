@@ -221,11 +221,15 @@ test('storage clear cancellation keeps the selected temp session and restores te
   }
 });
 
-test('storage clear confirmation deletes exactly the selected temp ENDED session and restores terminal state', async () => {
+test('storage clear confirmation deletes exactly the highlighted temp ENDED session and restores terminal state', async () => {
   const root = tempRoot();
   try {
-    const selectedPath = writeEndedSession(root, 'selected', { payloadBytes: 512 }).filePath;
-    const untouchedPath = writeEndedSession(root, 'untouched', { payloadBytes: 128 }).filePath;
+    const base = Date.now() - 60_000;
+    // Storage intentionally syncs its cursor to the current Dashboard row.
+    // Make the target unambiguously newest so Dashboard selection and the
+    // destructive expectation refer to the same exact session identity.
+    const untouchedPath = writeEndedSession(root, 'untouched', { payloadBytes: 128, atMs: base - 5_000 }).filePath;
+    const selectedPath = writeEndedSession(root, 'selected', { payloadBytes: 512, atMs: base }).filePath;
     const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
     const { stdin, stdout } = fakeTerminal();
     const processRef = new EventEmitter();
