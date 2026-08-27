@@ -1,6 +1,7 @@
 import { ARCHIVE_PARSER_VERSION, ARCHIVE_SESSION_STATE, ARCHIVE_SYNC_STATE } from './constants.js';
 import { normalizeArchiveLines } from './event-normalizer.js';
 import { inspectArchiveSource, readCommittedJsonlChunk } from './source-reader.js';
+import { withSqliteRetry } from './sqlite-retry.js';
 
 function normalizedTimestamp(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -32,7 +33,9 @@ export async function reconcileArchiveSource({
   sessionState = ARCHIVE_SESSION_STATE.ENDED,
   inspectSource = inspectArchiveSource,
   readChunk = readCommittedJsonlChunk,
-  normalizeLines = normalizeArchiveLines
+  normalizeLines = normalizeArchiveLines,
+  commitWithRetry = withSqliteRetry,
+  sqliteRetryOptions = undefined
 } = {}) {
   if (!filePath) throw new Error('archive reconcile requires a source path');
   if (!repository) throw new Error('archive reconcile requires a repository');
@@ -107,7 +110,7 @@ export async function reconcileArchiveSource({
     };
   }
 
-  const commit = repository.commitChunk({
+  const commit = commitWithRetry(() => repository.commitChunk({
     source: {
       filePath,
       fileIdentity: chunk.fileIdentity,
@@ -119,7 +122,7 @@ export async function reconcileArchiveSource({
     commitOffset: chunk.commitCandidateOffset,
     parserVersion,
     sessionState
-  });
+  }), sqliteRetryOptions);
 
   return {
     state: syncState(commit.committedOffset, chunk.observedFileSize),
