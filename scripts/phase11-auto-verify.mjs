@@ -13,8 +13,9 @@ const steps = [
     'test/unit/phase10-analytics-robustness.test.js',
     'test/unit/phase10-layout-density.test.js'
   ]],
-  ['Phase 11 storage/delete safety', process.execPath, ['--test',
-    'test/unit/phase11-storage-delete.test.js'
+  ['Phase 11 storage/delete safety and clear input', process.execPath, ['--test',
+    'test/unit/phase11-storage-delete.test.js',
+    'test/unit/phase11-input.test.js'
   ]]
 ];
 
@@ -28,4 +29,4 @@ for (const [label, command, args] of steps) {
 }
 
 process.stdout.write('\nPhase 11 automated verification: PASS\n');
-process.stdout.write('Current gate covers syntax, Manager/analytics regressions, storage summary correctness and destructive temp-session delete safety. TUI multi-select/confirmation/stress QA will be added to this same gate as Phase 11 implementation continues.\n');
+process.stdout.write('Current gate covers syntax, Manager/analytics regressions, clear-key compatibility, storage summary correctness and destructive temp-session delete safety. TUI multi-select/confirmation/stress QA will be added to this same gate as Phase 11 implementation continues.\n');
