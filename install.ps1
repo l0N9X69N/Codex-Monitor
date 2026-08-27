@@ -8,6 +8,7 @@ $Repository = 'l0N9X69N/Codex-Monitor'
 $Ref = 'v1-rearchitecture'
 $InstallRoot = Join-Path $env:LOCALAPPDATA 'CodexMonitor\app'
 $ProductRoot = Split-Path -Parent $InstallRoot
+$FreshInstall = -not (Test-Path -LiteralPath $InstallRoot)
 
 function Refresh-ProcessPath {
   $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
@@ -75,6 +76,26 @@ function Invoke-LocalInstaller {
   }
 }
 
+function Enable-FirstRunOnboarding {
+  param([string]$Root)
+
+  Push-Location $Root
+  try {
+    $result = & node.exe --input-type=module -e "import { prepareFreshInstallOnboarding } from './src/config/first-run.js'; const result = prepareFreshInstallOnboarding(); process.stdout.write(JSON.stringify({ changed: result.changed, reason: result.reason }));"
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Could not prepare first-run onboarding.'
+    }
+    $status = $result | ConvertFrom-Json
+    if ($status.changed) {
+      Write-Host 'First-run setup armed while preserving existing Monitor preferences.'
+    } else {
+      Write-Host "First-run setup state: $($status.reason)"
+    }
+  } finally {
+    Pop-Location
+  }
+}
+
 Write-Host 'Codex Monitor GitHub installer'
 Write-Host "Repository: https://github.com/$Repository"
 Write-Host "Ref: $Ref"
@@ -126,6 +147,9 @@ try {
 
   try {
     Invoke-LocalInstaller -Root $InstallRoot
+    if ($FreshInstall) {
+      Enable-FirstRunOnboarding -Root $InstallRoot
+    }
   } catch {
     Write-Warning 'Installation failed; restoring the previous source installation if one existed.'
     if (Test-Path -LiteralPath $InstallRoot) {
@@ -152,7 +176,11 @@ try {
   Write-Host 'GitHub installation complete.'
   Write-Host "Installed source: $InstallRoot"
   Write-Host 'Run: codexm --doctor'
-  Write-Host 'Then: codexm'
+  if ($FreshInstall) {
+    Write-Host 'Then run: codexm  (first launch opens Initial Setup before Codex)'
+  } else {
+    Write-Host 'Then run: codexm'
+  }
 } finally {
   if ($backupRoot -and (Test-Path -LiteralPath $backupRoot) -and -not (Test-Path -LiteralPath $InstallRoot)) {
     Move-Item -LiteralPath $backupRoot -Destination $InstallRoot
