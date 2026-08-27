@@ -82,8 +82,8 @@ export function renderManagerConfig({
   while (lines.length < safeHeight - 3) lines.push('');
   if (controller?.status) lines.push(padLine(hpaint(controller.status, controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
   else lines.push('');
-  lines.push(padLine(hpaint('Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change · S save · R revert · Esc/Q back', 'dim', mode), safeWidth));
-  lines.push(padLine(hpaint('Checkboxes are choices; Archive enable/disable uses the same lifecycle engine as codexm --configure.', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint('Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint('S save · R revert · Esc/Q back · Archive lifecycle changes run only after Save.', 'dim', mode), safeWidth));
 
   return {
     lines: lines.slice(0, safeHeight),
