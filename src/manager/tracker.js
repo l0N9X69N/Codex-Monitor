@@ -1,8 +1,10 @@
+import { kickArchiveService } from '../archive/integration.js';
 import { loadMonitorConfig } from '../config/store.js';
 import { ManagerArchiveIndex, mergeManagerArchiveRows } from './archive-index.js';
 import { buildProcessEvidence } from './session-core.js';
 
 const REAL_MANAGER_PLATFORMS = new Set(['win32', 'linux', 'darwin']);
+const DEFAULT_ARCHIVE_WAKE_INTERVAL_MS = 5000;
 
 function defaultArchiveIndex(core, platformAdapter) {
   if (!core?.sessionsPath || !REAL_MANAGER_PLATFORMS.has(platformAdapter?.id)) return null;
@@ -14,11 +16,21 @@ function defaultArchiveIndex(core, platformAdapter) {
   }
 }
 
+function archiveNeedsWake(snapshot) {
+  if (!snapshot?.enabled) return false;
+  if (!snapshot.available) return true;
+  return ['CATCHING_UP', 'UNINDEXED', 'STALE'].includes(snapshot.globalSyncState)
+    || Number(snapshot.pendingFileCount ?? 0) > 0
+    || Number(snapshot.pendingByteCount ?? 0) > 0;
+}
+
 export class SessionManagerTracker {
   constructor({
     core,
     platformAdapter,
     archiveIndex = undefined,
+    archiveWake = kickArchiveService,
+    archiveWakeIntervalMs = DEFAULT_ARCHIVE_WAKE_INTERVAL_MS,
     now = () => Date.now(),
     discoveryIntervalMs = 5000,
     coldSweepIntervalMs = 60_000,
@@ -32,8 +44,12 @@ export class SessionManagerTracker {
     this.core = core;
     this.platformAdapter = platformAdapter ?? null;
     this.archiveIndex = archiveIndex === undefined ? defaultArchiveIndex(core, platformAdapter) : archiveIndex;
+    this.archiveWake = typeof archiveWake === 'function' ? archiveWake : null;
+    this.archiveWakeIntervalMs = Math.max(1000, Number(archiveWakeIntervalMs) || DEFAULT_ARCHIVE_WAKE_INTERVAL_MS);
     this.archivePrimed = false;
     this.archiveSnapshot = this.archiveIndex?.lastSnapshot ?? null;
+    this.lastArchiveWakeAtMs = Number.NEGATIVE_INFINITY;
+    this.lastArchiveWake = null;
     this.now = now;
     this.discoveryIntervalMs = Math.max(1000, Number(discoveryIntervalMs) || 5000);
     this.coldSweepIntervalMs = Math.max(this.discoveryIntervalMs, Number(coldSweepIntervalMs) || 60_000);
@@ -133,8 +149,27 @@ export class SessionManagerTracker {
       : rawRows;
   }
 
+  maybeWakeArchive(nowMs) {
+    if (!this.archiveWake || !archiveNeedsWake(this.archiveSnapshot)) return false;
+    if (nowMs - this.lastArchiveWakeAtMs < this.archiveWakeIntervalMs) return false;
+    this.lastArchiveWakeAtMs = nowMs;
+    try {
+      this.lastArchiveWake = this.archiveWake(this.archiveIndex?.config ?? { archive: { enabled: true } });
+    } catch (error) {
+      this.lastArchiveWake = {
+        attempted: true,
+        started: false,
+        running: false,
+        reason: 'manager-wake-failed',
+        error: error?.message ?? String(error)
+      };
+    }
+    return true;
+  }
+
   archiveResultFields() {
     const snapshot = this.archiveSnapshot;
+    const health = snapshot?.health ?? null;
     return {
       archiveEnabled: Boolean(snapshot?.enabled),
       archiveAvailable: Boolean(snapshot?.available),
@@ -142,6 +177,14 @@ export class SessionManagerTracker {
       archiveSyncState: snapshot?.globalSyncState ?? null,
       archivePendingFileCount: Number(snapshot?.pendingFileCount ?? 0),
       archivePendingByteCount: Number(snapshot?.pendingByteCount ?? 0),
+      archiveSourceCount: Number(snapshot?.sourceCount ?? 0),
+      archiveReconcileGeneration: Number(health?.reconcileGeneration ?? 0),
+      archiveLastSuccessfulReconcile: health?.lastSuccessfulReconcile ?? null,
+      archiveLastSeenSourceScan: health?.lastSeenSourceScan ?? null,
+      archiveHookLastSeenAt: health?.hookLastSeenAt ?? null,
+      archiveWatcherLastSeenAt: health?.watcherLastSeenAt ?? null,
+      archiveServiceInstanceId: health?.serviceInstanceId ?? null,
+      archiveWake: this.lastArchiveWake,
       archiveError: snapshot?.error ?? null
     };
   }
@@ -152,6 +195,7 @@ export class SessionManagerTracker {
     if (this.archiveEnabled() && !this.archivePrimed) {
       this.archivePrimed = true;
       this.archiveSnapshot = this.archiveIndex.open();
+      this.maybeWakeArchive(nowMs);
       if (this.archiveSnapshot?.available) {
         this.cachedRows = [...(this.archiveSnapshot.rows ?? [])];
         this.hasCachedRows = true;
@@ -177,6 +221,7 @@ export class SessionManagerTracker {
 
     if (this.archiveEnabled()) {
       this.archiveSnapshot = await this.archiveIndex.refresh();
+      this.maybeWakeArchive(nowMs);
     }
 
     const discoveryDue = nowMs - this.lastDiscoveryAtMs >= this.discoveryIntervalMs;
@@ -255,4 +300,10 @@ export class SessionManagerTracker {
       ...this.archiveResultFields()
     };
   }
+
+  close() {
+    try { this.archiveIndex?.close?.(); } catch {}
+  }
 }
+
+export { archiveNeedsWake };
