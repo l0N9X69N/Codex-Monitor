@@ -88,7 +88,7 @@ test('Delete Archive cascades derived rows and suppresses an existing raw source
   }
 });
 
-test('Clear Archive removes sessions, ingest checkpoints and delete suppressions without touching raw JSONL', () => {
+test('Clear Archive keeps raw JSONL and suppresses tracked sources so enabled service cannot immediately rebuild them', () => {
   const root = tempRoot();
   const dataDir = path.join(root, 'data');
   const sourcePath = path.join(root, 'session.jsonl');
@@ -102,52 +102,51 @@ test('Clear Archive removes sessions, ingest checkpoints and delete suppressions
     opened.close();
     opened = null;
 
-    const result = clearArchive({ openDatabase: () => openArchiveDatabase({ dataDir }) });
+    const result = clearArchive({ openDatabase: () => openArchiveDatabase({ dataDir }), now: () => 2_500_000_020_000 });
     assert.equal(result.ok, true);
     assert.equal(result.cleared, 1);
+    assert.equal(result.suppressed, 1);
     assert.equal(fs.existsSync(sourcePath), true);
 
     opened = openArchiveDatabase({ dataDir });
     assert.equal(opened.repository.count('sessions'), 0);
     assert.equal(opened.repository.count('ingest_state'), 0);
-    assert.equal(opened.db.prepare('SELECT COUNT(*) AS count FROM archive_suppressions').get().count, 0);
+    assert.equal(opened.db.prepare('SELECT COUNT(*) AS count FROM archive_suppressions').get().count, 2);
+    const clearedSuppression = opened.db.prepare('SELECT reason FROM archive_suppressions WHERE source_path = ?').get(sourcePath);
+    assert.equal(clearedSuppression.reason, 'user-clear-archive');
   } finally {
     try { opened?.close(); } catch {}
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
+test('Delete Archive rejects selected rows that have no archived analytics', () => {
+  const row = { id: '/sessions/raw-only.jsonl', filePath: '/sessions/raw-only.jsonl', state: 'ENDED', archiveBacked: false };
+  let archiveCalls = 0;
+  const report = deleteManagerSessions([row], new Set([row.id]), {
+    scope: MANAGER_DELETE_SCOPE.ARCHIVE,
+    deleteArchive() { archiveCalls += 1; throw new Error('must not be called'); }
+  });
+  assert.equal(archiveCalls, 0);
+  assert.equal(report.ok, false);
+  assert.equal(report.rejected[0].reason, 'archive-not-available');
+});
+
 test('Delete Everything never deletes archive evidence for rows whose raw delete failed', () => {
   const row = {
-    id: '/sessions/a.jsonl',
-    filePath: '/sessions/a.jsonl',
-    sourcePath: '/sessions/a.jsonl',
-    state: 'ENDED',
-    archiveBacked: true,
-    rawSourceExists: true,
-    threadId: 'thread-a'
+    id: '/sessions/a.jsonl', filePath: '/sessions/a.jsonl', sourcePath: '/sessions/a.jsonl', state: 'ENDED',
+    archiveBacked: true, rawSourceExists: true, threadId: 'thread-a'
   };
   let archiveCalls = 0;
   const report = deleteManagerSessions([row], new Set([row.id]), {
     scope: MANAGER_DELETE_SCOPE.EVERYTHING,
     sessionsPath: '/sessions',
     deleteRaw() {
-      return {
-        requested: 1,
-        deleted: [],
-        rejected: [{ id: row.id, reason: 'file-changed-before-delete' }],
-        errors: [],
-        ok: false,
-        partial: false
-      };
+      return { requested: 1, deleted: [], rejected: [{ id: row.id, reason: 'file-changed-before-delete' }], errors: [], ok: false, partial: false };
     },
-    deleteArchive(rows) {
-      archiveCalls += 1;
-      assert.equal(rows.length, 0);
-      return { requested: 0, deleted: [], rejected: [], errors: [], ok: true, partial: false };
-    }
+    deleteArchive() { archiveCalls += 1; throw new Error('archive must remain when raw delete fails'); }
   });
-  assert.equal(archiveCalls, 1);
+  assert.equal(archiveCalls, 0);
   assert.equal(report.deletedIds.length, 0);
   assert.equal(report.ok, false);
   assert.equal(report.rejected[0].reason, 'file-changed-before-delete');
@@ -155,13 +154,8 @@ test('Delete Everything never deletes archive evidence for rows whose raw delete
 
 test('Delete Everything removes archive only after raw success and does not create suppression', () => {
   const row = {
-    id: '/sessions/a.jsonl',
-    filePath: '/sessions/a.jsonl',
-    sourcePath: '/sessions/a.jsonl',
-    state: 'ENDED',
-    archiveBacked: true,
-    rawSourceExists: true,
-    threadId: 'thread-a'
+    id: '/sessions/a.jsonl', filePath: '/sessions/a.jsonl', sourcePath: '/sessions/a.jsonl', state: 'ENDED',
+    archiveBacked: true, rawSourceExists: true, threadId: 'thread-a'
   };
   let archiveOptions = null;
   const report = deleteManagerSessions([row], new Set([row.id]), {
@@ -177,6 +171,26 @@ test('Delete Everything removes archive only after raw success and does not crea
     }
   });
   assert.equal(archiveOptions.suppressRawSources, false);
+  assert.deepEqual(report.deletedIds, [row.id]);
+  assert.equal(report.ok, true);
+});
+
+test('Delete Everything removes archive-only sessions even when raw source is already absent', () => {
+  const row = {
+    id: 'archive:thread-old', filePath: null, sourcePath: '/sessions/old.jsonl', state: 'ARCHIVED',
+    archiveBacked: true, rawSourceExists: false, threadId: 'thread-old'
+  };
+  let rawCalls = 0;
+  const report = deleteManagerSessions([row], new Set([row.id]), {
+    scope: MANAGER_DELETE_SCOPE.EVERYTHING,
+    deleteRaw() { rawCalls += 1; throw new Error('raw delete must not run'); },
+    deleteArchive(rows, options) {
+      assert.equal(rows.length, 1);
+      assert.equal(options.suppressRawSources, false);
+      return { requested: 1, deleted: [{ id: row.id, sessionId: row.threadId, suppressed: false }], rejected: [], errors: [], ok: true, partial: false };
+    }
+  });
+  assert.equal(rawCalls, 0);
   assert.deepEqual(report.deletedIds, [row.id]);
   assert.equal(report.ok, true);
 });
