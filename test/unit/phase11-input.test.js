@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeManagerInput, nextManagerView } from '../../src/manager/input.js';
 
-test('Phase 11 clear uses C while D remains sort direction compatible', () => {
-  assert.equal(normalizeManagerInput('c'), 'delete-selected');
-  assert.equal(normalizeManagerInput('C'), 'delete-selected');
+test('Manager dashboard C opens Config while Storage C remains Clear', () => {
+  assert.equal(normalizeManagerInput('c'), 'config-view');
+  assert.equal(normalizeManagerInput('C'), 'config-view');
+  assert.equal(normalizeManagerInput('c', { storageOpen: true }), 'delete-selected');
+  assert.equal(normalizeManagerInput('C', { storageOpen: true }), 'delete-selected');
   assert.equal(normalizeManagerInput('d'), 'direction');
   assert.equal(normalizeManagerInput('D'), 'direction');
   assert.equal(normalizeManagerInput('r'), 'direction');
@@ -28,4 +30,17 @@ test('storage uses M while preserving the Phase 9 V view cycle', () => {
   assert.equal(nextManagerView('table'), 'charts');
   assert.equal(nextManagerView('charts'), 'auto');
   assert.equal(nextManagerView('auto'), 'operations');
+});
+
+test('Config mode owns navigation edit save revert and close keys', () => {
+  const options = { configOpen: true };
+  assert.equal(normalizeManagerInput('c', options), 'config-close');
+  assert.equal(normalizeManagerInput('q', options), 'config-close');
+  assert.equal(normalizeManagerInput('\x1b', options), 'config-close');
+  assert.equal(normalizeManagerInput('\t', options), 'config-tab-next');
+  assert.equal(normalizeManagerInput('\x1b[D', options), 'config-tab-prev');
+  assert.equal(normalizeManagerInput('\r', options), 'config-edit');
+  assert.equal(normalizeManagerInput(' ', options), 'config-edit');
+  assert.equal(normalizeManagerInput('s', options), 'config-save');
+  assert.equal(normalizeManagerInput('r', options), 'config-revert');
 });
