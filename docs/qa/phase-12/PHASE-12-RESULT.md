@@ -1,6 +1,6 @@
 # Phase 12 Result
 
-Status: **IMPLEMENTED — AUTO VERIFIED; MANUAL UX CLOSEOUT PENDING**
+Status: **CLOSED — IMPLEMENTED; AUTO VERIFIED; FOCUSED WINDOWS UX GATE PASSED**
 
 Phase 12 implements the source-runtime product shell around the existing Codex Monitor runtime. It does not claim global installation, packaging, signing, native service installation, or release artifacts; those remain Phase 13 responsibilities.
 
@@ -21,17 +21,25 @@ Implemented scope:
 - sanitized `--doctor` Archive health reporting;
 - narrow `--repair` scope limited to Monitor-owned Archive hook/service integration;
 - non-interactive control paths do not open an alternate-screen wizard or wait for keypresses;
+- portable real-console key decoding for onboarding, Config, reset and Manager, including the Windows Enter/Esc blocker found during manual closeout;
 - Phase 12 verification re-runs the full Phase 11-1 Archive/Manager regression gate.
 
 Verification:
 
-- Latest 12D source-runtime verifier reported PASS on the target development machine on 2026-08-27.
-- Verified implementation head before QA bookkeeping commits: `a97970f94eafb3b8d16b92eb1d2ab597c7dcdf2d`.
+- Post-TTY-fix `npm run verify:phase12` reported PASS on the target development machine on 2026-08-27.
+- Verified implementation head before QA bookkeeping commits: `245b49f740f2e238654abd690d8905f6a27fc817`.
 - Automatic gate status: **PASS / AUTO VERIFIED**.
+- Focused Windows Terminal source-runtime UX gate: **PASS**.
+- Manual close decision: **BLOCKER = 0; P0 = 0**.
 
-Close conditions remaining:
+Manual closeout confirmed the reported real-console Enter/Esc blocker was fixed, Manager input worked on Windows Terminal, Doctor output remained sanitized and honest about degraded/disabled Archive state, and Repair was a safe no-op while Archive was disabled.
 
-1. Perform the focused Phase 12 source-runtime manual UX checklist on Windows Terminal.
-2. Confirm BLOCKER = 0 and P0 = 0.
+Deferred to Phase 13/final cross-phase review:
 
-Broad visual polish, product packaging/install/PATH behavior, release artifacts, and final cross-phase review remain Phase 13 work.
+- broad visual/copy/localization polish;
+- exhaustive responsive terminal visual review;
+- packaging/install/PATH/signing/update/uninstall behavior;
+- real-machine Linux/macOS release validation;
+- final Phase 11-1/12 Archive/service/performance review.
+
+If Phase 13 exposes a correctness, data-loss, privacy, destructive-safety or terminal-restoration regression, reopen the owning phase rather than treating this closeout as a waiver.
