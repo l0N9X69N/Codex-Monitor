@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { ARCHIVE_SCHEMA_VERSION } from '../../src/archive/constants.js';
 import { ArchiveReconcileCoordinator } from '../../src/archive/coordinator.js';
 import { openArchiveDatabase } from '../../src/archive/database.js';
 import { readManagerArchiveDetail, canUseManagerArchiveDetail } from '../../src/manager/archive-detail.js';
@@ -135,7 +136,7 @@ test('READY Manager archive detail is read from normalized SQLite tables without
     const detail = readManagerArchiveDetail(archiveIndex, row);
     assert.ok(detail);
     assert.equal(detail.source, 'archive-sqlite');
-    assert.equal(detail.archiveSchemaVersion, 2);
+    assert.equal(detail.archiveSchemaVersion, ARCHIVE_SCHEMA_VERSION);
     assert.equal(detail.info.threadId, 'thread-sqlite-detail');
     assert.equal(detail.info.model, 'gpt-detail');
     assert.equal(detail.info.reasoning, 'high');
