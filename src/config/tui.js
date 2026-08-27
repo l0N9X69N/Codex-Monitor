@@ -5,6 +5,7 @@ import { renderManagerConfig } from '../manager/config-render.js';
 import { normalizeManagerInput } from '../manager/input.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { TerminalGuard } from '../terminal/guard.js';
+import { normalizeConfig } from './schema.js';
 
 function configPaintMode(theme, capability) {
   const normalized = String(theme ?? 'color').toLowerCase();
@@ -31,19 +32,18 @@ export async function runStandaloneConfigTui({
       code: 2,
       saved: false,
       cancelled: true,
-      config: currentConfig,
+      config: normalizeConfig(currentConfig),
       error: new Error('Interactive Config requires a TTY; no prompt was started.')
     };
   }
 
   const activeController = controller ?? new ManagerConfigController({
-    config: currentConfig,
+    config: normalizeConfig(previousConfig ?? currentConfig),
     filePath,
     ...(save ? { save } : {}),
     ...(applyArchiveEffects ? { applyArchiveEffects } : {})
   });
-  if (previousConfig != null) activeController.savedConfig = JSON.parse(JSON.stringify(previousConfig));
-  activeController.draftConfig = JSON.parse(JSON.stringify(currentConfig ?? activeController.savedConfig));
+  if (!controller) activeController.draftConfig = normalizeConfig(currentConfig ?? previousConfig);
 
   const mode = configPaintMode(theme, colorCapability);
   const guard = new TerminalGuard({ stdin, stdout });
