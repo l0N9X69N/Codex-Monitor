@@ -19,6 +19,7 @@ const steps = [
     'test/unit/phase11-1-manager-config.test.js',
     'test/unit/phase11-1-manager-archive-index.test.js',
     'test/unit/phase11-1-manager-index-health.test.js',
+    'test/unit/phase11-1-manager-service-health.test.js',
     'test/unit/phase11-1-manager-verified-detail.test.js',
     'test/unit/phase11-1-manager-live-overlay.test.js'
   ]],
@@ -40,5 +41,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 SQLite detail fidelity checkpoint verification: PASS\n');
-process.stdout.write('Gate covers additive archive schema v2 migration without parser checkpoint invalidation, cumulative token_samples, per-turn cached/reasoning deltas, technical tool grouping without persisted command/output payloads, SQLite token chart/detail fidelity, committed-offset Manager live overlay, oversized-record progress, verified source-scan semantics, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 verified archive service liveness checkpoint verification: PASS\n');
+process.stdout.write('Gate covers real lock/PID-backed Manager service liveness instead of stale archive_meta markers, stale-lock and owner-mismatch detection, SQLite-first service verification, additive archive schema v2/token fidelity, committed-offset live overlay, oversized-record progress, verified source-scan semantics, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
