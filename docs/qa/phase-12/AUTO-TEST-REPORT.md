@@ -1,8 +1,8 @@
 # Phase 12 Auto Test Report
 
-Status: **REVERIFY REQUIRED — POST-PASS WINDOWS TTY INPUT FIX LANDED**
+Status: **PASS — POST-TTY-FIX SOURCE RUNTIME AUTO VERIFIED**
 
-Recorded prior PASS: **2026-08-27**
+Recorded: **2026-08-27**
 
 Command:
 
@@ -10,21 +10,17 @@ Command:
 npm run verify:phase12
 ```
 
-The target-machine developer previously reported **PASS, all checks green** for source-runtime head:
+Result reported by the target-machine developer: **PASS, all checks green**.
+
+Verified implementation head before this QA bookkeeping commit:
 
 ```text
-a97970f94eafb3b8d16b92eb1d2ab597c7dcdf2d
+245b49f740f2e238654abd690d8905f6a27fc817
 ```
 
-During the subsequent manual Windows Terminal closeout, real-console Enter/Esc handling exposed a blocker that fake-TTY tests had not caught. Portable key decoding was then added for onboarding, standalone Config, reset confirmation and Manager; Manager was routed through a decoded-input host. Manual retest confirmed Manager Enter/Esc behavior is now working on the target Windows Terminal.
+This rerun was required because the earlier auto-PASS preceded a Windows Terminal blocker found during manual closeout. The blocker affected real-console Enter/Esc handling in interactive TUI hosts. Portable key decoding was added for onboarding, standalone Config, reset confirmation and Manager, and fake-TTY compatibility was restored without reverting the real-console fix.
 
-Current implementation head requiring re-verification:
-
-```text
-a70f332dec448dbac34b8714908549da974ee8ab
-```
-
-The Phase 12 gate includes:
+The verified Phase 12 gate includes:
 
 - syntax verification;
 - deterministic Monitor CLI routing and exact Codex passthrough tests;
@@ -39,4 +35,4 @@ The Phase 12 gate includes:
 - full Phase 11-1 Archive/Manager auto verifier;
 - Manager runtime/input regressions from Phase 9/11.
 
-Do not treat Phase 12 as AUTO VERIFIED on the new input-fix head until `npm run verify:phase12` passes again. Manual Windows input validation is positive for the reported Enter/Esc blocker, but broader manual closeout remains pending.
+Manual Windows Terminal evidence already confirms the reported onboarding/Manager Enter/Esc blocker is fixed. Remaining Phase 12 work is the focused manual closeout for standalone Config, Reset and Doctor/Repair behavior; broad polish and product packaging remain Phase 13 work.
