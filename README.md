@@ -15,17 +15,44 @@ The v1 product has two primary surfaces:
 
 Node 22.13+ is required because Local Session Archive uses Node's built-in `node:sqlite` runtime. No external SQLite executable or native SQLite npm addon is required.
 
-## Install from the repository
+## Install from GitHub on Windows
+
+Run this from PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/l0N9X69N/Codex-Monitor/v1-rearchitecture/install.ps1 | iex
+```
+
+The bootstrap installer:
+
+- installs a supported Node.js LTS through `winget` when Node/npm are missing or unsupported;
+- uses the npm bundled with Node.js, so npm does not need a separate installer;
+- downloads Codex Monitor from GitHub;
+- installs it under `%LOCALAPPDATA%\CodexMonitor\app`;
+- safely replaces only recognized Codex Monitor-owned `codexm` shims;
+- installs dependencies, links `codexm`, and runs a version smoke test;
+- preserves the previous source installation and attempts rollback if the new install fails.
+
+If `winget` is unavailable, install Node.js `>=22.13 <27` manually and run the same command again.
+
+After installation:
+
+```powershell
+codexm --doctor
+codexm
+```
+
+## Install from an existing repository checkout
+
+```powershell
+npm run install:windows
+```
+
+For manual development setup:
 
 ```powershell
 npm install
 npm link
-```
-
-After linking, the product command is:
-
-```powershell
-codexm
 ```
 
 For source-runtime testing without linking:
@@ -94,19 +121,15 @@ codexm --update
 
 ## Uninstall
 
-First remove Monitor-owned Archive integration safely:
+From a repository/source installation on Windows:
 
 ```powershell
-codexm --uninstall
+npm run uninstall:windows
 ```
 
-Then remove the npm package/link using the package manager that installed it, for example:
+The Windows uninstaller runs the built-in `codexm --uninstall` integration cleanup first, then removes the global npm package/link and recognized stale Codex Monitor shims.
 
-```powershell
-npm uninstall -g codex-monitor
-```
-
-The Monitor config and Archive database are preserved by the built-in uninstall action. Official Codex auth and sessions are never removed.
+The Monitor config and Archive database are preserved. Official Codex auth and sessions are never removed.
 
 ## Verification
 
