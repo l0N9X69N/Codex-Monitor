@@ -15,6 +15,8 @@ import { activityPreviewCapacity } from './activity-preview-capacity.js';
 import { SessionStorageSummaryCache, summarizeSelectedSessions } from './storage-summary.js';
 import { deleteSelectedSessions } from './delete-safety.js';
 import { renderClearConfirmation, renderStorageManager } from './storage-render.js';
+import { ManagerConfigController } from './config-controller.js';
+import { renderManagerConfig } from './config-render.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -61,6 +63,8 @@ export async function runSessionManagerTui({
   processRef = process,
   colorCapability = detectHistoryColorMode(),
   theme = 'color',
+  monitorConfig = null,
+  configPath = null,
   intervalMs = 250,
   telemetryIntervalMs = 1000,
   initialViewMode = 'operations'
@@ -77,6 +81,10 @@ export async function runSessionManagerTui({
   const telemetrySeries = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
   const activityPreviewReader = new SelectedActivityPreview({ fsRef });
   const storageSummaryCache = new SessionStorageSummaryCache({ now });
+  const configController = new ManagerConfigController({
+    config: monitorConfig ?? { theme },
+    filePath: configPath ?? undefined
+  });
 
   let rows = [];
   let scope = 'all';
@@ -89,6 +97,7 @@ export async function runSessionManagerTui({
   let selectedIndex = 0;
   let viewMode = initialViewMode;
   let storageOpen = false;
+  let configOpen = false;
   let storageCursorIndex = 0;
   let clearConfirming = false;
   let clearStatus = '';
@@ -154,7 +163,9 @@ export async function runSessionManagerTui({
     const selectedSummary = summarizeSelectedSessions(rows, clearSelectedIds);
     let frame;
 
-    if (clearConfirming) {
+    if (configOpen) {
+      frame = renderManagerConfig({ controller: configController, width, height, mode: colorMode });
+    } else if (clearConfirming) {
       frame = renderClearConfirmation({ rows, selectedIds: clearSelectedIds, selectedSummary, width, height, mode: colorMode });
     } else if (storageOpen) {
       frame = renderStorageManager({
@@ -203,16 +214,16 @@ export async function runSessionManagerTui({
         activityPreview
       });
       if (frame.lines?.length) {
-        frame.lines[frame.lines.length - 1] = truncateCells(`${frame.lines.at(-1)}  ${hpaint('M storage', 'dim', colorMode)}`, width, '');
+        frame.lines[frame.lines.length - 1] = truncateCells(`${frame.lines.at(-1)}  ${hpaint('M storage', 'dim', colorMode)}  ${hpaint('C config', 'dim', colorMode)}`, width, '');
       }
     }
 
-    if (!core.selectedId && !storageOpen && !clearConfirming && frame.model) {
+    if (!configOpen && !core.selectedId && !storageOpen && !clearConfirming && frame.model) {
       selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
       selectedId = frame.model.selected?.id ?? null;
       lastFrame = frame;
       lastInspectFrame = null;
-    } else if (core.selectedId && !storageOpen && !clearConfirming) {
+    } else if (!configOpen && core.selectedId && !storageOpen && !clearConfirming) {
       lastInspectFrame = frame;
       if (frame.timeline && frame.timeline.selectedIndex >= 0) timelineSelectedIndex = frame.timeline.selectedIndex;
     }
@@ -222,7 +233,7 @@ export async function runSessionManagerTui({
   };
 
   const sampleTelemetry = () => {
-    if (done || core.selectedId || searching || storageOpen || clearConfirming) return;
+    if (done || configOpen || core.selectedId || searching || storageOpen || clearConfirming) return;
     telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
     draw(false);
   };
@@ -338,10 +349,30 @@ export async function runSessionManagerTui({
 
   const handleInput = async (data) => {
     if (done) return;
-    const normalized = normalizeManagerInput(data, { searching: searching || timelineSearching, confirmingDelete: clearConfirming });
+    const normalized = normalizeManagerInput(data, {
+      searching: searching || timelineSearching,
+      confirmingDelete: clearConfirming,
+      storageOpen,
+      configOpen
+    });
     if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action) return;
+
+    if (configOpen) {
+      if (action === 'config-close') configOpen = false;
+      else if (action === 'config-tab-next') configController.moveTab(1);
+      else if (action === 'config-tab-prev') configController.moveTab(-1);
+      else if (action === 'up') configController.moveCursor(-1);
+      else if (action === 'down') configController.moveCursor(1);
+      else if (action === 'home') configController.cursorHome();
+      else if (action === 'end') configController.cursorEnd();
+      else if (action === 'config-edit') configController.editCurrent(1);
+      else if (action === 'config-save') configController.save();
+      else if (action === 'config-revert') configController.revert();
+      draw(action === 'config-close' || action === 'config-save');
+      return;
+    }
 
     if (clearConfirming) {
       if (action === 'delete-cancel') {
@@ -396,6 +427,12 @@ export async function runSessionManagerTui({
         else clearStatus = 'No ENDED sessions selected';
         draw(true);
       }
+      return;
+    }
+
+    if (action === 'config-view') {
+      configOpen = true;
+      draw(true);
       return;
     }
 
@@ -550,7 +587,22 @@ export async function runSessionManagerTui({
     telemetryTimer.unref?.();
     void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
-    return { code, core, tracker, runtime, viewMode, theme, colorMode, telemetry, clearSelectedIds, clearStatus, storageCursorIndex };
+    return {
+      code,
+      core,
+      tracker,
+      runtime,
+      viewMode,
+      theme,
+      colorMode,
+      telemetry,
+      clearSelectedIds,
+      clearStatus,
+      storageCursorIndex,
+      configOpen,
+      configDirty: configController.dirty,
+      config: configController.savedConfig
+    };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
     processRef?.removeListener?.('SIGTERM', onSignal);
