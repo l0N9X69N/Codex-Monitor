@@ -41,6 +41,11 @@ function configErrorNotice(loaded) {
 
 function printHelp() {
   process.stdout.write(`Codex Monitor ${PRODUCT_VERSION}\n\n`);
+  process.stdout.write('QUICK COMMANDS\n');
+  process.stdout.write('  -h, --help                    Show this help\n');
+  process.stdout.write('  -m, --manager                 Open Session Manager\n');
+  process.stdout.write('  -c, --configure               Open shared Config\n');
+  process.stdout.write('  -v, --version                 Show Codex Monitor version\n\n');
   process.stdout.write('LIVE / CODEX\n');
   process.stdout.write('  codexm [monitor options] [codex arguments]\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
@@ -49,12 +54,10 @@ function printHelp() {
   process.stdout.write('  --background terminal|black|dark\n');
   process.stdout.write('  --lang vi|en\n\n');
   process.stdout.write('SESSION MANAGER\n');
-  process.stdout.write('  --manager                     Open Session Manager\n');
   process.stdout.write('  --manager-view operations|table|charts|auto\n');
   process.stdout.write('                                Override Manager view for this run only\n');
   process.stdout.write('  Inside Manager: C Config · P/M preview inside Config\n\n');
   process.stdout.write('CUSTOMIZE\n');
-  process.stdout.write('  --configure                   Open the shared Monitor Config screen\n');
   process.stdout.write('  --reset                       Confirm reset, then open Config with defaults\n');
   process.stdout.write('  Config: P Live preview · M Manager preview\n\n');
   process.stdout.write('DIAGNOSTICS / PRODUCT\n');
@@ -64,11 +67,14 @@ function printHelp() {
   process.stdout.write('  --uninstall                   Uninstall Codex Monitor; preserve user/Codex data\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
-  process.stdout.write('  --version, --monitor-version  Show Codex Monitor version\n');
+  process.stdout.write('  --monitor-version             Explicit Monitor version alias\n');
   process.stdout.write('  --demo                        Render passive Live HUD demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n\n');
   process.stdout.write('PASSTHROUGH\n');
-  process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
+  process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n');
+  process.stdout.write('  Short Monitor aliases only apply before Codex arguments begin.\n');
+  process.stdout.write('  Example: codexm resume -m gpt-5   # -m belongs to official Codex\n');
+  process.stdout.write('  Example: codexm -- -m gpt-5       # force a leading -m to official Codex\n\n');
   process.stdout.write('A clean interactive first launch runs setup before Manager or official Codex starts.\n');
   process.stdout.write('Live Monitor is passive after Codex starts: every keyboard byte belongs to official Codex.\n');
   process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
@@ -76,7 +82,6 @@ function printHelp() {
   process.stdout.write('--repair touches only Monitor-owned integration. --uninstall preserves Codex auth/sessions plus Monitor config/Archive DB.\n');
   process.stdout.write('Background update checks are throttled to about once per 24h, never auto-install, and can be disabled in Config.\n');
   process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
-  process.stdout.write('Example: codexm -- --version   # official Codex version via exact passthrough\n');
 }
 
 function scheduleProductUpdateCheck(config) {
@@ -114,11 +119,9 @@ async function main() {
   }
   if (parsed.action === 'uninstall') {
     const report = uninstallMonitorIntegration();
-    const packageRemoval = report.ok ? scheduleProductRemoval() : null;
-    printUninstallReport(report, process.stdout, { packageRemoval });
-    if (!report.ok) return 2;
-    if (packageRemoval?.error) return 2;
-    return 0;
+    const removal = report.ok ? scheduleProductRemoval() : { scheduled: false, reason: 'integration-cleanup-failed' };
+    printUninstallReport(report, process.stdout, { removal });
+    return report.ok && (removal.scheduled || removal.reason === 'package-manager-required') ? 0 : 2;
   }
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
   if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
