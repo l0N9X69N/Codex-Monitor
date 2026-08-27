@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ArchiveRepository } from '../../src/archive/repository.js';
@@ -17,14 +18,7 @@ function fixture() {
   return { root, filePath };
 }
 
-async function openRepository(t, now = () => 1_800_000_000_000) {
-  let DatabaseSync;
-  try {
-    ({ DatabaseSync } = await import('node:sqlite'));
-  } catch {
-    t.skip('node:sqlite unavailable; repository contract remains driver-injected for Node 20 compatibility');
-    return null;
-  }
+async function openRepository(_t, now = () => 1_800_000_000_000) {
   const db = new DatabaseSync(':memory:');
   const repository = new ArchiveRepository(db, { now }).initialize();
   return { db, repository };
@@ -80,7 +74,6 @@ const done = {
 
 test('reconcile commits derived rows and checkpoint together without transcript/tool output', async (t) => {
   const opened = await openRepository(t);
-  if (!opened) return;
   const { db, repository } = opened;
   const { root, filePath } = fixture();
   try {
@@ -120,7 +113,6 @@ test('reconcile commits derived rows and checkpoint together without transcript/
 
 test('derived write failure rolls back both derived rows and committed offset', async (t) => {
   const opened = await openRepository(t);
-  if (!opened) return;
   const { db, repository } = opened;
   const { root, filePath } = fixture();
   try {
@@ -143,7 +135,6 @@ test('derived write failure rolls back both derived rows and committed offset', 
 
 test('partial final line does not move checkpoint until newline arrives', async (t) => {
   const opened = await openRepository(t);
-  if (!opened) return;
   const { db, repository } = opened;
   const { root, filePath } = fixture();
   try {
@@ -166,7 +157,6 @@ test('partial final line does not move checkpoint until newline arrives', async 
 
 test('complete malformed line is recorded as archive parse error and checkpoint can advance', async (t) => {
   const opened = await openRepository(t);
-  if (!opened) return;
   const { db, repository } = opened;
   const { root, filePath } = fixture();
   try {
@@ -184,7 +174,6 @@ test('complete malformed line is recorded as archive parse error and checkpoint 
 
 test('missing raw source preserves archive and marks session ARCHIVED', async (t) => {
   const opened = await openRepository(t);
-  if (!opened) return;
   const { db, repository } = opened;
   const { root, filePath } = fixture();
   try {
@@ -206,7 +195,6 @@ test('missing raw source preserves archive and marks session ARCHIVED', async (t
 
 test('empty new raw source stays UNINDEXED rather than claiming READY', async (t) => {
   const opened = await openRepository(t);
-  if (!opened) return;
   const { db, repository } = opened;
   const { root, filePath } = fixture();
   try {

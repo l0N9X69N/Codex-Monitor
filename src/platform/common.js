@@ -45,6 +45,17 @@ export function monitorConfigDir({ env = process.env, platform = currentPlatform
   return path.join(xdg, 'codex-monitor');
 }
 
+export function monitorDataDir({ env = process.env, platform = currentPlatform(), homedir = os.homedir() } = {}) {
+  if (env.CODEXM_DATA_HOME) return path.resolve(env.CODEXM_DATA_HOME);
+  if (platform === 'win32') {
+    const localAppData = env.LOCALAPPDATA || env.APPDATA || path.join(homedir, 'AppData', 'Local');
+    return path.join(localAppData, 'codex-monitor');
+  }
+  if (platform === 'darwin') return path.join(homedir, 'Library', 'Application Support', 'codex-monitor');
+  const xdg = env.XDG_DATA_HOME || path.join(homedir, '.local', 'share');
+  return path.join(xdg, 'codex-monitor');
+}
+
 export function memorySnapshot() {
   return {
     totalBytes: os.totalmem(),

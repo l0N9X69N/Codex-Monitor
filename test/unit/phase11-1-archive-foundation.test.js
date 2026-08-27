@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -134,15 +135,7 @@ test('archive config normalization is conservative and never invents automatic r
   assert.deepEqual(normalizeArchiveConfig({ enabled: 'yes', retention: '30d', sizeLimitBytes: -1, autoCleanup: 'yes' }), DEFAULT_ARCHIVE_CONFIG);
 });
 
-test('archive schema is executable on runtimes that provide node:sqlite', async (t) => {
-  let DatabaseSync;
-  try {
-    ({ DatabaseSync } = await import('node:sqlite'));
-  } catch {
-    t.skip('node:sqlite is unavailable on this supported runtime; driver choice remains isolated from the schema contract');
-    return;
-  }
-
+test('archive schema is executable with built-in node:sqlite', () => {
   const db = new DatabaseSync(':memory:');
   try {
     for (const pragma of ARCHIVE_PRAGMAS) db.exec(pragma);

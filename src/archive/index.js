@@ -1,4 +1,5 @@
 export * from './constants.js';
+export * from './database.js';
 export * from './event-normalizer.js';
 export * from './reconcile.js';
 export * from './repository.js';

@@ -3,10 +3,12 @@ import process from 'node:process';
 
 const steps = [
   ['Syntax', process.execPath, ['./scripts/check-syntax.mjs']],
-  ['Config regression plus Phase 11-1 archive foundation/repository', process.execPath, ['--test',
+  ['Platform/data-dir regression plus Phase 11-1 archive runtime', process.execPath, ['--test',
+    'test/unit/phase7-platform.test.js',
     'test/unit/phase4-ui.test.js',
     'test/unit/phase11-1-archive-foundation.test.js',
-    'test/unit/phase11-1-archive-repository.test.js'
+    'test/unit/phase11-1-archive-repository.test.js',
+    'test/unit/phase11-1-archive-database.test.js'
   ]],
   ['Phase 11 storage/delete safety regression', process.execPath, ['--test',
     'test/unit/phase11-storage-delete.test.js',
@@ -26,5 +28,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 repository checkpoint verification: PASS\n');
-process.stdout.write('Gate covers archive config/schema foundation, byte-accurate incremental reads, atomic derived-state plus committed-offset transactions, rollback safety, malformed-line recording, ARCHIVED raw-missing semantics, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 SQLite runtime checkpoint verification: PASS\n');
+process.stdout.write('Gate covers built-in node:sqlite runtime, platform-local DB paths, auto bootstrap/migrations, durable reopen, archive config/schema foundation, atomic committed-offset transactions, malformed-line recording, ARCHIVED raw-missing semantics, and Phase 11 storage/delete regressions.\n');

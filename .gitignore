@@ -3,5 +3,9 @@ node_modules/
 *.log
 dist/
 coverage/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 .DS_Store
 Thumbs.db
