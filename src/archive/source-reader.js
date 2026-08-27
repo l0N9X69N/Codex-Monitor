@@ -1,9 +1,18 @@
 import fs from 'node:fs/promises';
 
-const DEFAULT_MAX_BYTES = 256 * 1024;
+export const DEFAULT_ARCHIVE_CHUNK_BYTES = 256 * 1024;
+export const DEFAULT_ARCHIVE_RECORD_BYTES = 4 * 1024 * 1024;
+export const DEFAULT_ARCHIVE_OVERSIZE_SCAN_BYTES = 64 * 1024 * 1024;
+
+const READ_BLOCK_BYTES = 256 * 1024;
 
 function safeInteger(value, fallback = 0) {
   return Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+}
+
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : fallback;
 }
 
 export function sourceIdentityFromStat(stat) {
@@ -52,12 +61,124 @@ function decodeCompleteLines(buffer, baseOffset) {
   return lines;
 }
 
+async function readBlock(handle, position, length) {
+  if (length <= 0) return Buffer.alloc(0);
+  const buffer = Buffer.allocUnsafe(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, position);
+  return buffer.subarray(0, bytesRead);
+}
+
+async function readRecordBeyondSoftLimit(handle, {
+  offset,
+  observedSize,
+  initialChunk,
+  softLimit,
+  recordLimit,
+  oversizeScanLimit
+}) {
+  const retained = [initialChunk];
+  let retainedBytes = initialChunk.length;
+  let bytesRead = initialChunk.length;
+  let cursor = offset + initialChunk.length;
+
+  while (cursor < observedSize && retainedBytes < recordLimit) {
+    const request = Math.min(
+      READ_BLOCK_BYTES,
+      recordLimit - retainedBytes,
+      observedSize - cursor
+    );
+    const block = await readBlock(handle, cursor, request);
+    if (!block.length) break;
+    bytesRead += block.length;
+    const newline = block.indexOf(0x0a);
+    if (newline >= 0) {
+      retained.push(block.subarray(0, newline + 1));
+      const complete = Buffer.concat(retained, retainedBytes + newline + 1);
+      return {
+        bytesRead,
+        complete,
+        commitCandidateOffset: offset + complete.length,
+        pendingPartialBytes: Math.max(0, bytesRead - complete.length),
+        lines: decodeCompleteLines(complete, offset),
+        expandedRecord: complete.length > softLimit,
+        oversizedLineCount: 0,
+        recordTooLarge: false
+      };
+    }
+    retained.push(block);
+    retainedBytes += block.length;
+    cursor += block.length;
+  }
+
+  if (cursor >= observedSize) {
+    return {
+      bytesRead,
+      complete: Buffer.alloc(0),
+      commitCandidateOffset: offset,
+      pendingPartialBytes: bytesRead,
+      lines: [],
+      expandedRecord: bytesRead > softLimit,
+      oversizedLineCount: 0,
+      recordTooLarge: false
+    };
+  }
+
+  const maximumScanBytes = Math.max(recordLimit, oversizeScanLimit);
+  while (cursor < observedSize && bytesRead < maximumScanBytes) {
+    const request = Math.min(
+      READ_BLOCK_BYTES,
+      maximumScanBytes - bytesRead,
+      observedSize - cursor
+    );
+    const block = await readBlock(handle, cursor, request);
+    if (!block.length) break;
+    bytesRead += block.length;
+    const newline = block.indexOf(0x0a);
+    if (newline >= 0) {
+      const nextOffset = cursor + newline + 1;
+      return {
+        bytesRead,
+        complete: Buffer.alloc(0),
+        commitCandidateOffset: nextOffset,
+        pendingPartialBytes: Math.max(0, bytesRead - (nextOffset - offset)),
+        lines: [{
+          sourceOffset: offset,
+          nextOffset,
+          text: null,
+          oversized: true,
+          byteLength: nextOffset - offset
+        }],
+        expandedRecord: true,
+        oversizedLineCount: 1,
+        recordTooLarge: false
+      };
+    }
+    cursor += block.length;
+  }
+
+  const exhaustedScanBudget = cursor < observedSize && bytesRead >= maximumScanBytes;
+  return {
+    bytesRead,
+    complete: Buffer.alloc(0),
+    commitCandidateOffset: offset,
+    pendingPartialBytes: bytesRead,
+    lines: [],
+    expandedRecord: true,
+    oversizedLineCount: 0,
+    recordTooLarge: exhaustedScanBudget
+  };
+}
+
 export async function readCommittedJsonlChunk(filePath, {
   committedOffset = 0,
-  maxBytes = DEFAULT_MAX_BYTES
+  maxBytes = DEFAULT_ARCHIVE_CHUNK_BYTES,
+  maxRecordBytes = DEFAULT_ARCHIVE_RECORD_BYTES,
+  maxOversizeScanBytes = DEFAULT_ARCHIVE_OVERSIZE_SCAN_BYTES
 } = {}) {
   const offset = safeInteger(committedOffset);
-  const limit = Math.max(1, safeInteger(maxBytes, DEFAULT_MAX_BYTES));
+  const limit = positiveInteger(maxBytes, DEFAULT_ARCHIVE_CHUNK_BYTES);
+  const recordLimit = Math.max(limit, positiveInteger(maxRecordBytes, DEFAULT_ARCHIVE_RECORD_BYTES));
+  const oversizeScanLimit = Math.max(recordLimit, positiveInteger(maxOversizeScanBytes, DEFAULT_ARCHIVE_OVERSIZE_SCAN_BYTES));
   const handle = await fs.open(filePath, 'r');
 
   try {
@@ -77,7 +198,10 @@ export async function readCommittedJsonlChunk(filePath, {
         pendingPartialBytes: 0,
         lines: [],
         truncated: true,
-        highWaterVerified: false
+        highWaterVerified: false,
+        expandedRecord: false,
+        oversizedLineCount: 0,
+        recordTooLarge: false
       };
     }
 
@@ -93,34 +217,58 @@ export async function readCommittedJsonlChunk(filePath, {
         pendingPartialBytes: 0,
         lines: [],
         truncated: false,
-        highWaterVerified: true
+        highWaterVerified: true,
+        expandedRecord: false,
+        oversizedLineCount: 0,
+        recordTooLarge: false
       };
     }
 
-    const bytesToRead = Math.min(limit, observedSize - offset);
-    const buffer = Buffer.allocUnsafe(bytesToRead);
-    const { bytesRead } = await handle.read(buffer, 0, bytesToRead, offset);
-    const chunk = buffer.subarray(0, bytesRead);
+    const bytesToRead = Math.min(limit, recordLimit, observedSize - offset);
+    const chunk = await readBlock(handle, offset, bytesToRead);
     const lastNewline = chunk.lastIndexOf(0x0a);
-    const completeLength = lastNewline >= 0 ? lastNewline + 1 : 0;
-    const complete = chunk.subarray(0, completeLength);
-    const lines = decodeCompleteLines(complete, offset);
-    const commitCandidateOffset = offset + completeLength;
+    let result;
+
+    if (lastNewline >= 0) {
+      const completeLength = lastNewline + 1;
+      const complete = chunk.subarray(0, completeLength);
+      result = {
+        bytesRead: chunk.length,
+        commitCandidateOffset: offset + completeLength,
+        pendingPartialBytes: chunk.length - completeLength,
+        lines: decodeCompleteLines(complete, offset),
+        expandedRecord: false,
+        oversizedLineCount: 0,
+        recordTooLarge: false
+      };
+    } else {
+      result = await readRecordBeyondSoftLimit(handle, {
+        offset,
+        observedSize,
+        initialChunk: chunk,
+        softLimit: limit,
+        recordLimit,
+        oversizeScanLimit
+      });
+    }
+
     const after = await handle.stat({ bigint: false });
     const latestSize = Number(after.size);
-
     return {
       filePath,
       fileIdentity,
       observedFileSize: latestSize,
       observedMtimeMs: Number(after.mtimeMs),
       committedOffset: offset,
-      commitCandidateOffset,
-      bytesRead,
-      pendingPartialBytes: bytesRead - completeLength,
-      lines,
+      commitCandidateOffset: result.commitCandidateOffset,
+      bytesRead: result.bytesRead,
+      pendingPartialBytes: result.pendingPartialBytes,
+      lines: result.lines,
       truncated: false,
-      highWaterVerified: commitCandidateOffset === latestSize
+      highWaterVerified: result.commitCandidateOffset === latestSize,
+      expandedRecord: result.expandedRecord,
+      oversizedLineCount: result.oversizedLineCount,
+      recordTooLarge: result.recordTooLarge
     };
   } finally {
     await handle.close();
