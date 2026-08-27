@@ -4,8 +4,10 @@
 
 ```text
 codexm                              Start passive Live Monitor and official Codex
-codexm --manager                    Open Session Manager without spawning Codex
-codexm --configure                  Open shared Config
+codexm -h / --help                  Show Codex Monitor help
+codexm -m / --manager               Open Session Manager without spawning Codex
+codexm -c / --configure             Open shared Config
+codexm -v / --version               Print Codex Monitor version
 codexm --reset                      Confirm Monitor-preferences reset
 codexm --config                     Print effective Monitor config
 codexm --config-path                Print Monitor config path
@@ -13,10 +15,19 @@ codexm --doctor                     Sanitized diagnostics
 codexm --diagnostics                Alias of --doctor
 codexm --repair                     Repair Monitor-owned Archive integration
 codexm --update                     Check GitHub Releases; no auto-install
-codexm --uninstall                  Remove Monitor-owned hook/service integration
-codexm --version                    Print Codex Monitor version
+codexm --uninstall                  Uninstall Codex Monitor while preserving user/Codex data
 codexm --monitor-version            Explicit version alias
 ```
+
+Short Monitor aliases are recognized only before Codex arguments begin. This keeps common Codex short flags intact:
+
+```text
+codexm -m                           Monitor Session Manager
+codexm resume -m gpt-5              `-m` belongs to official Codex
+codexm -- -m gpt-5                  force a leading `-m` through to official Codex
+```
+
+No ambiguous short aliases are assigned to reset/repair or update/uninstall.
 
 ## Runtime overrides
 
