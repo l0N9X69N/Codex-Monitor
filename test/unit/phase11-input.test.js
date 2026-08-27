@@ -2,18 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeManagerInput, nextManagerView } from '../../src/manager/input.js';
 
-test('Manager dashboard C opens Config while Storage C remains Clear', () => {
+test('Manager dashboard C opens Config while Storage C deletes and D cycles delete scope', () => {
   assert.equal(normalizeManagerInput('c'), 'config-view');
   assert.equal(normalizeManagerInput('C'), 'config-view');
   assert.equal(normalizeManagerInput('c', { storageOpen: true }), 'delete-selected');
   assert.equal(normalizeManagerInput('C', { storageOpen: true }), 'delete-selected');
+  assert.equal(normalizeManagerInput('d', { storageOpen: true }), 'delete-scope');
+  assert.equal(normalizeManagerInput('D', { storageOpen: true }), 'delete-scope');
   assert.equal(normalizeManagerInput('d'), 'direction');
   assert.equal(normalizeManagerInput('D'), 'direction');
   assert.equal(normalizeManagerInput('r'), 'direction');
   assert.equal(normalizeManagerInput('R'), 'direction');
 });
 
-test('clear confirmation accepts Y and cancels with N Q or Escape', () => {
+test('delete confirmation accepts Y and cancels with N Q or Escape', () => {
   assert.equal(normalizeManagerInput('y', { confirmingDelete: true }), 'delete-confirm');
   assert.equal(normalizeManagerInput('Y', { confirmingDelete: true }), 'delete-confirm');
   assert.equal(normalizeManagerInput('n', { confirmingDelete: true }), 'delete-cancel');
