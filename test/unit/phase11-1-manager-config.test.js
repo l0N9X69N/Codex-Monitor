@@ -127,10 +127,31 @@ test('Manager Config renderer is a standalone screen with Archive health/actions
   const frame = renderManagerConfig({ controller, width: 100, height: 30, mode: 'mono' });
   const text = frame.lines.join('\n');
   assert.match(text, /CODEX MONITOR · CONFIG/);
-  assert.match(text, /Archive/);
+  assert.match(text, /\[x\] Archive/);
+  assert.match(text, /local SQLite/);
   assert.match(text, /Service/);
   assert.match(text, /Reconcile Now/);
   assert.match(text, /S save/);
   assert.match(text, /same lifecycle engine/);
   assert.equal(frame.activeTab, 'archive');
+});
+
+test('boolean Config choices render as descriptive checkboxes and toggle with Enter/Space semantics', () => {
+  const controller = new ManagerConfigController({ config: config(false), archivePanel: panel() });
+  controller.moveTab(1);
+  assert.equal(controller.activeTab, 'cards');
+  const before = controller.rows()[0];
+  assert.equal(before.kind, 'toggle');
+  assert.equal(before.label, 'Context');
+  assert.equal(typeof before.checked, 'boolean');
+  assert.match(before.description, /context-window/i);
+
+  const frameBefore = renderManagerConfig({ controller, width: 120, height: 30, mode: 'mono' });
+  assert.match(frameBefore.lines.join('\n'), /\[[ x]\] Context\s+\(Track context-window usage and pressure\.\)/);
+
+  const oldValue = controller.draftConfig.sections.context;
+  controller.editCurrent();
+  assert.equal(controller.draftConfig.sections.context, !oldValue);
+  const frameAfter = renderManagerConfig({ controller, width: 120, height: 30, mode: 'mono' });
+  assert.match(frameAfter.lines.join('\n'), oldValue ? /\[ \] Context/ : /\[x\] Context/);
 });
