@@ -68,7 +68,7 @@ export async function runStandaloneConfigTui({
     const mode = configPaintMode(activeController.draftConfig?.theme ?? theme, colorCapability);
     const frame = previewKind
       ? renderConfigPreview({ kind: previewKind, config: activeController.draftConfig, width, height, mode })
-      : renderManagerConfig({ controller: activeController, width, height, mode });
+      : renderManagerConfig({ controller: activeController, width, height, mode, previewAvailable: true });
     if (force) renderer.reset([]);
     renderer.render(frame.lines);
     return frame;
@@ -106,7 +106,8 @@ export async function runStandaloneConfigTui({
     if (done) return;
     const normalized = normalizeManagerInput(data, {
       configOpen: true,
-      configPreviewOpen: Boolean(previewKind)
+      configPreviewOpen: Boolean(previewKind),
+      configPreviewAvailable: true
     });
     if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
