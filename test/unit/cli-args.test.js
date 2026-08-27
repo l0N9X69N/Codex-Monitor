@@ -25,6 +25,7 @@ test('-- escape hatch passes monitor-looking flags to Codex', () => {
   assert.deepEqual(parseMonitorArgs(['--', '--help']), base({ codexArgs: ['--help'] }));
   assert.deepEqual(parseMonitorArgs(['--', '--background', 'dark']), base({ codexArgs: ['--background', 'dark'] }));
   assert.deepEqual(parseMonitorArgs(['--', '--version']), base({ codexArgs: ['--version'] }));
+  assert.deepEqual(parseMonitorArgs(['--', '-m', 'gpt-5']), base({ codexArgs: ['-m', 'gpt-5'] }));
 });
 
 test('Phase 13 product control actions are Monitor-owned', () => {
@@ -33,6 +34,18 @@ test('Phase 13 product control actions are Monitor-owned', () => {
   assert.deepEqual(parseMonitorArgs(['--diagnostics']), base({ action: 'doctor' }));
   assert.deepEqual(parseMonitorArgs(['--update']), base({ action: 'update' }));
   assert.deepEqual(parseMonitorArgs(['--uninstall']), base({ action: 'uninstall' }));
+});
+
+test('short Monitor action aliases work only before Codex arguments begin', () => {
+  assert.deepEqual(parseMonitorArgs(['-h']), base({ action: 'help' }));
+  assert.deepEqual(parseMonitorArgs(['-m']), base({ action: 'manager' }));
+  assert.deepEqual(parseMonitorArgs(['-c']), base({ action: 'configure' }));
+  assert.deepEqual(parseMonitorArgs(['-v']), base({ action: 'monitor-version' }));
+
+  assert.deepEqual(parseMonitorArgs(['resume', '-m', 'gpt-5']), base({ codexArgs: ['resume', '-m', 'gpt-5'] }));
+  assert.deepEqual(parseMonitorArgs(['exec', '-c', 'model_reasoning_effort=high']), base({ codexArgs: ['exec', '-c', 'model_reasoning_effort=high'] }));
+  assert.deepEqual(parseMonitorArgs(['resume', '-h']), base({ codexArgs: ['resume', '-h'] }));
+  assert.deepEqual(parseMonitorArgs(['resume', '-v']), base({ codexArgs: ['resume', '-v'] }));
 });
 
 test('runtime overrides are consumed by Monitor', () => {
@@ -65,6 +78,7 @@ test('conflicting Monitor actions fail instead of last-action-wins routing', () 
   assert.throws(() => parseMonitorArgs(['--manager', '--doctor']), /Conflicting Monitor actions/);
   assert.throws(() => parseMonitorArgs(['--config', '--reset']), /Conflicting Monitor actions/);
   assert.throws(() => parseMonitorArgs(['--update', '--uninstall']), /Conflicting Monitor actions/);
+  assert.throws(() => parseMonitorArgs(['-m', '-c']), /Conflicting Monitor actions/);
 });
 
 test('--history is no longer Monitor-owned and is forwarded to official Codex', () => {
