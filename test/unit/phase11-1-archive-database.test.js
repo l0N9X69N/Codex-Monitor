@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { ARCHIVE_SCHEMA_VERSION } from '../../src/archive/constants.js';
 import { getArchiveDatabasePath, openArchiveDatabase, openArchiveDatabaseReadOnly } from '../../src/archive/database.js';
 import { monitorDataDir } from '../../src/platform/common.js';
 
@@ -60,8 +61,11 @@ test('node:sqlite bootstrap creates a durable WAL archive and migration metadata
     assert.equal(fs.existsSync(opened.filePath), true);
     assert.equal(opened.db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
     assert.equal(opened.db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
-    assert.equal(opened.db.prepare('SELECT schema_version FROM archive_meta WHERE singleton_id = 1').get().schema_version, 1);
-    assert.equal(opened.db.prepare('SELECT status FROM schema_migrations WHERE version = 1').get().status, 'applied');
+    assert.equal(opened.db.prepare('SELECT schema_version FROM archive_meta WHERE singleton_id = 1').get().schema_version, ARCHIVE_SCHEMA_VERSION);
+    for (let version = 1; version <= ARCHIVE_SCHEMA_VERSION; version += 1) {
+      assert.equal(opened.db.prepare('SELECT status FROM schema_migrations WHERE version = ?').get(version).status, 'applied');
+    }
+    assert.equal(opened.db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'token_samples'").get().count, 1);
 
     opened.repository.commitChunk({
       source: {
