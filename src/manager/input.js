@@ -64,12 +64,13 @@ export function normalizeManagerInput(data, { searching = false, confirmingDelet
   if (text === '/') return 'search';
   if (text.toLowerCase() === 'f') return 'filter';
   if (text.toLowerCase() === 's') return 'sort';
+  if (text === 'd') return 'direction';
   if (text.toLowerCase() === 'r') return 'direction';
   if (text.toLowerCase() === 'v') return 'view';
   if (text === 'A' || text === 'a') return 'select-all';
   if (text === 'N' || text === 'n') return 'select-none';
   if (text === 'I' || text === 'i') return 'select-invert';
-  if (text === 'D' || text === 'd') return 'delete-selected';
+  if (text === 'D') return 'delete-selected';
   return null;
 }
 
