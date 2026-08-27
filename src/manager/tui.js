@@ -1,7 +1,7 @@
 import { TerminalGuard } from '../terminal/guard.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { detectHistoryColorMode } from '../history/theme.js';
-import { SessionManagerCore } from './session-core.js';
+import { SessionManagerCore, buildProcessEvidence } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { SessionManagerRuntime } from './runtime.js';
 import { renderSessionDashboardWithPreview } from './dashboard-preview-render.js';
@@ -11,6 +11,9 @@ import { ManagerTelemetrySeries } from './telemetry-series.js';
 import { nextTimelineFilter } from './timeline.js';
 import { SelectedActivityPreview } from './activity-preview.js';
 import { activityPreviewCapacity } from './activity-preview-capacity.js';
+import { SessionStorageSummaryCache, summarizeSelectedSessions } from './storage-summary.js';
+import { deleteSelectedSessions } from './delete-safety.js';
+import { renderClearConfirmation, renderStorageManager } from './storage-render.js';
 
 function nextInspectTab(current, delta = 1) {
   const index = MANAGER_INSPECT_TABS.indexOf(current);
@@ -23,6 +26,14 @@ function managerPaintMode(theme, capability) {
   if (normalized === 'mono' || capability === 'mono') return 'mono';
   if (normalized === 'matrix') return `matrix:${capability}`;
   return capability;
+}
+
+function clearReportStatus(report) {
+  if (!report) return '';
+  const parts = [`Cleared ${report.deleted?.length ?? 0}`];
+  if (report.rejected?.length) parts.push(`protected ${report.rejected.length}`);
+  if (report.errors?.length) parts.push(`failed ${report.errors.length}`);
+  return parts.join(' · ');
 }
 
 export async function runSessionManagerTui({
@@ -49,6 +60,7 @@ export async function runSessionManagerTui({
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
   const telemetrySeries = new ManagerTelemetrySeries({ windowMs: 60_000, maxSamples: 60 });
   const activityPreviewReader = new SelectedActivityPreview({ fsRef });
+  const storageSummaryCache = new SessionStorageSummaryCache({ now });
 
   let rows = [];
   let scope = 'all';
@@ -60,6 +72,10 @@ export async function runSessionManagerTui({
   let selectedId = null;
   let selectedIndex = 0;
   let viewMode = initialViewMode;
+  let storageOpen = false;
+  let clearConfirming = false;
+  let clearStatus = '';
+  const clearSelectedIds = new Set();
   let selectedDetail = null;
   let inspectTab = 'info';
   let timelineFilter = 'all';
@@ -80,19 +96,27 @@ export async function runSessionManagerTui({
     return lastFrame.model.rows[index] ?? lastFrame.model.selected ?? null;
   };
 
+  const visibleDashboardRows = () => lastFrame?.model?.rows ?? [];
+  const pruneClearSelection = () => {
+    const valid = new Set(rows.filter((row) => row?.state === 'ENDED').map((row) => row.id));
+    for (const id of clearSelectedIds) if (!valid.has(id)) clearSelectedIds.delete(id);
+  };
+
   const draw = (force = false) => {
     if (done) return null;
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
-    const previewCapacity = activityPreviewCapacity({ width, height, viewMode, telemetry });
-    const activityPreview = !core.selectedId && previewCapacity > 0
-      ? activityPreviewReader.read(selectedDashboardRow(), {
-        nowMs: now(),
-        targetEvents: previewCapacity
-      })
-      : null;
-    const frame = core.selectedId && selectedDetail
-      ? renderSessionInspect({
+    pruneClearSelection();
+    const storageSummary = storageSummaryCache.get(rows, { nowMs: now() });
+    const selectedSummary = summarizeSelectedSessions(rows, clearSelectedIds);
+    let frame;
+
+    if (clearConfirming) {
+      frame = renderClearConfirmation({ rows, selectedIds: clearSelectedIds, selectedSummary, width, height, mode: colorMode });
+    } else if (storageOpen) {
+      frame = renderStorageManager({ summary: storageSummary, selectedSummary, selectedIds: clearSelectedIds, width, height, mode: colorMode, status: clearStatus });
+    } else if (core.selectedId && selectedDetail) {
+      frame = renderSessionInspect({
         detail: selectedDetail,
         width,
         height,
@@ -104,8 +128,13 @@ export async function runSessionManagerTui({
         timelineSearching,
         timelineSelectedIndex,
         timelineDetail
-      })
-      : renderSessionDashboardWithPreview({
+      });
+    } else {
+      const previewCapacity = activityPreviewCapacity({ width, height, viewMode, telemetry });
+      const activityPreview = previewCapacity > 0
+        ? activityPreviewReader.read(selectedDashboardRow(), { nowMs: now(), targetEvents: previewCapacity })
+        : null;
+      frame = renderSessionDashboardWithPreview({
         rows,
         width,
         height,
@@ -120,13 +149,14 @@ export async function runSessionManagerTui({
         telemetry,
         activityPreview
       });
+    }
 
-    if (!core.selectedId && frame.model) {
+    if (!core.selectedId && !storageOpen && !clearConfirming && frame.model) {
       selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
       selectedId = frame.model.selected?.id ?? null;
       lastFrame = frame;
       lastInspectFrame = null;
-    } else if (core.selectedId) {
+    } else if (core.selectedId && !storageOpen && !clearConfirming) {
       lastInspectFrame = frame;
       if (frame.timeline && frame.timeline.selectedIndex >= 0) timelineSelectedIndex = frame.timeline.selectedIndex;
     }
@@ -136,7 +166,7 @@ export async function runSessionManagerTui({
   };
 
   const sampleTelemetry = () => {
-    if (done || core.selectedId || searching) return;
+    if (done || core.selectedId || searching || storageOpen || clearConfirming) return;
     telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
     draw(false);
   };
@@ -147,6 +177,7 @@ export async function runSessionManagerTui({
     onSnapshot(result) {
       rows = result.rows ?? [];
       selectedDetail = result.selectedDetail ?? selectedDetail;
+      storageSummaryCache.invalidate();
       if (!telemetry.samples.length) telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
       draw(false);
     }
@@ -201,12 +232,91 @@ export async function runSessionManagerTui({
     return Math.max(0, Math.min(count - 1, Number(value) || 0));
   };
 
+  const toggleCurrentClearSelection = () => {
+    const row = selectedDashboardRow();
+    if (!row) return;
+    if (row.state !== 'ENDED') {
+      clearStatus = `${row.state ?? 'UNKNOWN'} session is protected`;
+      return;
+    }
+    if (clearSelectedIds.has(row.id)) clearSelectedIds.delete(row.id);
+    else clearSelectedIds.add(row.id);
+    clearStatus = `${clearSelectedIds.size} ENDED selected`;
+  };
+
+  const selectVisibleEnded = (mode) => {
+    const eligible = visibleDashboardRows().filter((row) => row?.state === 'ENDED');
+    if (mode === 'none') clearSelectedIds.clear();
+    else if (mode === 'all') for (const row of eligible) clearSelectedIds.add(row.id);
+    else if (mode === 'invert') {
+      for (const row of eligible) {
+        if (clearSelectedIds.has(row.id)) clearSelectedIds.delete(row.id);
+        else clearSelectedIds.add(row.id);
+      }
+    }
+    clearStatus = `${clearSelectedIds.size} ENDED selected`;
+  };
+
+  const confirmClear = async () => {
+    let freshProcesses = null;
+    try { freshProcesses = await platformAdapter.getProcessTree?.(); } catch { freshProcesses = null; }
+    const freshEvidence = buildProcessEvidence(Array.isArray(freshProcesses) ? freshProcesses : null, {
+      nowMs: now(),
+      sessions: core.index,
+      previousAssociations: tracker.processAssociations
+    });
+    const report = deleteSelectedSessions(rows, clearSelectedIds, { sessionsPath, fsRef, processEvidence: freshEvidence });
+    for (const item of report.deleted) clearSelectedIds.delete(item.id);
+    clearStatus = clearReportStatus(report);
+    clearConfirming = false;
+    storageOpen = true;
+    core.discover({ processEvidence: freshEvidence, refreshKnownMetadata: true });
+    rows = core.rows();
+    tracker.cachedRows = rows;
+    tracker.hasCachedRows = true;
+    storageSummaryCache.invalidate();
+    draw(true);
+  };
+
   const handleInput = async (data) => {
     if (done) return;
-    const normalized = normalizeManagerInput(data, { searching: searching || timelineSearching });
+    const normalized = normalizeManagerInput(data, { searching: searching || timelineSearching, confirmingDelete: clearConfirming });
     if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
     if (!action) return;
+
+    if (clearConfirming) {
+      if (action === 'delete-cancel') {
+        clearConfirming = false;
+        clearStatus = 'Clear cancelled';
+        draw(true);
+      } else if (action === 'delete-confirm') {
+        await confirmClear();
+      }
+      return;
+    }
+
+    if (storageOpen) {
+      if (action === 'quit' || action === 'storage-view') {
+        storageOpen = false;
+        clearStatus = '';
+        draw(true);
+      } else if (action === 'select-none') {
+        selectVisibleEnded('none');
+        draw(false);
+      } else if (action === 'select-all') {
+        selectVisibleEnded('all');
+        draw(false);
+      } else if (action === 'select-invert') {
+        selectVisibleEnded('invert');
+        draw(false);
+      } else if (action === 'delete-selected') {
+        if (clearSelectedIds.size) clearConfirming = true;
+        else clearStatus = 'No ENDED sessions selected';
+        draw(true);
+      }
+      return;
+    }
 
     if (core.selectedId) {
       if (timelineSearching) {
@@ -255,27 +365,19 @@ export async function runSessionManagerTui({
         timelineDetail = false;
         draw(false);
       } else if (inspectTab === 'timeline') {
-        if (action === 'up') {
-          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex - 1);
-        } else if (action === 'down') {
-          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex + 1);
-        } else if (action === 'page-up') {
-          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex - Math.max(5, (stdout.rows || 30) - 10));
-        } else if (action === 'page-down') {
-          timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex + Math.max(5, (stdout.rows || 30) - 10));
-        } else if (action === 'home') {
-          timelineSelectedIndex = 0;
-        } else if (action === 'end') {
-          timelineSelectedIndex = Math.max(0, timelineCount() - 1);
-        } else if (action === 'filter') {
+        if (action === 'up') timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex - 1);
+        else if (action === 'down') timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex + 1);
+        else if (action === 'page-up') timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex - Math.max(5, (stdout.rows || 30) - 10));
+        else if (action === 'page-down') timelineSelectedIndex = clampTimelineIndex(timelineSelectedIndex + Math.max(5, (stdout.rows || 30) - 10));
+        else if (action === 'home') timelineSelectedIndex = 0;
+        else if (action === 'end') timelineSelectedIndex = Math.max(0, timelineCount() - 1);
+        else if (action === 'filter') {
           timelineFilter = nextTimelineFilter(timelineFilter);
           timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
         } else if (action === 'search') {
           timelineSearching = true;
           timelineSearchDraft = timelineSearch;
-        } else if (action === 'inspect' && lastInspectFrame?.timeline?.selected) {
-          timelineDetail = true;
-        }
+        } else if (action === 'inspect' && lastInspectFrame?.timeline?.selected) timelineDetail = true;
         draw(false);
       }
       return;
@@ -291,11 +393,8 @@ export async function runSessionManagerTui({
         selectedId = null;
         selectedIndex = 0;
         rebaselineTelemetry();
-      } else if (action === 'search-backspace') {
-        searchDraft = [...searchDraft].slice(0, -1).join('');
-      } else if (action === 'search-text') {
-        searchDraft += normalized.text;
-      }
+      } else if (action === 'search-backspace') searchDraft = [...searchDraft].slice(0, -1).join('');
+      else if (action === 'search-text') searchDraft += normalized.text;
       draw(false);
       return;
     }
@@ -318,10 +417,35 @@ export async function runSessionManagerTui({
       sortBy = nextManagerSort(sortBy);
       selectedId = null;
       selectedIndex = 0;
-    } else if (action === 'direction') {
-      direction = direction === 'desc' ? 'asc' : 'desc';
-    } else if (action === 'view') {
-      viewMode = nextManagerView(viewMode);
+    } else if (action === 'direction') direction = direction === 'desc' ? 'asc' : 'desc';
+    else if (action === 'view') viewMode = nextManagerView(viewMode);
+    else if (action === 'storage-view') {
+      storageOpen = true;
+      clearStatus = '';
+      forceDraw = true;
+    } else if (action === 'select-toggle') {
+      toggleCurrentClearSelection();
+      storageOpen = true;
+      forceDraw = true;
+    } else if (action === 'select-all') {
+      selectVisibleEnded('all');
+      storageOpen = true;
+      forceDraw = true;
+    } else if (action === 'select-none') {
+      selectVisibleEnded('none');
+      storageOpen = true;
+      forceDraw = true;
+    } else if (action === 'select-invert') {
+      selectVisibleEnded('invert');
+      storageOpen = true;
+      forceDraw = true;
+    } else if (action === 'delete-selected') {
+      if (clearSelectedIds.size) clearConfirming = true;
+      else {
+        storageOpen = true;
+        clearStatus = 'No ENDED sessions selected';
+      }
+      forceDraw = true;
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
@@ -367,7 +491,7 @@ export async function runSessionManagerTui({
     telemetryTimer.unref?.();
     void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
-    return { code, core, tracker, runtime, viewMode, theme, colorMode, telemetry };
+    return { code, core, tracker, runtime, viewMode, theme, colorMode, telemetry, clearSelectedIds, clearStatus };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
     processRef?.removeListener?.('SIGTERM', onSignal);
