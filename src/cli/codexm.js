@@ -7,6 +7,7 @@ import { applyRuntimeOverrides, DEFAULT_CONFIG, normalizeConfig } from '../confi
 import { configureMonitor } from '../config/configure.js';
 import { runFirstRunOnboarding } from '../config/onboarding-tui.js';
 import { shouldRunFirstRunOnboarding } from '../config/onboarding.js';
+import { confirmMonitorReset } from '../config/reset-confirm.js';
 import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
@@ -21,32 +22,44 @@ import { parseMonitorArgs } from './args.js';
 
 const VERSION = '1.0.0-alpha.1';
 
+function configRecoveryNotice(loaded) {
+  if (!loaded?.error) return '';
+  if (loaded.futureVersion) return `RECOVERY: config v${loaded.sourceVersion} is newer than supported; using safe defaults until explicit Save.`;
+  return 'RECOVERY: config could not be parsed/read; original file is preserved until explicit Save.';
+}
+
 function printHelp() {
   process.stdout.write(`Codex Monitor ${VERSION}\n\n`);
-  process.stdout.write('Usage: codexm [monitor options] [codex arguments]\n\n');
-  process.stdout.write('Monitor options:\n');
-  process.stdout.write('  --help                        Show Monitor help\n');
-  process.stdout.write('  --manager                     Open Session Manager\n');
-  process.stdout.write('  --manager-view operations|table|charts|auto\n');
-  process.stdout.write('                                Override Manager view for this run only\n');
-  process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
-  process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
+  process.stdout.write('LIVE / CODEX\n');
+  process.stdout.write('  codexm [monitor options] [codex arguments]\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
   process.stdout.write('  --preset recommended|compact|full|custom\n');
   process.stdout.write('  --theme color|mono|matrix\n');
   process.stdout.write('  --background terminal|black|dark\n');
-  process.stdout.write('  --lang vi|en\n');
+  process.stdout.write('  --lang vi|en\n\n');
+  process.stdout.write('SESSION MANAGER\n');
+  process.stdout.write('  --manager                     Open Session Manager\n');
+  process.stdout.write('  --manager-view operations|table|charts|auto\n');
+  process.stdout.write('                                Override Manager view for this run only\n');
+  process.stdout.write('  Inside Manager: C Config\n\n');
+  process.stdout.write('CUSTOMIZE\n');
   process.stdout.write('  --configure                   Open the shared Monitor Config screen\n');
-  process.stdout.write('  --reset                       Open Config with Monitor defaults; saves only on explicit Save\n');
+  process.stdout.write('  --reset                       Confirm reset, then open Config with defaults\n');
+  process.stdout.write('  Config: P Live preview · M Manager preview\n\n');
+  process.stdout.write('DIAGNOSTICS\n');
+  process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
+  process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
   process.stdout.write('  --demo                        Render passive Live HUD demo\n');
-  process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n');
+  process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n\n');
+  process.stdout.write('PASSTHROUGH\n');
   process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
   process.stdout.write('A clean interactive first launch runs setup before Manager or official Codex starts.\n');
-  process.stdout.write('Live Monitor is display-only after Codex starts: every keyboard byte belongs to official Codex.\n');
-  process.stdout.write('Plain `codexm resume` uses a local pre-launch session picker so history can hydrate immediately.\n');
-  process.stdout.write('There is no public --history mode in the current v1 contract.\n');
+  process.stdout.write('Live Monitor is passive after Codex starts: every keyboard byte belongs to official Codex.\n');
+  process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
+  process.stdout.write('Local Session Archive is optional/local-only and remains disabled until explicit opt-in.\n');
+  process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
   process.stdout.write('Example: codexm -- --help   # official Codex help\n');
 }
 
@@ -58,8 +71,9 @@ async function main() {
   let persistedConfig = loaded.config;
   let config = applyRuntimeOverrides(persistedConfig, parsed.overrides);
   const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
+  const recoveryNotice = configRecoveryNotice(loaded);
 
-  if (loaded.error) process.stderr.write(`codexm: config could not be read; using defaults (${loaded.error.message}).\n`);
+  if (loaded.error) process.stderr.write(`codexm: config could not be used; original file preserved (${loaded.error.message}).\n`);
 
   if (parsed.action === 'help') { printHelp(); return 0; }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
@@ -71,14 +85,22 @@ async function main() {
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
   if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
   if (parsed.action === 'configure') {
-    const result = await configureMonitor({ currentConfig: loaded.config, previousConfig: loaded.config, filePath: configPath });
+    const result = await configureMonitor({
+      currentConfig: loaded.config,
+      previousConfig: loaded.config,
+      filePath: configPath,
+      notice: recoveryNotice
+    });
     return result.code;
   }
   if (parsed.action === 'reset') {
+    const confirmation = await confirmMonitorReset({ archiveEnabled: loaded.config?.archive?.enabled === true });
+    if (!confirmation.confirmed) return confirmation.code ?? 1;
     const result = await configureMonitor({
       currentConfig: normalizeConfig(DEFAULT_CONFIG),
       previousConfig: loaded.config,
-      filePath: configPath
+      filePath: configPath,
+      notice: 'RESET DRAFT: defaults loaded. Nothing changes until you press S to Save.'
     });
     return result.code;
   }
@@ -101,7 +123,8 @@ async function main() {
     const onboarding = await runFirstRunOnboarding({
       currentConfig: loaded.valid ? loaded.config : normalizeConfig(DEFAULT_CONFIG),
       previousConfig: loaded.valid ? loaded.config : normalizeConfig(DEFAULT_CONFIG),
-      filePath: configPath
+      filePath: configPath,
+      notice: recoveryNotice
     });
     if (!onboarding.saved) return onboarding.code ?? 1;
     persistedConfig = onboarding.config;
