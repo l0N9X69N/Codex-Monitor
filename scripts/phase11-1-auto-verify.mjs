@@ -10,6 +10,7 @@ const steps = [
     'test/unit/phase11-1-archive-repository.test.js',
     'test/unit/phase11-1-archive-database.test.js',
     'test/unit/phase11-1-archive-fidelity.test.js',
+    'test/unit/phase11-1-archive-maintenance.test.js',
     'test/unit/phase11-1-archive-coordinator.test.js',
     'test/unit/phase11-1-archive-service.test.js',
     'test/unit/phase11-1-archive-integration.test.js',
@@ -20,6 +21,7 @@ const steps = [
     'test/unit/phase11-1-manager-archive-index.test.js',
     'test/unit/phase11-1-manager-index-health.test.js',
     'test/unit/phase11-1-manager-service-health.test.js',
+    'test/unit/phase11-1-manager-dynamic-archive-config.test.js',
     'test/unit/phase11-1-manager-verified-detail.test.js',
     'test/unit/phase11-1-manager-live-overlay.test.js'
   ]],
@@ -41,5 +43,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 verified archive service liveness checkpoint verification: PASS\n');
-process.stdout.write('Gate covers real lock/PID-backed Manager service liveness instead of stale archive_meta markers, stale-lock and owner-mismatch detection, SQLite-first service verification, additive archive schema v2/token fidelity, committed-offset live overlay, oversized-record progress, verified source-scan semantics, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 archive maintenance and dynamic Manager checkpoint verification: PASS\n');
+process.stdout.write('Gate covers archive schema v3 delete suppressions and stale-ingest race guards, persistent Clear Archive semantics, RAW/ARCHIVE/EVERYTHING session deletion with raw-first full-delete safety, Archive Config health and maintenance actions, hot OFF/ON Manager archive transitions, verified service liveness, SQLite token/detail fidelity, committed-offset live overlay, oversized-record progress, source-scan semantics, and Phase 11 storage/input regressions.\n');
