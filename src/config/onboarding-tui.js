@@ -2,6 +2,7 @@ import process from 'node:process';
 import { detectHistoryColorMode } from '../history/theme.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { TerminalGuard } from '../terminal/guard.js';
+import { attachTerminalKeyInput } from '../terminal/key-input.js';
 import { OnboardingController, ONBOARDING_STEP } from './onboarding.js';
 import { renderOnboarding } from './onboarding-render.js';
 import { renderConfigPreview } from './preview.js';
@@ -17,12 +18,12 @@ function actionForInput(data, { previewOpen = false } = {}) {
   const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!text) return null;
   if (previewOpen) {
-    if (text === '\x1b' || text.toLowerCase() === 'q') return 'preview-close';
+    if (text === '\x1b' || text.toLowerCase() === 'q' || text === '\x03') return 'preview-close';
     if (text.toLowerCase() === 'p') return 'preview-live';
     if (text.toLowerCase() === 'm') return 'preview-manager';
     return null;
   }
-  if (text === '\x1b') return 'cancel';
+  if (text === '\x1b' || text === '\x03') return 'cancel';
   if (text === '\x1b[A') return 'up';
   if (text === '\x1b[B') return 'down';
   if (text === '\x1b[D' || text === '\x7f' || text === '\b') return 'back';
@@ -56,6 +57,7 @@ export async function runFirstRunOnboarding({
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
   let previewKind = null;
   let done = false;
+  let detachKeyInput = () => {};
   let finish;
   let fail;
   const finished = new Promise((resolve, reject) => { finish = resolve; fail = reject; });
@@ -75,7 +77,7 @@ export async function runFirstRunOnboarding({
   const cleanup = () => {
     if (done) return;
     done = true;
-    try { stdin.off?.('data', onInput); } catch {}
+    try { detachKeyInput(); } catch {}
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.pause?.(); } catch {}
     guard.restore();
@@ -143,7 +145,7 @@ export async function runFirstRunOnboarding({
     guard.hideCursor();
     guard.enterRawMode();
     stdin.resume?.();
-    stdin.on?.('data', onInput);
+    detachKeyInput = attachTerminalKeyInput(stdin, onInput);
     stdout.on?.('resize', onResize);
     stdout.write('\x1b[2J\x1b[H');
     draw(true);
