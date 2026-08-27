@@ -1,6 +1,8 @@
 # Phase 12 Auto Test Report
 
-Status: **PENDING RERUN ON LATEST 12D CLOSE-CANDIDATE HEAD**
+Status: **PASS — LATEST 12D CLOSE-CANDIDATE GATE VERIFIED ON TARGET DEVELOPMENT MACHINE**
+
+Recorded: **2026-08-27**
 
 Command:
 
@@ -8,7 +10,9 @@ Command:
 npm run verify:phase12
 ```
 
-The latest Phase 12 gate includes:
+Result reported by the target-machine developer: **PASS, all checks green**.
+
+The verified Phase 12 gate includes:
 
 - syntax verification;
 - deterministic Monitor CLI routing and exact Codex passthrough tests;
@@ -23,6 +27,10 @@ The latest Phase 12 gate includes:
 - full Phase 11-1 Archive/Manager auto verifier;
 - Manager runtime/input regressions from Phase 9/11.
 
-Earlier Phase 12 checkpoints 12A, 12B and 12C were run by the target-machine developer and reported PASS. Those results do **not** substitute for rerunning the latest 12D close-candidate gate because 12D added Manager-host preview and Doctor/Repair control-plane changes.
+Verified source-runtime head before QA bookkeeping commits:
 
-Do not mark Phase 12 AUTO VERIFIED until the latest command above completes successfully.
+```text
+a97970f94eafb3b8d16b92eb1d2ab597c7dcdf2d
+```
+
+This establishes Phase 12 **AUTO VERIFIED** status for the source-runtime implementation. It does not replace the focused manual Windows Terminal UX closeout, and it does not claim Phase 13 packaging/install/release behavior.
