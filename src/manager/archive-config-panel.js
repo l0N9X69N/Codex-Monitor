@@ -47,12 +47,14 @@ export function readArchiveConfigHealth({
   let health = null;
   let sessions = 0;
   let suppressions = 0;
+  let failedFiles = 0;
   let dbPath = null;
   try {
     dbPath = databasePath();
     opened = openDatabase();
     health = opened.repository.db.prepare('SELECT * FROM archive_meta WHERE singleton_id = 1').get() ?? null;
     sessions = Number(opened.repository.db.prepare('SELECT COUNT(*) AS count FROM sessions').get()?.count ?? 0);
+    failedFiles = Number(opened.repository.db.prepare('SELECT COUNT(*) AS count FROM ingest_state WHERE last_error IS NOT NULL').get()?.count ?? 0);
     try {
       suppressions = Number(opened.repository.db.prepare('SELECT COUNT(*) AS count FROM archive_suppressions').get()?.count ?? 0);
     } catch {}
@@ -76,6 +78,7 @@ export function readArchiveConfigHealth({
     databaseBytes: dbPath ? fileSize(dbPath) : null,
     sessions,
     suppressions,
+    failedFiles: integer(failedFiles, 0),
     serviceRunning: service?.running === true,
     serviceOwner: service?.owner ?? null,
     serviceError: service?.error ?? null,
@@ -86,7 +89,13 @@ export function readArchiveConfigHealth({
     lastReconcileAt: health?.last_successful_reconcile ?? null,
     pendingFiles,
     pendingBytes,
-    syncLabel: dbError ? 'DB ERROR' : pendingFiles > 0 || pendingBytes > 0 ? 'CATCHING UP' : 'READY',
+    syncLabel: dbError
+      ? 'DB ERROR'
+      : failedFiles > 0
+        ? 'ATTENTION'
+        : pendingFiles > 0 || pendingBytes > 0
+          ? 'CATCHING UP'
+          : 'READY',
     display: {
       database: fmtBytes(dbPath ? fileSize(dbPath) : null),
       lastReconcile: ageLabel(health?.last_successful_reconcile, atMs),
@@ -131,6 +140,7 @@ export class ArchiveConfigPanel {
       { id: 'archive:health:database', label: 'Database', value: health.display?.database ?? '--', editable: false },
       { id: 'archive:health:sessions', label: 'Archived sessions', value: String(health.sessions ?? 0), editable: false },
       { id: 'archive:health:suppressed', label: 'Suppressed raw sources', value: String(health.suppressions ?? 0), editable: false },
+      { id: 'archive:health:failed-files', label: 'Failed files', value: String(health.failedFiles ?? 0), editable: false },
       { id: 'archive:health:last-reconcile', label: 'Last reconcile', value: health.display?.lastReconcile ?? '--', editable: false },
       { id: 'archive:health:pending-files', label: 'Pending files', value: String(health.pendingFiles ?? 0), editable: false },
       { id: 'archive:health:pending-bytes', label: 'Pending bytes', value: health.display?.pendingBytes ?? '--', editable: false },
