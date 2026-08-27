@@ -7,13 +7,27 @@ export const MANAGER_DELETE_SCOPE = Object.freeze({
   EVERYTHING: 'everything'
 });
 
-function selectedRows(rows, selectedIds) {
-  const ids = selectedIds instanceof Set ? selectedIds : new Set(Array.isArray(selectedIds) ? selectedIds : []);
-  return (Array.isArray(rows) ? rows : []).filter((row) => ids.has(row?.id));
+const DELETE_SCOPES = Object.freeze(Object.values(MANAGER_DELETE_SCOPE));
+
+export function nextManagerDeleteScope(scope = MANAGER_DELETE_SCOPE.RAW) {
+  const index = DELETE_SCOPES.indexOf(String(scope));
+  return DELETE_SCOPES[(index < 0 ? 0 : index + 1) % DELETE_SCOPES.length];
 }
 
 function canDeleteArchive(row) {
   return row?.archiveBacked === true && Boolean(row?.threadId);
+}
+
+export function managerDeleteRowEligible(row, scope = MANAGER_DELETE_SCOPE.RAW) {
+  if (!row || row.state === 'LIVE') return false;
+  if (scope === MANAGER_DELETE_SCOPE.ARCHIVE) return canDeleteArchive(row);
+  if (scope === MANAGER_DELETE_SCOPE.EVERYTHING) return Boolean(row.filePath) || canDeleteArchive(row);
+  return row.state === 'ENDED' && Boolean(row.filePath);
+}
+
+function selectedRows(rows, selectedIds) {
+  const ids = selectedIds instanceof Set ? selectedIds : new Set(Array.isArray(selectedIds) ? selectedIds : []);
+  return (Array.isArray(rows) ? rows : []).filter((row) => ids.has(row?.id));
 }
 
 export function deleteManagerSessions(rows = [], selectedIds = [], {
@@ -24,7 +38,7 @@ export function deleteManagerSessions(rows = [], selectedIds = [], {
   deleteRaw = deleteSelectedSessions,
   deleteArchive = deleteArchiveSessions
 } = {}) {
-  const mode = Object.values(MANAGER_DELETE_SCOPE).includes(scope) ? scope : MANAGER_DELETE_SCOPE.RAW;
+  const mode = DELETE_SCOPES.includes(scope) ? scope : MANAGER_DELETE_SCOPE.RAW;
   const selected = selectedRows(rows, selectedIds);
   const report = {
     scope: mode,
@@ -63,8 +77,6 @@ export function deleteManagerSessions(rows = [], selectedIds = [], {
         if (!row?.filePath) report.rejected.push({ id: row?.id ?? null, reason: 'raw-source-unavailable' });
       }
     } else {
-      // Full delete is ordered raw first for rows that still have raw data. Archive-only
-      // rows have no raw evidence left to protect, so their archive can be deleted directly.
       const archiveOnlyRows = selected.filter((row) => !row?.filePath && canDeleteArchive(row));
       const archiveAfterRaw = selected.filter((row) => rawDeletedIds.has(row.id) && canDeleteArchive(row));
       const archiveRows = [...archiveOnlyRows, ...archiveAfterRaw];
