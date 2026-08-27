@@ -110,13 +110,24 @@ export class ArchiveReconcileCoordinator {
     const ingestByKey = new Map(sources.map((source) => [queueKey(source.filePath), this.repository.getIngestState(source.filePath)]));
     const tracked = this.health.listTrackedRawSources().filter((item) => !suppressions.has(queueKey(item?.sourcePath)));
     const trackedKeys = new Set(tracked.map((item) => queueKey(item.sourcePath)));
+    const newlyPrioritized = [];
 
     for (const source of sources) {
-      const ingest = ingestByKey.get(queueKey(source.filePath)) ?? null;
-      if (needsArchiveSourceReconcile(source, ingest, { parserVersion: this.parserVersion })) this.enqueue(source.filePath);
+      const key = queueKey(source.filePath);
+      const ingest = ingestByKey.get(key) ?? null;
+      if (!needsArchiveSourceReconcile(source, ingest, { parserVersion: this.parserVersion })) continue;
+      if (this.enqueue(source.filePath) && sourcePriority(source, ingest).indexed) newlyPrioritized.push(source.filePath);
     }
     for (const item of tracked) if (!sourceByKey.has(queueKey(item.sourcePath))) this.enqueue(item.sourcePath);
-    this.queue.sort((left, right) => compareQueuedSources(left, right, sourceByKey, ingestByKey));
+
+    if (newlyPrioritized.length) {
+      const priorityKeys = new Set(newlyPrioritized.map((filePath) => queueKey(filePath)));
+      const prioritized = this.queue
+        .filter((filePath) => priorityKeys.has(queueKey(filePath)))
+        .sort((left, right) => compareQueuedSources(left, right, sourceByKey, ingestByKey));
+      const waiting = this.queue.filter((filePath) => !priorityKeys.has(queueKey(filePath)));
+      this.queue = [...prioritized, ...waiting];
+    }
 
     const generation = this.health.beginGeneration({ sourceCount: sources.length });
     const results = [];
