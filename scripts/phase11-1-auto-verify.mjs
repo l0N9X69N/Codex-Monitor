@@ -11,6 +11,7 @@ const steps = [
     'test/unit/phase11-1-archive-database.test.js',
     'test/unit/phase11-1-archive-fidelity.test.js',
     'test/unit/phase11-1-archive-maintenance.test.js',
+    'test/unit/phase11-1-archive-resilience.test.js',
     'test/unit/phase11-1-archive-coordinator.test.js',
     'test/unit/phase11-1-archive-service.test.js',
     'test/unit/phase11-1-archive-integration.test.js',
@@ -43,5 +44,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 archive maintenance and dynamic Manager checkpoint verification: PASS\n');
-process.stdout.write('Gate covers archive schema v3 delete suppressions and stale-ingest race guards, persistent Clear Archive semantics, RAW/ARCHIVE/EVERYTHING session deletion with raw-first full-delete safety, Archive Config health and maintenance actions, hot OFF/ON Manager archive transitions, verified service liveness, SQLite token/detail fidelity, committed-offset live overlay, oversized-record progress, source-scan semantics, and Phase 11 storage/input regressions.\n');
+process.stdout.write('\nPhase 11-1 archive resilience exit-gate verification: PASS\n');
+process.stdout.write('Gate covers bounded SQLITE_BUSY/LOCKED retry at the reconcile commit boundary, failed-file health that prevents false READY, indexed append-delta priority over historical UNINDEXED backfill, archive schema v3 delete suppressions and stale-ingest race guards, persistent Clear Archive semantics, RAW/ARCHIVE/EVERYTHING deletion with raw-first full-delete safety, Archive Config health/actions, hot OFF/ON Manager transitions, verified service liveness, SQLite token/detail fidelity, committed-offset live overlay, oversized-record progress, source-scan semantics, and Phase 11 storage/input regressions.\n');
