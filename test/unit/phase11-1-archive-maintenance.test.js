@@ -149,7 +149,31 @@ test('Delete Everything never deletes archive evidence for rows whose raw delete
   assert.equal(archiveCalls, 0);
   assert.equal(report.deletedIds.length, 0);
   assert.equal(report.ok, false);
+  assert.equal(report.partial, false);
   assert.equal(report.rejected[0].reason, 'file-changed-before-delete');
+});
+
+test('Delete Everything reports partial when raw succeeds but archive deletion fails', () => {
+  const row = {
+    id: '/sessions/a.jsonl', filePath: '/sessions/a.jsonl', sourcePath: '/sessions/a.jsonl', state: 'ENDED',
+    archiveBacked: true, rawSourceExists: true, threadId: 'thread-a'
+  };
+  const report = deleteManagerSessions([row], new Set([row.id]), {
+    scope: MANAGER_DELETE_SCOPE.EVERYTHING,
+    sessionsPath: '/sessions',
+    deleteRaw() {
+      return { requested: 1, deleted: [{ id: row.id, filePath: row.filePath }], rejected: [], errors: [], ok: true, partial: false };
+    },
+    deleteArchive() {
+      return { requested: 1, deleted: [], rejected: [], errors: [{ id: row.id, reason: 'archive-delete-failed', error: 'busy' }], ok: false, partial: false };
+    }
+  });
+  assert.equal(report.rawDeletedCount, 1);
+  assert.equal(report.archiveDeletedCount, 0);
+  assert.equal(report.deletedIds.length, 0);
+  assert.equal(report.ok, false);
+  assert.equal(report.partial, true);
+  assert.equal(report.errors[0].reason, 'archive-delete-failed');
 });
 
 test('Delete Everything removes archive only after raw success and does not create suppression', () => {
