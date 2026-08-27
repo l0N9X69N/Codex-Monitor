@@ -1,30 +1,49 @@
 import { hpaint } from '../history/theme.js';
-import { padCells, truncateCells } from '../ui/cell-width.js';
+import { cellWidth, padCells, truncateCells } from '../ui/cell-width.js';
 import { MANAGER_CONFIG_TABS, MANAGER_CONFIG_TAB_LABELS } from './config-controller.js';
 
 function padLine(text, width) {
   return truncateCells(String(text ?? ''), width, '');
 }
 
-function toggleText(row) {
-  const mark = row.checked ? 'x' : ' ';
-  const description = row.description ? `  (${row.description})` : '';
-  return `[${mark}] ${row.label}${description}`;
+function rowStem(row) {
+  if (row.kind === 'toggle') return `[${row.checked ? 'x' : ' '}] ${row.label}`;
+  return `${row.label}  ${row.value}`;
 }
 
-function valueText(row) {
-  const description = row.description ? `  (${row.description})` : '';
-  const editable = row.editable ? '' : ' · read-only';
-  return `${row.label}  ${row.value}${description}${editable}`;
+function descriptionStemWidth(rows, width) {
+  const stems = rows.filter((row) => row?.description).map((row) => cellWidth(rowStem(row)));
+  if (!stems.length) return 0;
+  const widest = Math.max(...stems);
+  const descriptionReserve = width >= 80 ? 34 : 18;
+  const maxStem = Math.max(10, width - 4 - descriptionReserve);
+  return Math.max(10, Math.min(widest, maxStem));
 }
 
-function renderRow(row, selected, width, mode) {
-  const raw = row.kind === 'toggle' ? toggleText(row) : valueText(row);
+function renderRow(row, selected, width, mode, stemWidth) {
   const prefix = selected ? '▸ ' : '  ';
-  const text = padCells(truncateCells(`${prefix}${raw}`, width, '…'), width);
-  if (selected) return hpaint(text, 'selected', mode);
-  if (!row.editable) return hpaint(text, 'dim', mode);
-  return row.kind === 'toggle' && row.checked ? hpaint(text, 'strong', mode) : text;
+  const rawStem = rowStem(row);
+  const hasDescription = Boolean(row.description);
+  const visibleStem = hasDescription && stemWidth > 0
+    ? padCells(truncateCells(rawStem, stemWidth, '…'), stemWidth)
+    : rawStem;
+  const description = hasDescription ? `  (${row.description})` : '';
+  const readOnly = row.editable ? '' : ' · read-only';
+
+  if (selected) {
+    const plain = `${prefix}${visibleStem}${description}${readOnly}`;
+    return hpaint(padCells(truncateCells(plain, width, '…'), width), 'selected', mode);
+  }
+
+  const stemToken = !row.editable
+    ? 'dim'
+    : row.kind === 'toggle' && row.checked
+      ? 'strong'
+      : 'text';
+  let text = `${prefix}${hpaint(visibleStem, stemToken, mode)}`;
+  if (hasDescription) text += `  ${hpaint(`(${row.description})`, 'dim', mode)}`;
+  if (!row.editable) text += hpaint(' · read-only', 'dim', mode);
+  return truncateCells(text, width, '…');
 }
 
 export function renderManagerConfig({
@@ -37,6 +56,7 @@ export function renderManagerConfig({
   const safeHeight = Math.max(16, Number(height) || 36);
   const rows = controller?.rows?.() ?? [];
   const cursorIndex = Math.max(0, Math.min(rows.length - 1, Number(controller?.cursorIndex) || 0));
+  const stemWidth = descriptionStemWidth(rows, safeWidth - 2);
   const tabs = MANAGER_CONFIG_TABS.map((tab) => {
     const label = MANAGER_CONFIG_TAB_LABELS[tab] ?? tab;
     return tab === controller?.activeTab ? hpaint(`[${label}]`, 'nav', mode) : hpaint(label, 'dim', mode);
@@ -56,7 +76,7 @@ export function renderManagerConfig({
   for (let index = 0; index < visible.length; index += 1) {
     const row = visible[index];
     const absoluteIndex = start + index;
-    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode));
+    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode, stemWidth));
   }
 
   while (lines.length < safeHeight - 3) lines.push('');
