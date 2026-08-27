@@ -80,6 +80,7 @@ export function normalizeManagerInput(data, {
   if (text === '\x1b' || text.toLowerCase() === 'q') return 'quit';
   if (enter) return 'inspect';
   if (text === ' ') return 'select-toggle';
+  if (storageOpen && text.toLowerCase() === 'd') return 'delete-scope';
   if (text === '/') return 'search';
   if (text.toLowerCase() === 'f') return 'filter';
   if (text.toLowerCase() === 's') return 'sort';
