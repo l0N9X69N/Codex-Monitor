@@ -16,7 +16,8 @@ const steps = [
     'test/unit/phase11-1-archive-hooks.test.js',
     'test/unit/phase11-1-manager-config.test.js',
     'test/unit/phase11-1-manager-archive-index.test.js',
-    'test/unit/phase11-1-manager-index-health.test.js'
+    'test/unit/phase11-1-manager-index-health.test.js',
+    'test/unit/phase11-1-manager-verified-detail.test.js'
   ]],
   ['Phase 11 storage/delete/input safety regression', process.execPath, ['--test',
     'test/unit/phase11-storage-delete.test.js',
@@ -36,5 +37,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 Manager archive health/wake checkpoint verification: PASS\n');
-process.stdout.write('Gate covers SQLite-first Manager startup, visible INDEX health/fallback states, selected-row sync provenance, rate-limited service wake for pending archive work, injected-index side-effect safety, health-only repaint signatures, explicit metadata-scan completeness reporting, raw LIVE overlay, shared Config lifecycle, hook/service/reconcile/checkpoint safety, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 Manager verified-index and SQLite detail checkpoint verification: PASS\n');
+process.stdout.write('Gate covers complete-scan READY semantics, incomplete-scan protection against false ARCHIVED state, reconcile generations that only record success after a complete source scan, SQLite-backed READY/ARCHIVED Manager inspect detail, raw HistoryEngine fallback for LIVE/not-ready sessions, visible INDEX health/wake behavior, shared Config/hooks/service/checkpoint safety, and Phase 11 storage/delete regressions.\n');
