@@ -66,6 +66,26 @@ function maxEventTime(events, fallback) {
   return latest;
 }
 
+function nonNegativeDelta(next, previous) {
+  const current = integer(next, null);
+  const prior = integer(previous, null);
+  if (current == null || prior == null || current < prior) return null;
+  return current - prior;
+}
+
+function toolGroup(event) {
+  const rawType = String(event?.rawType ?? '').toLowerCase();
+  const name = String(event?.tool ?? '').toLowerCase();
+  const leaf = name.split(/[.:/\\]/).filter(Boolean).at(-1) ?? name;
+  if (leaf === 'spawn_agent') return 'agent';
+  if (rawType.includes('patch_apply') || /(^|[_:/])(read|write|edit)_file($|[_:/])/.test(name) || name.includes('apply_patch')) return 'file';
+  if (rawType.includes('exec_command') || rawType.includes('local_shell') || name.includes('shell') || name.includes('exec_command')) return 'shell';
+  if (rawType.includes('web_search') || name.includes('web_search')) return 'web';
+  if (rawType.includes('image_generation') || name.includes('image_generation')) return 'image';
+  if (rawType.includes('mcp_tool_call')) return 'mcp';
+  return 'tool';
+}
+
 export class ArchiveRepository {
   constructor(db, { now = () => Date.now() } = {}) {
     if (!db || typeof db.exec !== 'function' || typeof db.prepare !== 'function') {
@@ -81,6 +101,7 @@ export class ArchiveRepository {
     this.db.exec(archiveBootstrapSql(nowMs));
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at, status) VALUES (?, ?, ?)')
       .run(ARCHIVE_SCHEMA_VERSION, nowMs, 'applied');
+    this.db.prepare('UPDATE archive_meta SET schema_version = ? WHERE singleton_id = 1').run(ARCHIVE_SCHEMA_VERSION);
     return this;
   }
 
@@ -93,7 +114,7 @@ export class ArchiveRepository {
   }
 
   count(table) {
-    const allowed = new Set(['sessions', 'turns', 'context_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state']);
+    const allowed = new Set(['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state']);
     if (!allowed.has(table)) throw new Error(`unsupported archive table: ${table}`);
     return Number(this.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()?.count ?? 0);
   }
@@ -212,7 +233,9 @@ export class ArchiveRepository {
       const updateTurnUsage = this.db.prepare(`
         UPDATE turns SET
           input_tokens = COALESCE(?, input_tokens),
+          cached_tokens = cached_tokens + ?,
           output_tokens = COALESCE(?, output_tokens),
+          reasoning_tokens = reasoning_tokens + ?,
           context_used = COALESCE(?, context_used)
         WHERE session_id = ? AND turn_no = ?
       `);
@@ -220,6 +243,11 @@ export class ArchiveRepository {
         INSERT OR IGNORE INTO context_samples
           (session_id, timestamp, turn_no, used_tokens, window_tokens, percent, event_type, source_offset)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const insertTokenSample = this.db.prepare(`
+        INSERT OR IGNORE INTO token_samples
+          (session_id, timestamp, turn_no, input_tokens, cached_tokens, output_tokens, reasoning_tokens, source_offset, source_event_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const insertTool = this.db.prepare(`
         INSERT OR IGNORE INTO tool_events
@@ -240,6 +268,7 @@ export class ArchiveRepository {
       const bumpTurnToolCount = this.db.prepare('UPDATE turns SET tool_count = tool_count + ? WHERE session_id = ? AND turn_no = ?');
       const bumpTurnCount = this.db.prepare('UPDATE sessions SET turn_count = turn_count + ?, archive_updated_at = ? WHERE session_id = ?');
       const updateModel = this.db.prepare('UPDATE sessions SET model = COALESCE(?, model), reasoning = COALESCE(?, reasoning), archive_updated_at = ? WHERE session_id = ?');
+      const readSessionUsage = this.db.prepare('SELECT input_tokens, cached_tokens, output_tokens, reasoning_tokens FROM sessions WHERE session_id = ?');
 
       for (const event of events) {
         const atMs = timestamp(event?.atMs, nowMs);
@@ -287,13 +316,21 @@ export class ArchiveRepository {
         }
 
         if (event?.kind === 'usage') {
+          const priorUsage = readSessionUsage.get(sessionId) ?? {};
           const contextUsed = integer(event.contextUsed, null);
           const contextWindow = integer(event.contextWindow, null);
+          const inputTokens = integer(event.inputTokens, null);
+          const cachedTokens = integer(event.cachedInputTokens, null);
+          const outputTokens = integer(event.outputTokens, null);
+          const reasoningTokens = integer(event.reasoningTokens, null);
+          const cachedDelta = nonNegativeDelta(cachedTokens, priorUsage.cached_tokens) ?? 0;
+          const reasoningDelta = nonNegativeDelta(reasoningTokens, priorUsage.reasoning_tokens) ?? 0;
+
           updateSessionUsage.run(
-            integer(event.inputTokens, null),
-            integer(event.cachedInputTokens, null),
-            integer(event.outputTokens, null),
-            integer(event.reasoningTokens, null),
+            inputTokens,
+            cachedTokens,
+            outputTokens,
+            reasoningTokens,
             contextUsed,
             contextUsed,
             contextUsed,
@@ -302,8 +339,27 @@ export class ArchiveRepository {
             sessionId
           );
           if (activeTurnNo != null) {
-            updateTurnUsage.run(integer(event.turnInputTokens, null), integer(event.turnOutputTokens, null), contextUsed, sessionId, activeTurnNo);
+            updateTurnUsage.run(
+              integer(event.turnInputTokens, null),
+              cachedDelta,
+              integer(event.turnOutputTokens, null),
+              reasoningDelta,
+              contextUsed,
+              sessionId,
+              activeTurnNo
+            );
           }
+          insertTokenSample.run(
+            sessionId,
+            atMs,
+            activeTurnNo,
+            inputTokens,
+            cachedTokens,
+            outputTokens,
+            reasoningTokens,
+            sourceOffset,
+            event.turnId ?? null
+          );
           if (contextUsed != null || contextWindow != null) {
             const percent = contextUsed != null && contextWindow > 0 ? (contextUsed / contextWindow) * 100 : null;
             insertContext.run(sessionId, atMs, activeTurnNo, contextUsed, contextWindow, percent, event.rawType ?? 'usage', sourceOffset);
@@ -316,7 +372,7 @@ export class ArchiveRepository {
             sessionId,
             activeTurnNo,
             atMs,
-            event.rawType ?? 'tool',
+            toolGroup(event),
             event.tool ?? null,
             'RUNNING',
             null,
@@ -340,7 +396,7 @@ export class ArchiveRepository {
               sessionId,
               activeTurnNo,
               atMs,
-              event.rawType ?? 'tool-end',
+              'tool',
               null,
               status,
               durationMs,
