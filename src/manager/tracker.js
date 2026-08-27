@@ -29,7 +29,7 @@ export class SessionManagerTracker {
     core,
     platformAdapter,
     archiveIndex = undefined,
-    archiveWake = kickArchiveService,
+    archiveWake = undefined,
     archiveWakeIntervalMs = DEFAULT_ARCHIVE_WAKE_INTERVAL_MS,
     now = () => Date.now(),
     discoveryIntervalMs = 5000,
@@ -41,10 +41,13 @@ export class SessionManagerTracker {
     fastRefreshLimit = 16
   } = {}) {
     if (!core) throw new Error('SessionManagerTracker requires core');
+    const usesDefaultArchiveIndex = archiveIndex === undefined;
     this.core = core;
     this.platformAdapter = platformAdapter ?? null;
-    this.archiveIndex = archiveIndex === undefined ? defaultArchiveIndex(core, platformAdapter) : archiveIndex;
-    this.archiveWake = typeof archiveWake === 'function' ? archiveWake : null;
+    this.archiveIndex = usesDefaultArchiveIndex ? defaultArchiveIndex(core, platformAdapter) : archiveIndex;
+    this.archiveWake = archiveWake === undefined
+      ? (usesDefaultArchiveIndex ? kickArchiveService : null)
+      : (typeof archiveWake === 'function' ? archiveWake : null);
     this.archiveWakeIntervalMs = Math.max(1000, Number(archiveWakeIntervalMs) || DEFAULT_ARCHIVE_WAKE_INTERVAL_MS);
     this.archivePrimed = false;
     this.archiveSnapshot = this.archiveIndex?.lastSnapshot ?? null;
