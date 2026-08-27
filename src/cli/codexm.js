@@ -17,7 +17,7 @@ import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { codexArgsForLocalResume, localResumePickerIntent, pickLocalResumeSession } from '../runtime/local-resume-picker.js';
 import { runSessionManagerRuntime } from '../manager/runtime.js';
-import { runSessionManagerTui } from '../manager/tui.js';
+import { runPortableSessionManagerTui } from '../manager/portable-tui.js';
 import { renderDemo } from '../ui/demo.js';
 import { parseMonitorArgs } from './args.js';
 
@@ -142,7 +142,7 @@ async function main() {
   if (parsed.action === 'manager') {
     kickArchiveService(config);
     const result = interactive
-      ? await runSessionManagerTui({
+      ? await runPortableSessionManagerTui({
         platformAdapter,
         theme: config.theme,
         monitorConfig: persistedConfig,
