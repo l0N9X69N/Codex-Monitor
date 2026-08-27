@@ -3,6 +3,7 @@ import { normalizeArchiveLines } from './event-normalizer.js';
 import { inspectArchiveSource, readCommittedJsonlChunk } from './source-reader.js';
 
 function normalizedTimestamp(value) {
+  if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? Math.trunc(number) : null;
 }
