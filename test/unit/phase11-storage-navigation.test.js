@@ -48,7 +48,7 @@ function fakeTerminal() {
   return { stdin, stdout };
 }
 
-test('storage view advertises entry, moves cursor and toggles the highlighted ended session', async () => {
+test('storage view advertises delete mode, moves cursor and toggles the highlighted ended session', async () => {
   const root = tempDir();
   const base = Date.now() - 60_000;
   const largest = writeSession(root, 'largest', 6, base + 3000);
@@ -82,16 +82,40 @@ test('storage view advertises entry, moves cursor and toggles the highlighted en
   const result = await running;
   assert.equal(result.code, 0);
   assert.equal(result.storageCursorIndex, 1);
+  assert.equal(result.deleteScope, 'raw');
   assert.equal(result.clearSelectedIds.size, 1);
   assert.equal(result.clearSelectedIds.has(middle), true);
   assert.equal(result.clearSelectedIds.has(largest), false);
   assert.match(stdout.output, /M storage/);
   assert.match(stdout.output, /STORAGE MANAGER/);
-  assert.match(stdout.output, /SESSIONS BY SIZE 2\/3/);
+  assert.match(stdout.output, /MODE RAW/);
+  assert.match(stdout.output, /SESSIONS 2\/3/);
   assert.match(stdout.output, /\[x\].*middle/);
-  assert.match(stdout.output, /↑↓ move.*Space toggle.*C clear/);
+  assert.match(stdout.output, /↑↓ move.*Space toggle.*D delete-mode.*C delete/);
   assert.equal(stdin.isRaw, false);
 
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('storage D cycles delete scope while dashboard D keeps sort direction', async () => {
+  const root = tempDir();
+  const base = Date.now() - 60_000;
+  writeSession(root, 'one', 4, base + 2000);
+  const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
+  const { stdin, stdout } = fakeTerminal();
+  const processRef = new EventEmitter();
+  const running = runSessionManagerTui({ platformAdapter: adapter, stdin, stdout, processRef, colorCapability: 'mono', intervalMs: 25, telemetryIntervalMs: 1000, initialViewMode: 'table' });
+  setTimeout(() => {
+    stdin.emit('data', Buffer.from('m'));
+    stdin.emit('data', Buffer.from('d'));
+    setImmediate(() => {
+      stdin.emit('data', Buffer.from('q'));
+      setImmediate(() => stdin.emit('data', Buffer.from('q')));
+    });
+  }, 40);
+  const result = await running;
+  assert.equal(result.deleteScope, 'archive');
+  assert.match(stdout.output, /MODE ARCHIVE/);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -124,14 +148,14 @@ test('storage selection shortcuts stay inert on the main dashboard', async () =>
   assert.equal(result.code, 0);
   assert.equal(result.clearSelectedIds.size, 0);
   assert.doesNotMatch(stdout.output, /CODEX \/\/ STORAGE MANAGER/);
-  assert.doesNotMatch(stdout.output, /STORAGE CLEAR CONFIRMATION/);
+  assert.doesNotMatch(stdout.output, /STORAGE DELETE CONFIRMATION/);
   assert.match(stdout.output, /M storage/);
   assert.equal(stdin.isRaw, false);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('dashboard C opens Config after returning from storage without consuming clear selection', async () => {
+test('dashboard C opens Config after returning from storage without consuming delete selection', async () => {
   const root = tempDir();
   const base = Date.now() - 60_000;
   const selected = writeSession(root, 'selected', 4, base + 1000);
@@ -166,7 +190,7 @@ test('dashboard C opens Config after returning from storage without consuming cl
   assert.equal(result.clearSelectedIds.size, 1);
   assert.equal(result.clearSelectedIds.has(selected), true);
   assert.match(stdout.output, /CODEX MONITOR · CONFIG/);
-  assert.doesNotMatch(stdout.output, /STORAGE CLEAR CONFIRMATION/);
+  assert.doesNotMatch(stdout.output, /STORAGE DELETE CONFIRMATION/);
   assert.equal(stdin.isRaw, false);
 
   fs.rmSync(root, { recursive: true, force: true });
