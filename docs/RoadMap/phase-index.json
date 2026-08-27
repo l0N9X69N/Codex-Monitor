@@ -15,7 +15,7 @@
     { "id": 9, "title": "Session Manager Dashboard TUI", "file": "PHASE-09-SESSION-MANAGER-DASHBOARD-TUI.md", "status": "CLOSED" },
     { "id": 10, "title": "Session Detail Analytics & Live Dynamics", "file": "PHASE-10-SESSION-DETAIL-ANALYTICS.md", "status": "CLOSED" },
     { "id": 11, "title": "Session Storage, Delete Safety & Manager QA", "file": "PHASE-11-SESSION-STORAGE-DELETE-SAFETY-QA.md", "status": "CLOSED" },
-    { "id": "11-1", "title": "Local Session Archive", "file": "PHASE-11-1-LOCAL-SESSION-ARCHIVE.md", "status": "ACTIVE" },
+    { "id": "11-1", "title": "Local Session Archive", "file": "PHASE-11-1-LOCAL-SESSION-ARCHIVE.md", "status": "IMPLEMENTED; AUTO VERIFIED; MANUAL CLOSEOUT PENDING" },
     { "id": 12, "title": "Product Shell, CLI Router, First-run Onboarding & Configuration UX", "file": "PHASE-12-PRODUCT-SHELL-CLI-ONBOARDING.md", "status": "NOT STARTED" },
     { "id": 13, "title": "Productization, Full QA, Packaging & Release Candidate", "file": "PHASE-13-PRODUCTIZATION-RELEASE.md", "status": "NOT STARTED" }
   ]
