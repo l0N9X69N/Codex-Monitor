@@ -31,14 +31,15 @@ test('archive defaults are opt-in, forever retention, unlimited size and no auto
   });
 });
 
-test('archive schema contains specialized tables, cascades and WAL-oriented pragmas', () => {
-  for (const table of ['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_meta', 'schema_migrations']) {
+test('archive schema contains specialized tables, delete suppressions, cascades and WAL-oriented pragmas', () => {
+  for (const table of ['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_suppressions', 'archive_meta', 'schema_migrations']) {
     assert.match(ARCHIVE_SCHEMA_SQL, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
   assert.match(ARCHIVE_SCHEMA_SQL, /ON DELETE CASCADE/);
   assert.match(ARCHIVE_SCHEMA_SQL, /uq_tokens_offset/);
   assert.match(ARCHIVE_SCHEMA_SQL, /uq_tools_offset/);
   assert.match(ARCHIVE_SCHEMA_SQL, /uq_events_offset/);
+  assert.match(ARCHIVE_SCHEMA_SQL, /idx_archive_suppressions_session/);
   assert.deepEqual(ARCHIVE_PRAGMAS, [
     'PRAGMA journal_mode=WAL;',
     'PRAGMA synchronous=NORMAL;',
@@ -62,10 +63,7 @@ test('byte-accurate tail reader advances only through complete JSONL lines', asy
     assert.equal(initial.highWaterVerified, false);
 
     fs.appendFileSync(filePath, '}\n');
-    const next = await readCommittedJsonlChunk(filePath, {
-      committedOffset: initial.commitCandidateOffset,
-      maxBytes: 1024
-    });
+    const next = await readCommittedJsonlChunk(filePath, { committedOffset: initial.commitCandidateOffset, maxBytes: 1024 });
     assert.equal(next.lines.length, 1);
     assert.deepEqual(JSON.parse(next.lines[0].text), { second: 2 });
     assert.equal(next.commitCandidateOffset, fs.statSync(filePath).size);
@@ -102,13 +100,7 @@ test('source inspection returns stable identity for repeated stats of the same f
 
 test('sync classifier enforces READY only at a verified current parser high-water mark', () => {
   const source = { size: 100, fileIdentity: '1:2:3' };
-  const ingest = {
-    committedOffset: 100,
-    fileIdentity: '1:2:3',
-    parserVersion: ARCHIVE_PARSER_VERSION,
-    lastError: null
-  };
-
+  const ingest = { committedOffset: 100, fileIdentity: '1:2:3', parserVersion: ARCHIVE_PARSER_VERSION, lastError: null };
   assert.equal(classifyArchiveSyncState({ source, ingest }), ARCHIVE_SYNC_STATE.READY);
   assert.equal(classifyArchiveSyncState({ source, ingest: null }), ARCHIVE_SYNC_STATE.UNINDEXED);
   assert.equal(classifyArchiveSyncState({ source, ingest: { ...ingest, committedOffset: 90 } }), ARCHIVE_SYNC_STATE.CATCHING_UP);
@@ -143,7 +135,7 @@ test('archive schema is executable with built-in node:sqlite', () => {
     for (const pragma of ARCHIVE_PRAGMAS) db.exec(pragma);
     db.exec(archiveBootstrapSql(123));
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
-    for (const table of ['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_meta', 'schema_migrations']) {
+    for (const table of ['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_suppressions', 'archive_meta', 'schema_migrations']) {
       assert.ok(tables.includes(table), `missing table ${table}`);
     }
     assert.equal(db.prepare('SELECT schema_version FROM archive_meta WHERE singleton_id = 1').get().schema_version, ARCHIVE_SCHEMA_VERSION);
