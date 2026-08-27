@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizePlatformPath } from '../platform/common.js';
 import { SESSION_ACTIVITY } from './session-core.js';
 
 function normalizePath(value) {
@@ -7,8 +8,7 @@ function normalizePath(value) {
 }
 
 function pathKey(value) {
-  const resolved = normalizePath(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  return normalizePlatformPath(value) ?? normalizePath(value);
 }
 
 export function isPathInsideRoot(filePath, rootPath) {
