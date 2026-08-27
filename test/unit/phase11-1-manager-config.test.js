@@ -83,6 +83,7 @@ test('Manager Config save uses the same archive transition engine as CLI configu
   assert.deepEqual(order, ['save', 'archive-effects']);
   assert.equal(saved.length, 1);
   assert.equal(saved[0].filePath, '/virtual/config.json');
+  assert.equal(saved[0].next.setupComplete, true);
   assert.equal(result.saved, true);
   assert.equal(controller.dirty, false);
   assert.match(controller.status, /Archive enabled/);
@@ -110,7 +111,7 @@ test('Archive Config exposes health, reconcile, compact, hook repair and double-
   assert.equal(clears, 1);
 });
 
-test('Manager Config keeps non-schema future tabs informational instead of inventing persistence', () => {
+test('Companion remains informational while Manager tab owns the persisted default view', () => {
   const controller = new ManagerConfigController({ config: config(false), archivePanel: panel() });
   controller.moveTab(4);
   assert.equal(controller.activeTab, 'companion');
@@ -118,7 +119,11 @@ test('Manager Config keeps non-schema future tabs informational instead of inven
   assert.equal(controller.editCurrent(), false);
   controller.moveTab(3);
   assert.equal(controller.activeTab, 'manager');
-  assert.equal(controller.currentRow().editable, false);
+  assert.equal(controller.currentRow().id, 'manager:view');
+  assert.equal(controller.currentRow().editable, true);
+  assert.equal(controller.currentRow().value, 'operations');
+  controller.editCurrent();
+  assert.equal(controller.draftConfig.manager.view, 'table');
 });
 
 test('Manager Config renderer is a standalone screen with Archive health/actions and config-specific footer', () => {
