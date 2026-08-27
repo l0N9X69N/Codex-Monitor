@@ -66,7 +66,9 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
 
   verifyServiceLiveness(snapshot) {
     if (!snapshot?.available) return snapshot;
-    const metadataInstanceId = snapshot.health?.serviceInstanceId ?? null;
+    const metadataInstanceId = snapshot.health?.serviceMetadataInstanceId
+      ?? snapshot.health?.serviceInstanceId
+      ?? null;
     try {
       const raw = this.readServiceStatus ? this.readServiceStatus() : null;
       const status = this.readServiceStatus
@@ -114,10 +116,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
   open() {
     const snapshot = super.open();
     if (!snapshot?.available) return snapshot;
-    snapshot.serviceStatus = {
-      ...this.lastServiceStatus,
-      metadataInstanceId: snapshot.health?.serviceInstanceId ?? null
-    };
+    this.verifyServiceLiveness(snapshot);
     this.lastSnapshot = snapshot;
     return snapshot;
   }
