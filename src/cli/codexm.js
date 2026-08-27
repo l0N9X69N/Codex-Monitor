@@ -15,7 +15,7 @@ import { createPlatformAdapter } from '../platform/index.js';
 import { PRODUCT_VERSION } from '../product/meta.js';
 import { checkForUpdates, printUpdateReport } from '../product/update.js';
 import { scheduleBackgroundUpdateCheck } from '../product/update-scheduler.js';
-import { printUninstallReport, uninstallMonitorIntegration } from '../product/uninstall.js';
+import { printUninstallReport, scheduleProductRemoval, uninstallMonitorIntegration } from '../product/uninstall.js';
 import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
@@ -61,7 +61,7 @@ function printHelp() {
   process.stdout.write('  --doctor, --diagnostics       Run sanitized diagnostics, including Archive health\n');
   process.stdout.write('  --repair                      Repair Monitor-owned Archive hook/service integration\n');
   process.stdout.write('  --update                      Check GitHub Releases; never auto-installs\n');
-  process.stdout.write('  --uninstall                   Remove Monitor-owned integration; preserve user data\n');
+  process.stdout.write('  --uninstall                   Uninstall Codex Monitor; preserve user/Codex data\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
   process.stdout.write('  --version, --monitor-version  Show Codex Monitor version\n');
@@ -73,7 +73,7 @@ function printHelp() {
   process.stdout.write('Live Monitor is passive after Codex starts: every keyboard byte belongs to official Codex.\n');
   process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
   process.stdout.write('Local Session Archive is optional/local-only and remains disabled until explicit opt-in.\n');
-  process.stdout.write('--repair/--uninstall touch only Monitor-owned integration and never delete Codex auth/sessions or the Archive DB.\n');
+  process.stdout.write('--repair touches only Monitor-owned integration. --uninstall preserves Codex auth/sessions plus Monitor config/Archive DB.\n');
   process.stdout.write('Background update checks are throttled to about once per 24h, never auto-install, and can be disabled in Config.\n');
   process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
   process.stdout.write('Example: codexm -- --version   # official Codex version via exact passthrough\n');
@@ -114,8 +114,11 @@ async function main() {
   }
   if (parsed.action === 'uninstall') {
     const report = uninstallMonitorIntegration();
-    printUninstallReport(report);
-    return report.ok ? 0 : 2;
+    const packageRemoval = report.ok ? scheduleProductRemoval() : null;
+    printUninstallReport(report, process.stdout, { packageRemoval });
+    if (!report.ok) return 2;
+    if (packageRemoval?.error) return 2;
+    return 0;
   }
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
   if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
