@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openArchiveDatabase, openArchiveDatabaseReadOnly } from '../../src/archive/database.js';
+import { deleteArchiveSessions } from '../../src/archive/maintenance.js';
 import { publishManagerArchiveConfig } from '../../src/manager/archive-config-state.js';
 import { ManagerArchiveVerifiedIndex } from '../../src/manager/archive-verified-index.js';
 
@@ -61,6 +62,59 @@ test('Manager archive index hot-applies OFF/ON config revisions without process 
     assert.equal(reopened.enabled, true);
     assert.equal(reopened.available, true);
     assert.equal(opens, 2);
+  } finally {
+    try { index?.close(); } catch {}
+    try { writer?.close(); } catch {}
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('suppressed raw source is excluded from Manager archive scan instead of becoming provisional UNINDEXED work', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-phase11-1-suppressed-manager-'));
+  const dataDir = path.join(root, 'data');
+  const sourcePath = path.join(root, 'session.jsonl');
+  fs.writeFileSync(sourcePath, '{}\n');
+  let writer = null;
+  let index = null;
+  try {
+    writer = openArchiveDatabase({ dataDir });
+    writer.repository.commitChunk({
+      source: { filePath: sourcePath, fileIdentity: 'fixture:suppressed:1', size: 3, mtimeMs: 5 },
+      sessionId: 'thread-suppressed-manager',
+      events: [],
+      commitOffset: 3
+    });
+    writer.close();
+    writer = null;
+
+    const removed = deleteArchiveSessions([{
+      id: sourcePath,
+      filePath: sourcePath,
+      sourcePath,
+      rawSourceExists: true,
+      archiveBacked: true,
+      threadId: 'thread-suppressed-manager'
+    }], { openDatabase: () => openArchiveDatabase({ dataDir }) });
+    assert.equal(removed.ok, true);
+
+    index = new ManagerArchiveVerifiedIndex({
+      config: config(true),
+      sessionsPath: root,
+      openDatabase: () => openArchiveDatabaseReadOnly({ dataDir }),
+      scanSourcesWithHealth: async () => ({
+        sources: [{ filePath: sourcePath, fileIdentity: 'fixture:suppressed:1', size: 3, mtimeMs: 5 }],
+        complete: true,
+        errors: [],
+        limited: false
+      })
+    });
+    index.open();
+    const snapshot = await index.refresh();
+    assert.equal(snapshot.rows.length, 0);
+    assert.equal(snapshot.sourceCount, 0);
+    assert.equal(snapshot.pendingFileCount, 0);
+    assert.equal(snapshot.pendingByteCount, 0);
+    assert.equal(snapshot.globalSyncState, 'READY');
   } finally {
     try { index?.close(); } catch {}
     try { writer?.close(); } catch {}
