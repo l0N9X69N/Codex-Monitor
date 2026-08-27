@@ -10,7 +10,7 @@ function integer(value, fallback = null) {
 function timestamp(value, fallback) {
   if (value === null || value === undefined || value === '') return fallback;
   const number = Number(value);
-  return Number.isFinite(number) ? Math.trunc(number) : fallback;
+  return Number.isFinite(number) ? Math.trunc(Number(value)) : fallback;
 }
 
 function changes(result) {
@@ -247,7 +247,7 @@ export class ArchiveRepository {
       const insertTokenSample = this.db.prepare(`
         INSERT OR IGNORE INTO token_samples
           (session_id, timestamp, turn_no, input_tokens, cached_tokens, output_tokens, reasoning_tokens, source_offset, source_event_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `);
       const insertTool = this.db.prepare(`
         INSERT OR IGNORE INTO tool_events
@@ -357,8 +357,7 @@ export class ArchiveRepository {
             cachedTokens,
             outputTokens,
             reasoningTokens,
-            sourceOffset,
-            event.turnId ?? null
+            sourceOffset
           );
           if (contextUsed != null || contextWindow != null) {
             const percent = contextUsed != null && contextWindow > 0 ? (contextUsed / contextWindow) * 100 : null;
