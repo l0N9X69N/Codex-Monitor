@@ -32,31 +32,68 @@ export const MANAGER_CONFIG_TAB_LABELS = Object.freeze({
   updates: 'Updates'
 });
 
-const FIELD_LABELS = Object.freeze({
-  used: 'Used % / tokens', gauge: 'Gauge', cache: 'Cache', left: 'Left %', compaction: 'Compactions',
-  fiveHour: '5-hour quota', weekly: 'Weekly quota', input: 'Input tokens', output: 'Output tokens', reasoning: 'Reasoning tokens',
-  turnInput: 'Turn input', turnOutput: 'Turn output', model: 'Model', routed: 'Routed model', elapsed: 'Elapsed', turns: 'Turns',
-  last: 'Last turn', update: 'Update age', thread: 'Session ID', freshness: 'Freshness', data: 'Data source', state: 'State', source: 'Source',
-  tools: 'Tools', lastTool: 'Last tool', approval: 'Approval', retry: 'Retries', errors: 'Errors', cpu: 'CPU', ram: 'RAM', ramCapacity: 'RAM capacity'
+const FIELD_META = Object.freeze({
+  context: Object.freeze({
+    used: Object.freeze({ label: 'Used % / tokens', description: 'How much of the model context window is already occupied, in percent and tokens.' }),
+    gauge: Object.freeze({ label: 'Gauge', description: 'Visual context-pressure bar for spotting when the window is getting close to full.' }),
+    cache: Object.freeze({ label: 'Cache', description: 'Cached input tokens reused from prior context instead of being processed as fresh input.' }),
+    left: Object.freeze({ label: 'Left %', description: 'Estimated context capacity still available before the window is full.' }),
+    compaction: Object.freeze({ label: 'Compactions', description: 'Context compaction count; helps explain context drops during long sessions.' })
+  }),
+  usage: Object.freeze({
+    fiveHour: Object.freeze({ label: '5-hour quota', description: 'Remaining rolling 5-hour Codex quota and reset timing for login accounts.' }),
+    weekly: Object.freeze({ label: 'Weekly quota', description: 'Remaining weekly Codex quota and reset timing for login accounts.' }),
+    input: Object.freeze({ label: 'Input tokens', description: 'Total input tokens sent to the model during the current session.' }),
+    cache: Object.freeze({ label: 'Cache', description: 'Input tokens served from cache; useful for judging prompt and context reuse.' }),
+    output: Object.freeze({ label: 'Output tokens', description: 'Total model output tokens generated during the current session.' }),
+    reasoning: Object.freeze({ label: 'Reasoning tokens', description: 'Reasoning tokens reported by the model when the runtime exposes them.' }),
+    turnInput: Object.freeze({ label: 'Turn input', description: 'Input tokens used by the latest turn instead of the whole-session total.' }),
+    turnOutput: Object.freeze({ label: 'Turn output', description: 'Output tokens produced by the latest turn instead of the whole-session total.' }),
+    model: Object.freeze({ label: 'Model', description: 'Requested model selected for this Codex run.' }),
+    routed: Object.freeze({ label: 'Routed model', description: 'Actual routed/backend model when Codex reports it separately from the requested model.' })
+  }),
+  session: Object.freeze({
+    elapsed: Object.freeze({ label: 'Elapsed', description: 'Wall-clock time since this monitored Codex run started.' }),
+    turns: Object.freeze({ label: 'Turns', description: 'Number of conversation turns observed in the current session.' }),
+    last: Object.freeze({ label: 'Last turn', description: 'Duration of the most recently completed turn; useful for spotting slow turns.' }),
+    update: Object.freeze({ label: 'Update age', description: 'Age of the latest session event; a growing value can reveal a stale or quiet feed.' }),
+    thread: Object.freeze({ label: 'Session ID', description: 'Short Codex thread/session ID for matching this run with resume and history data.' }),
+    freshness: Object.freeze({ label: 'Freshness', description: 'Freshness state of the latest session evidence so stale data is not mistaken for live data.' }),
+    data: Object.freeze({ label: 'Data source', description: 'Whether Monitor is currently bound to the active Codex rollout/session data stream.' })
+  }),
+  activity: Object.freeze({
+    state: Object.freeze({ label: 'State', description: 'Current activity state such as IDLE, THINKING, TOOL, APPROVAL, or ERROR.' }),
+    source: Object.freeze({ label: 'Source', description: 'Evidence source used to infer activity; useful when diagnosing uncertain status.' }),
+    tools: Object.freeze({ label: 'Tools', description: 'How many tool calls are active right now.' }),
+    lastTool: Object.freeze({ label: 'Last tool', description: 'Current tool name, or the most recently observed tool when none is active.' }),
+    approval: Object.freeze({ label: 'Approval', description: 'Whether Codex is waiting for user approval before it can continue.' }),
+    retry: Object.freeze({ label: 'Retries', description: 'Observed retry/recovery count; useful for spotting repeated transient failures.' }),
+    errors: Object.freeze({ label: 'Errors', description: 'Observed error-event count for the current run.' })
+  }),
+  system: Object.freeze({
+    cpu: Object.freeze({ label: 'CPU', description: 'Reported CPU utilization for the monitored Codex runtime.' }),
+    ram: Object.freeze({ label: 'RAM', description: 'Reported RAM pressure as a percentage of available system memory.' }),
+    ramCapacity: Object.freeze({ label: 'RAM capacity', description: 'Absolute memory used versus total available memory.' })
+  })
 });
 
 const CARD_META = Object.freeze({
-  context: Object.freeze({ label: 'Context', description: 'Track context-window usage and pressure.' }),
-  usage: Object.freeze({ label: 'Usage', description: 'Track token usage and available quota.' }),
-  session: Object.freeze({ label: 'Session', description: 'Show current session identity and timing.' }),
-  activity: Object.freeze({ label: 'Activity', description: 'Show current Codex activity and tool state.' }),
-  system: Object.freeze({ label: 'System', description: 'Show CPU/RAM telemetry when available.' })
+  context: Object.freeze({ label: 'Context', description: 'Show context-window pressure, remaining capacity, cache reuse, and compactions.' }),
+  usage: Object.freeze({ label: 'Usage', description: 'Show token totals, per-turn usage, model routing, and login quota when available.' }),
+  session: Object.freeze({ label: 'Session', description: 'Show session identity, age, turn timing, and data freshness.' }),
+  activity: Object.freeze({ label: 'Activity', description: 'Show what Codex is doing now, including tools, approvals, retries, and errors.' }),
+  system: Object.freeze({ label: 'System', description: 'Show CPU and memory pressure for the monitored runtime when available.' })
 });
 
 const HEADER_META = Object.freeze({
-  activity: Object.freeze({ label: 'Activity', description: 'Current Codex activity state.' }),
-  model: Object.freeze({ label: 'Model', description: 'Active model name.' }),
-  reasoning: Object.freeze({ label: 'Reasoning', description: 'Current reasoning effort.' }),
-  project: Object.freeze({ label: 'Project', description: 'Current project or working directory label.' }),
-  git: Object.freeze({ label: 'Git', description: 'Current branch and revision when available.' }),
-  auth: Object.freeze({ label: 'Auth', description: 'Detected login or API authentication mode.' }),
-  health: Object.freeze({ label: 'Health', description: 'Monitor/runtime health summary.' }),
-  'session-age': Object.freeze({ label: 'Session age', description: 'Elapsed age of the current session.' })
+  activity: Object.freeze({ label: 'Activity', description: 'Current Codex state so you can see IDLE/THINKING/TOOL/APPROVAL at a glance.' }),
+  model: Object.freeze({ label: 'Model', description: 'Requested model currently used by this Codex run.' }),
+  reasoning: Object.freeze({ label: 'Reasoning', description: 'Configured/reported reasoning effort for the active model.' }),
+  project: Object.freeze({ label: 'Project', description: 'Current project or working-directory label.' }),
+  git: Object.freeze({ label: 'Git', description: 'Branch plus compact dirty/diff/ahead-behind status when available.' }),
+  auth: Object.freeze({ label: 'Auth', description: 'Detected Login or API authentication mode.' }),
+  health: Object.freeze({ label: 'Health', description: 'Compact warning derived from activity errors and context pressure.' }),
+  'session-age': Object.freeze({ label: 'Session age', description: 'Elapsed age of the current monitored run.' })
 });
 
 function clone(value) {
@@ -91,11 +128,12 @@ function fieldRows(config) {
   const rows = [];
   for (const [section, fields] of Object.entries(DEFAULT_FIELD_VISIBILITY)) {
     for (const key of Object.keys(fields)) {
+      const meta = FIELD_META[section]?.[key] ?? { label: key, description: 'Optional metric shown in this card.' };
       rows.push(toggleRow({
         id: `field:${section}:${key}`,
-        label: `${section.toUpperCase()} · ${FIELD_LABELS[key] ?? key}`,
+        label: `${section.toUpperCase()} · ${meta.label}`,
         checked: config.fields?.[section]?.[key],
-        description: `Show this metric in the ${section.toUpperCase()} card.`
+        description: meta.description
       }));
     }
   }
@@ -118,9 +156,9 @@ function headerRows(config) {
 function rowsForTab(tab, config, archivePanel = null) {
   if (tab === 'live-view') {
     return [
-      { id: 'preset', label: 'Preset', value: config.preset, editable: true, description: 'Choose the base Live HUD layout.' },
-      { id: 'systemMode', label: 'System mode', value: config.systemMode, editable: true, description: 'Control when system telemetry is collected and shown.' },
-      { id: 'beastMode', label: 'Companion / Beast mode', value: config.beastMode, editable: true, description: 'Control companion visibility in the Live HUD.' }
+      { id: 'preset', label: 'Preset', value: config.preset, editable: true, description: 'Choose the base Live HUD layout and default visible information.' },
+      { id: 'systemMode', label: 'System mode', value: config.systemMode, editable: true, description: 'Control whether system telemetry is off, automatic, or always shown.' },
+      { id: 'beastMode', label: 'Companion / Beast mode', value: config.beastMode, editable: true, description: 'Control whether the companion area is hidden, automatic, or forced on.' }
     ];
   }
   if (tab === 'cards') {
@@ -136,7 +174,7 @@ function rowsForTab(tab, config, archivePanel = null) {
   if (tab === 'appearance') {
     return [
       { id: 'theme', label: 'Theme', value: config.theme, editable: true, description: 'Choose the terminal color treatment.' },
-      { id: 'background', label: 'Background', value: config.background, editable: true, description: 'Choose the expected terminal background.' },
+      { id: 'background', label: 'Background', value: config.background, editable: true, description: 'Choose the expected terminal background for readable contrast.' },
       { id: 'language', label: 'Language', value: config.language, editable: true, description: 'Choose the Monitor UI language.' }
     ];
   }
