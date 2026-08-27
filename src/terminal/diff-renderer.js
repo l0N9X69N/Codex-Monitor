@@ -9,6 +9,19 @@ function rowWrite(row, text) {
   return `${ESC}[${row};1H${text}${ESC}[K`;
 }
 
+function repaintFrame(nextFrame, { originRow = 1 } = {}) {
+  const next = normalizeLines(nextFrame);
+  const dirtyRows = [];
+  let output = '';
+
+  for (let index = 0; index < next.length; index += 1) {
+    dirtyRows.push(index);
+    output += rowWrite(originRow + index, next[index] ?? '');
+  }
+
+  return { output, dirtyRows, next };
+}
+
 export function diffFrames(previousFrame, nextFrame, { originRow = 1 } = {}) {
   const previous = normalizeLines(previousFrame);
   const next = normalizeLines(nextFrame);
@@ -39,12 +52,19 @@ export class AnsiDiffRenderer {
     this.originRow = originRow;
     this.now = now;
     this.previous = [];
+    this.forceNext = false;
   }
 
   render(frame) {
     const started = this.now();
-    const diff = diffFrames(this.previous, frame, { originRow: this.originRow });
-    if (!diff.output) return { written: false, bytes: 0, dirtyRows: [] };
+    const diff = this.forceNext
+      ? repaintFrame(frame, { originRow: this.originRow })
+      : diffFrames(this.previous, frame, { originRow: this.originRow });
+    this.forceNext = false;
+    if (!diff.output) {
+      this.previous = diff.next;
+      return { written: false, bytes: 0, dirtyRows: [] };
+    }
 
     this.stdout.write(diff.output);
     const bytes = Buffer.byteLength(diff.output, 'utf8');
@@ -56,5 +76,6 @@ export class AnsiDiffRenderer {
 
   reset(frame = []) {
     this.previous = normalizeLines(frame);
+    this.forceNext = true;
   }
 }
