@@ -1,7 +1,8 @@
 # Phase 12 — Product Shell, CLI Router, First-run Onboarding & Configuration UX
 
 > **Nguồn chuẩn:** `PROJECT-SPEC.md` — Codex Monitor v1 implementation baseline.  
-> **Quyết định bổ sung:** Phase 12 được tách riêng khỏi Release Candidate để Product Shell / onboarding không bị nhét vào phase hardening cuối cùng.
+> **Quyết định bổ sung:** Phase 12 được tách riêng khỏi Release Candidate để Product Shell / onboarding không bị nhét vào phase hardening cuối cùng.  
+> **Tích hợp mới:** Phase 12 phải giữ tương thích với `PHASE-11-1-LOCAL-SESSION-ARCHIVE.md`; không tạo một Config engine thứ hai và không làm mất semantics Archive/Hook/SQLite đã khóa ở Phase 11-1.
 
 ## Trạng thái
 
@@ -18,7 +19,8 @@ Các phase trước đã xây từng phần riêng lẻ:
 - theme/preset/schema;
 - configure/reset/config-path foundation;
 - doctor/diagnostics foundation;
-- Manager view modes `Operations / Table / Charts / Auto`.
+- Manager view modes `Operations / Table / Charts / Auto`;
+- Phase 11-1 bổ sung Local Session Archive, Codex hooks, Archive Service, SQLite và màn Config dùng chung trong Manager.
 
 Nhưng v1 vẫn cần một phase đứng ra sở hữu **trải nghiệm sản phẩm ở lớp ngoài cùng**: user chạy lệnh gì, lần đầu nhìn thấy gì, config nào được lưu, CLI override thắng config như thế nào, khi nào được hỏi, khi nào tuyệt đối không được hỏi, và làm sao đổi lại lựa chọn sau này.
 
@@ -34,7 +36,9 @@ Biến các feature đã có thành một product shell thống nhất:
 codexm
 ├── Live Monitor + official Codex passthrough
 ├── Session Manager
+│   └── C → Config
 ├── Configure / Reset / Config inspection
+├── Local Session Archive controls
 ├── Diagnostics / repair-oriented local tools
 └── First-run setup + persisted user preferences
 ```
@@ -55,6 +59,10 @@ User mới phải có đường vào rõ ràng; user cũ không bị hỏi lại
 8. Config/reset của Monitor không được sửa/xóa official Codex auth hoặc `~/.codex/sessions`.
 9. Không prompt trong non-interactive/piped environment.
 10. Không tự ghi preference chỉ vì user đang browse thử một view; persisted changes phải có intent rõ.
+11. `Manager → C` và `codexm --configure` phải dùng **cùng config schema/controller**, không được diverge thành hai hệ cấu hình.
+12. Archive là explicit opt-in. Migrate/config/reset không được vô tình bật background service/hook cho user chưa chọn.
+13. Reset hoặc disable Archive không được tự xóa SQLite archive; archive-only analytics có thể không rebuild được nếu raw JSONL đã mất.
+14. Hook/Archive side effects chỉ chạy sau explicit save/apply thành công; cancel/revert không để component ở trạng thái nửa bật nửa tắt.
 
 ---
 
@@ -123,7 +131,22 @@ codexm --manager-view auto --manager
 
 `--manager-view` là Monitor-owned để tránh cướp một generic `--view` có thể thuộc Codex trong tương lai.
 
-Trong Manager, `V` vẫn cho đổi view runtime. Việc đổi runtime **không mặc định ghi config**. Muốn đổi default persisted thì dùng Configure hoặc explicit save action nếu UI sau này cung cấp.
+Trong Manager, `V` vẫn cho đổi view runtime. Việc đổi runtime **không mặc định ghi config**. Muốn đổi default persisted thì dùng Config hoặc explicit save action.
+
+### 3.4 Config entry points
+
+Canonical:
+
+```text
+codexm --manager
+→ C
+→ Config screen
+
+codexm --configure
+→ cùng Config screen/component
+```
+
+`C` chỉ thuộc Manager TUI. Live Monitor không thêm `C` hotkey hay bất kỳ Monitor-owned navigation input nào sau Codex spawn.
 
 ---
 
@@ -144,6 +167,8 @@ Ví dụ:
 - config lưu Manager `operations`, chạy `--manager-view charts --manager` => run đó mở Charts, default vẫn Operations;
 - terminal không support color => representation hạ xuống phù hợp nhưng preference `color` không bị overwrite thành `mono`.
 
+Archive không có one-shot implicit enable chỉ vì Manager mở. Nếu archive disabled trong persisted config thì Manager dùng JSONL fallback và không tự bật service/hook.
+
 ---
 
 ## 5. First-run detection
@@ -155,7 +180,7 @@ interactive terminal
 AND
 không có Monitor config hợp lệ / setup chưa hoàn tất
 AND
-command hiện tại cần product runtime hoặc user gọi --configure/--reset
+command hiện tại cần product runtime hoặc user gọi --configure/--reset theo flow được thiết kế
 ```
 
 ### Không được trigger wizard cho
@@ -181,6 +206,14 @@ User đã có config hợp lệ từ version/schema cũ:
 - đánh dấu setup complete;
 - **không ép chạy onboarding lại chỉ vì app được nâng version**.
 
+Đối với field mới từ Phase 11-1:
+
+```text
+archive.enabled = false
+```
+
+cho user cũ nếu họ chưa từng explicit opt-in. Migration không được tự cài hook/start service chỉ vì schema mới có Archive.
+
 Nếu config hỏng/malformed:
 
 - không overwrite im lặng;
@@ -195,7 +228,7 @@ Nếu config hỏng/malformed:
 
 Wizard là full-screen/interactive setup nhỏ, responsive và restore terminal sạch.
 
-Flow chuẩn:
+Flow chuẩn vẫn tối giản:
 
 ```text
 WELCOME
@@ -215,9 +248,11 @@ Preview / summary
 Save / Back / Cancel
 ```
 
-### 6.1 Welcome
+**Không tự bật Local Session Archive trong first-run.** Archive mặc định Disabled để giữ nguyên nguyên tắc “cái gì user không chọn thì không chạy ngầm”. User có thể bật sau qua `Manager → C → Archive` hoặc `codexm --configure → Archive`.
 
-Ví dụ:
+Một future UX decision có thể thêm explicit Archive opt-in step, nhưng chỉ khi wording/consent rõ và không thay đổi default Disabled âm thầm.
+
+### 6.1 Welcome
 
 ```text
 CODEX MONITOR // INITIAL SETUP
@@ -225,10 +260,11 @@ CODEX MONITOR // INITIAL SETUP
 Configure once, change anytime with:
   codexm --configure
 
+Manager also provides:
+  C  Config
+
 Enter continue    Esc cancel
 ```
-
-Không cần bắt user đọc một tutorial dài.
 
 ### 6.2 Language
 
@@ -237,8 +273,6 @@ Language
 > Vietnamese
   English
 ```
-
-Lựa chọn phải ảnh hưởng wizard text và config sau save.
 
 ### 6.3 Live preset
 
@@ -250,11 +284,7 @@ Live Monitor
   Custom
 ```
 
-Preset dùng đúng normalized state/config semantics đã có; không tạo một renderer khác.
-
 ### 6.4 Custom flow
-
-Nếu user chọn `Custom`, wizard cho cấu hình các nhóm đã được product hỗ trợ, không lộ implementation internals/collector knobs.
 
 Tối thiểu:
 
@@ -267,8 +297,8 @@ Sections
 [ ] System
 
 Display modes
-System     off | auto | on
-Beast      off | auto | on
+System      off | auto | on
+Companion   off | auto | always
 
 Header
 [x] Activity
@@ -310,14 +340,6 @@ Black
 Dark
 ```
 
-Rules:
-
-- `color` là semantic cyberpunk palette mặc định;
-- `matrix` green-oriented;
-- `mono` không phụ thuộc màu;
-- terminal capability fallback không thay đổi saved preference;
-- background chỉ áp Monitor rows/surface theo spec và reset sạch.
-
 ### 6.6 Manager default view
 
 ```text
@@ -328,18 +350,7 @@ Manager default
   Auto
 ```
 
-Semantics đã chốt:
-
-- **Operations** — balanced operations console, ít box lớn;
-- **Table** — power-user session index, box-light;
-- **Charts** — visual control room, box-heavy nhưng bounded chart count;
-- **Auto** — narrow -> Table, normal/wide -> Operations, ultrawide -> richer Charts/control-room khi hợp lý.
-
-Manager theme dùng global theme trừ khi một quyết định tương lai thêm override riêng.
-
 ### 6.7 Preview / summary trước Save
-
-Ví dụ:
 
 ```text
 READY TO SAVE
@@ -350,7 +361,8 @@ Theme          Color
 Background     Terminal
 Manager        Operations
 System         Auto
-Beast          Auto
+Companion      Auto
+Archive        Disabled
 
 [P] Preview Live
 [M] Preview Manager
@@ -359,7 +371,7 @@ Back edit
 Esc Cancel
 ```
 
-Preview không được spawn Codex và không đọc/deep-parse session store vô lý.
+Preview không được spawn Codex và không deep-parse session store vô lý.
 
 ### 6.8 Save / cancel
 
@@ -371,20 +383,108 @@ Preview không được spawn Codex và không đọc/deep-parse session store v
 
 ---
 
-## 7. Persisted config schema target
+## 7. Shared Config screen sau first-run
+
+Phase 11-1 đã khóa hướng UX: Config là **một màn riêng**, không phải session-detail tab.
+
+Canonical tabs:
+
+```text
+Live View
+Cards
+Fields
+Header
+Companion
+Appearance
+Archive
+Manager
+Updates
+```
+
+Phase 12 chịu trách nhiệm product-shell integration, persistence, migration, discoverability và polish của component này; không viết một config UI song song.
+
+`codexm --configure` phải mở cùng state/controller với `Manager → C`, chỉ khác host/lifecycle:
+
+```text
+                ConfigController
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+codexm --configure        Manager → C
+```
+
+Manager Config:
+
+```text
+Esc → quay lại Manager
+```
+
+Standalone Config:
+
+```text
+Esc → cancel/exit sạch
+```
+
+---
+
+## 8. Archive Config contract
+
+Archive tab/config phải expose ít nhất:
+
+```text
+Archive enabled
+Retention
+Size limit
+```
+
+Health/state như Service/Hook/Watcher/SQLite/Sync là runtime status, không được ghi nhầm thành user preference.
+
+Ví dụ preference:
+
+```json
+"archive": {
+  "enabled": false,
+  "retention": "forever",
+  "sizeLimitBytes": null
+}
+```
+
+OFF → ON sau Save phải gọi Phase 11-1 lifecycle contract:
+
+```text
+validate compatibility
+→ initialize/migrate SQLite
+→ install/enable Monitor-owned Codex hook integration
+→ start/wake Archive Service
+→ reconcile JSONL sources
+```
+
+ON → OFF:
+
+```text
+stop Archive Service
+→ disable/remove Monitor-owned archive hook integration
+→ keep SQLite archive by default
+```
+
+Nếu side effect fail sau config save, UX phải report degraded/attention state và có đường Repair/Reconcile; không được giả Archive healthy.
+
+---
+
+## 9. Persisted config schema target
 
 Phase 12 phải mở rộng/migrate schema theo hướng tối thiểu:
 
 ```json
 {
-  "configVersion": 3,
+  "configVersion": 4,
   "setupComplete": true,
   "language": "vi",
   "preset": "recommended",
   "theme": "color",
   "background": "terminal",
   "systemMode": "auto",
-  "beastMode": "auto",
+  "companionMode": "auto",
   "sections": {},
   "metrics": {},
   "fields": {},
@@ -392,84 +492,134 @@ Phase 12 phải mở rộng/migrate schema theo hướng tối thiểu:
   "manager": {
     "view": "operations"
   },
+  "archive": {
+    "enabled": false,
+    "retention": "forever",
+    "sizeLimitBytes": null
+  },
   "updateCheck": true
 }
 ```
 
-Version số cụ thể có thể thay đổi nếu schema đã advance trước Phase 12, nhưng các semantic field trên phải có owner rõ.
+Version số cụ thể có thể thay đổi nếu schema đã advance trước Phase 12.
 
-Không lưu:
+Không lưu trong config:
 
 - Codex API key;
 - Codex login token;
 - transcript content;
 - thread/session secret;
-- machine telemetry history.
+- machine telemetry history;
+- Archive Service PID như durable preference;
+- hook payload;
+- SQLite health state.
 
 ---
 
-## 8. Configure UX sau first-run
+## 10. Configure UX sau first-run
 
 ```powershell
 codexm --configure
 ```
 
-Phải mở lại cùng config state machine/wizard với giá trị hiện tại preselected.
+Mở **shared tabbed Config screen**, giá trị hiện tại preselected.
 
 User có thể:
 
 - đổi language;
 - đổi preset;
-- vào/ra Custom;
 - đổi sections/metrics/fields/header;
-- đổi System/Beast mode;
+- đổi System/Companion mode;
 - đổi theme/background;
 - đổi Manager default view;
-- preview;
-- save hoặc cancel.
+- bật/tắt/configure Local Session Archive;
+- đổi update preference;
+- preview khi phù hợp;
+- save/revert/cancel.
 
 `--configure` không spawn Codex.
 
+Live visual config lưu cho run tiếp theo; không bắt buộc IPC hot reload sang một `codexm` đang chạy ở terminal khác.
+
+Archive config có immediate lifecycle side effects **sau Save** vì đây là component local service/hook, không chỉ visual preference.
+
 ---
 
-## 9. Reset semantics
+## 11. Reset semantics
 
 ```powershell
 codexm --reset
 ```
 
-Reset chỉ phạm vi Codex Monitor.
+Reset chỉ phạm vi Codex Monitor preferences.
 
 Tuyệt đối không đụng:
 
 ```text
 official Codex auth
 ~/.codex/sessions
-Codex settings không thuộc Monitor
+Codex settings/hook/plugin không thuộc Monitor
 project files
 Git state
+archived SQLite analytics nếu user chưa explicit chọn Clear Archive
 ```
 
-Interactive reset:
+Nếu Archive đang enabled và reset đưa config về default Disabled:
+
+```text
+stop Monitor Archive Service
+remove/disable Monitor-owned archive hook integration
+keep SQLite archive file/data
+```
+
+Interactive reset phải nói rõ:
 
 ```text
 Reset Codex Monitor preferences?
-This does NOT remove Codex login/auth or sessions.
+
+This does NOT remove:
+- Codex login/auth
+- Codex sessions
+- Local Session Archive data
+
+Archive background indexing will be disabled.
 
 Confirm / Cancel
 ```
 
-Sau confirm:
-
-- reset Monitor config về clean state;
-- chạy onboarding lại nếu interactive;
-- non-interactive behavior phải explicit/tested, không treo chờ input.
+`Clear Archive` là action riêng trong Archive UI, không gộp vào reset.
 
 ---
 
-## 10. Help / discoverability
+## 12. Doctor / diagnostics / repair integration
 
-`codexm --help` phải phân nhóm rõ thay vì dump flag phẳng:
+Phase 12 phải reserve/finalize UX contract để Phase 13 harden:
+
+`--doctor` có thể report sanitized local status khi Archive enabled:
+
+```text
+Archive config
+SQLite open/schema
+Archive Service status
+Codex Hook integration status
+Watcher/reconcile health
+Pending/failed ingest count
+```
+
+Không dump prompts/tool output/raw transcript.
+
+`--repair` được phép repair **Monitor-owned** archive hook/service/config integration, nhưng:
+
+- không repair/overwrite hook/plugin của app khác;
+- không delete archive DB để “fix” nếu chưa có explicit destructive confirmation;
+- không modify official Codex binary;
+- failure phải giữ Codex usable.
+
+---
+
+## 13. Help / discoverability
+
+`codexm --help` phải phân nhóm rõ:
 
 ```text
 LIVE / CODEX
@@ -478,6 +628,7 @@ LIVE / CODEX
 SESSION MANAGER
   --manager
   --manager-view ...
+  Inside Manager: C Config
 
 CUSTOMIZE
   --configure
@@ -503,34 +654,36 @@ Help phải nói rõ:
 - unknown args forward;
 - `--` passthrough;
 - `--history` không phải Monitor feature;
-- Manager độc lập và interactive.
+- Manager độc lập và interactive;
+- Local Session Archive là optional/local-only và mặc định không tự bật cho user chưa opt-in.
 
 ---
 
-## 11. Manager onboarding/persistence contract
+## 14. Manager onboarding/persistence contract
 
-Quyết định đã chốt ở Phase 09 được giữ:
+Quyết định Phase 09 được giữ:
 
 ```text
 Operations / Table / Charts / Auto
 ```
 
-Phase 12 chịu trách nhiệm phần còn thiếu:
+Phase 12 chịu trách nhiệm:
 
 - lưu default view;
 - load default khi `codexm --manager`;
 - CLI one-shot override;
-- Configure thay default;
+- Config thay default;
 - first-run chọn default;
-- migration cho user cũ không có field manager.view.
+- migration cho user cũ không có field `manager.view`;
+- expose `C Config` discoverably ở Manager footer/help.
 
-`V` trong Manager là runtime navigation. Nếu sau này UI có `Set as default`, action đó phải explicit; không auto-save chỉ vì user cycle qua các view.
+`V` trong Manager là runtime navigation và không auto-save.
 
 ---
 
-## 12. Non-interactive / automation contract
+## 15. Non-interactive / automation contract
 
-Phase 12 phải có test riêng cho:
+Phải test:
 
 ```text
 stdin not TTY
@@ -546,16 +699,16 @@ Rules:
 - không chờ keypress;
 - dùng effective defaults/config;
 - action không thể hoàn thành non-interactive phải exit với message/code rõ;
-- không spawn Codex ngoài ý muốn.
+- không spawn Codex ngoài ý muốn;
+- không bật/tắt Archive Service hoặc install/remove hooks chỉ vì đọc config/doctor output.
 
 ---
 
-## 13. Error handling / recovery
+## 16. Error handling / recovery
 
 Phải có UX rõ cho:
 
-- config missing;
-- config malformed;
+- config missing/malformed;
 - unsupported future configVersion;
 - permission denied khi save;
 - terminal quá nhỏ;
@@ -563,28 +716,35 @@ Phải có UX rõ cho:
 - Manager view value lạ;
 - conflicting action flags;
 - invalid CLI override;
-- interrupted wizard (`Ctrl+C`, signal, terminal close).
+- interrupted wizard/config (`Ctrl+C`, signal, terminal close);
+- Archive DB unavailable/locked;
+- Archive Service start/stop failure;
+- Codex hook missing/incompatible;
+- config says Archive enabled nhưng runtime degraded;
+- partial Apply side effect.
 
 Mọi đường exit phải restore terminal.
 
+Config file và runtime health không được conflated: config có thể `enabled=true` trong khi health là `ATTENTION`; UI phải nói đúng trạng thái thay vì silently flip preference.
+
 ---
 
-## 14. Không làm trong Phase 12
+## 17. Không làm trong Phase 12
 
 - Không thêm Session Analytics mới — Phase 10.
-- Không thêm delete/storage semantics mới — Phase 11.
+- Không phát minh lại Archive/SQLite ingest/delete semantics — Phase 11-1.
+- Không thay đổi destructive raw-session safety — Phase 11.
 - Không làm packaging/signing/release artifact — Phase 13.
 - Không làm updater network implementation hoàn chỉnh — Phase 13.
 - Không thêm telemetry upload.
 - Không thêm generic GUI.
 - Không thêm Live interactive tabs/hotkeys sau Codex spawn.
 - Không đổi official Codex auth/session format.
+- Không tạo second Config engine thay cho shared ConfigController từ Phase 11-1.
 
 ---
 
-## 15. Auto test bắt buộc
-
-Tối thiểu phải gate:
+## 18. Auto test bắt buộc
 
 ### CLI/router
 
@@ -601,57 +761,83 @@ Tối thiểu phải gate:
 - first-run detection interactive/non-interactive;
 - each preset path;
 - Custom path;
+- Archive remains Disabled unless explicit opt-in outside default first-run flow;
 - back/cancel/save state machine;
 - preview path;
 - Unicode/cell width;
 - narrow/normal/wide rendering;
 - terminal cleanup on normal exit/error/signal.
 
-### Config
+### Shared Config
+
+- Manager `C` và `codexm --configure` dùng cùng schema/controller;
+- Manager Esc returns to Manager without losing unrelated state;
+- standalone Esc cancels cleanly;
+- tabs render responsive;
+- Save/Revert semantics;
+- visual config does not hot-mutate unrelated running Live terminal;
+- Archive OFF→ON invokes lifecycle only after explicit Save;
+- Archive ON→OFF stops service/hook and preserves DB;
+- failed archive Apply reports ATTENTION/degraded honestly.
+
+### Config migration
 
 - schema migration from current version;
 - existing valid users do not get forced wizard;
-- new manager.view default migration;
+- new `manager.view` default migration;
+- new archive config migration defaults Disabled;
+- migration does not install hooks/start service;
 - atomic save failure leaves prior config intact;
 - malformed config recovery;
 - CLI override does not persist;
 - theme capability fallback does not mutate preference;
-- reset does not touch Codex auth/session fixtures.
+- reset does not touch Codex auth/session/archive fixtures.
 
 ### Manager preference
 
 - saved Operations/Table/Charts/Auto opens corresponding view;
 - `--manager-view` overrides one run only;
-- Configure changes persisted default;
+- Config changes persisted default;
 - V runtime cycle does not silently persist.
+
+### Archive control safety
+
+- Reset while Archive enabled disables Monitor-owned service/hook but preserves SQLite data;
+- `--config` does not expose secrets/raw content;
+- `--doctor` Archive health is sanitized;
+- `--repair` never removes unrelated Codex hooks/plugins;
+- cancel/revert never changes service/hook state.
 
 ---
 
-## 16. Manual test bắt buộc
+## 19. Manual test bắt buộc
 
 Trên Windows Terminal tối thiểu:
 
 1. clean user state -> first-run wizard;
-2. save Recommended + Operations;
+2. save Recommended + Operations; Archive remains Disabled;
 3. relaunch `codexm` -> không hỏi lại;
 4. relaunch `codexm --manager` -> đúng saved view;
-5. `--manager-view charts` -> Charts một lần, next launch trở về saved default;
-6. `--configure` -> đổi Custom + Matrix + Manager Table;
-7. verify Live preview và Manager preview;
-8. save, restart và xác nhận persistence;
-9. cancel configure và xác nhận config cũ không đổi;
-10. `--reset`, xác nhận Codex login/session vẫn nguyên;
-11. old config migration không hiện first-run lại;
-12. malformed config recovery;
-13. non-interactive command không treo wizard;
-14. Ctrl+C giữa wizard restore terminal;
-15. small/normal/ultrawide layout readable.
+5. press `C` -> shared Config screen;
+6. `--configure` -> verify cùng current settings/tabs;
+7. đổi Custom + Matrix + Manager Table;
+8. bật Archive từ Config -> Save -> verify hook/service/SQLite/reconcile health;
+9. disable Archive -> verify service/hook stopped nhưng SQLite archive còn;
+10. verify Live preview và Manager preview;
+11. cancel configure và xác nhận config/runtime cũ không đổi;
+12. `--reset`, xác nhận Codex login/session/archive DB vẫn nguyên và background Archive disabled;
+13. old config migration không hiện first-run lại và không tự bật Archive;
+14. malformed config recovery;
+15. non-interactive command không treo wizard;
+16. Ctrl+C giữa wizard/config restore terminal;
+17. small/normal/ultrawide layout readable;
+18. Archive runtime degraded -> Config/Doctor show ATTENTION thay vì giả READY.
 
 Linux/macOS nếu chưa có máy thật vẫn ghi `UNVERIFIED PLATFORM`, không giả PASS.
 
 ---
 
-## 17. Deliverables
+## 20. Deliverables
 
 Implementation dự kiến tập trung ở các module kiểu:
 
@@ -660,9 +846,9 @@ src/cli/*
 src/config/*
 src/onboarding/* hoặc equivalent
 src/manager preference integration
+shared ConfigController integration
+archive config/lifecycle adapter integration
 ```
-
-Tên file cụ thể được phép khác nếu architecture hợp lý.
 
 Bàn giao bắt buộc:
 
@@ -678,14 +864,16 @@ Ngoài ra phải có:
 ```text
 CLI contract/help snapshot
 first-run wizard snapshots
+shared Config screen snapshots
 config migration matrix
 reset safety evidence
 Manager default-view persistence evidence
+Archive enable/disable/reset safety evidence
 ```
 
 ---
 
-## 18. Exit gate
+## 21. Exit gate
 
 Phase 12 chỉ CLOSED khi:
 
@@ -693,11 +881,14 @@ Phase 12 chỉ CLOSED khi:
 - unknown Codex args + `--` forwarding PASS;
 - onboarding first-run PASS;
 - existing-user migration PASS;
+- Manager `C` + `codexm --configure` shared Config PASS;
 - Configure/Reset PASS;
+- Archive config opt-in/default-disabled semantics PASS;
+- Archive enable/disable/reset side-effect safety PASS;
 - Manager default view persistence PASS;
 - non-interactive no-prompt PASS;
 - no-spawn safety PASS;
-- Codex auth/session reset safety PASS;
+- Codex auth/session/archive-data reset safety PASS;
 - terminal restore PASS;
 - user duyệt onboarding/config UX;
 - BLOCKER = 0;
