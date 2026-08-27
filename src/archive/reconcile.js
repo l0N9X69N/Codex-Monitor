@@ -2,11 +2,20 @@ import { ARCHIVE_PARSER_VERSION, ARCHIVE_SESSION_STATE, ARCHIVE_SYNC_STATE } fro
 import { normalizeArchiveLines } from './event-normalizer.js';
 import { inspectArchiveSource, readCommittedJsonlChunk } from './source-reader.js';
 
+function normalizedTimestamp(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : null;
+}
+
 function staleReason(source, ingest, parserVersion) {
   if (!ingest) return null;
   if (ingest.parserVersion !== parserVersion) return 'parser-version-mismatch';
   if (ingest.fileIdentity && source.fileIdentity && ingest.fileIdentity !== source.fileIdentity) return 'source-identity-changed';
   if (ingest.committedOffset > source.size) return 'source-truncated';
+  if (ingest.committedOffset === source.size
+    && normalizedTimestamp(ingest.sourceMtime) !== normalizedTimestamp(source.mtimeMs)) {
+    return 'source-modified-at-checkpoint';
+  }
   return null;
 }
 
