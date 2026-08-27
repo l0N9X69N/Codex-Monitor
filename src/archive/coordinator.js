@@ -1,7 +1,7 @@
 import { ARCHIVE_PARSER_VERSION, ARCHIVE_SYNC_STATE } from './constants.js';
 import { ArchiveHealthStore, needsArchiveSourceReconcile } from './health-store.js';
 import { reconcileArchiveSource } from './reconcile.js';
-import { scanArchiveSources } from './source-scan.js';
+import { scanArchiveSourcesWithHealth } from './source-scan.js';
 import { normalizePlatformPath } from '../platform/common.js';
 
 const DEFAULT_MAX_BYTES_PER_SOURCE = 256 * 1024;
@@ -21,12 +21,24 @@ function defaultYieldControl() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+function normalizeScanResult(value) {
+  if (Array.isArray(value)) {
+    return { sources: value, complete: true, errors: [], limited: false };
+  }
+  return {
+    sources: Array.isArray(value?.sources) ? value.sources : [],
+    complete: value?.complete === true,
+    errors: Array.isArray(value?.errors) ? value.errors : [],
+    limited: value?.limited === true
+  };
+}
+
 export class ArchiveReconcileCoordinator {
   constructor({
     sessionsPath,
     repository,
     parserVersion = ARCHIVE_PARSER_VERSION,
-    scanSources = scanArchiveSources,
+    scanSources = scanArchiveSourcesWithHealth,
     reconcileSource = reconcileArchiveSource,
     healthStore = null,
     yieldControl = defaultYieldControl,
@@ -71,7 +83,8 @@ export class ArchiveReconcileCoordinator {
     const perSourceLimit = positiveInteger(maxBytesPerSource, this.maxBytesPerSource);
     const sourceLimit = positiveInteger(maxSources, this.maxSourcesPerCycle);
     const totalLimit = positiveInteger(maxTotalBytes, this.maxTotalBytes);
-    const sources = await this.scanSources(this.sessionsPath);
+    const scan = normalizeScanResult(await this.scanSources(this.sessionsPath));
+    const sources = scan.sources;
     const sourceByKey = new Map(sources.map((source) => [queueKey(source.filePath), source]));
     const tracked = this.health.listTrackedRawSources();
     const trackedKeys = new Set(tracked.map((item) => queueKey(item.sourcePath)));
@@ -143,12 +156,15 @@ export class ArchiveReconcileCoordinator {
     const finished = this.health.finishGeneration({
       generation,
       ...pending,
-      success: errors.length === 0
+      success: scan.complete && errors.length === 0
     });
 
     return {
       generation,
       scannedSourceCount: sources.length,
+      sourceScanComplete: scan.complete,
+      sourceScanLimited: scan.limited,
+      sourceScanErrors: scan.errors,
       processedSourceCount,
       bytesRead,
       pendingFileCount: pending.pendingFileCount,
