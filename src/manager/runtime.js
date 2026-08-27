@@ -78,6 +78,7 @@ function selectedDetailSignature(detail) {
 function snapshotSignature(result) {
   const rows = (result.rows ?? []).map(rowSignature).join('|');
   const diagnostics = result.processDiagnostics ?? {};
+  const wake = result.archiveWake ?? {};
   return [
     rows,
     selectedDetailSignature(result.selectedDetail),
@@ -95,6 +96,17 @@ function snapshotSignature(result) {
     result.archiveSyncState ?? '',
     result.archivePendingFileCount ?? '',
     result.archivePendingByteCount ?? '',
+    result.archiveSourceCount ?? '',
+    result.archiveReconcileGeneration ?? '',
+    result.archiveLastSuccessfulReconcile ?? '',
+    result.archiveLastSeenSourceScan ?? '',
+    result.archiveHookLastSeenAt ?? '',
+    result.archiveWatcherLastSeenAt ?? '',
+    result.archiveServiceInstanceId ?? '',
+    wake.reason ?? '',
+    wake.running === true ? 'wake-running' : '',
+    wake.started === true ? 'wake-started' : '',
+    wake.error ?? '',
     result.archiveError ?? ''
   ].join('::');
 }
@@ -195,7 +207,7 @@ export async function runSessionManagerRuntime({
   } finally {
     processRef?.removeListener?.('SIGINT', stop);
     processRef?.removeListener?.('SIGTERM', stop);
-    try { tracker.archiveIndex?.close?.(); } catch {}
+    tracker.close?.();
     await platformAdapter.cleanup?.();
   }
   return { code: 0, core, tracker, runtime };
