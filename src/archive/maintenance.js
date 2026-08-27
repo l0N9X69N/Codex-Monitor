@@ -3,6 +3,7 @@ import path from 'node:path';
 import { openArchiveDatabase } from './database.js';
 import { installArchiveHooks } from './hook-config.js';
 import { kickArchiveService } from './integration.js';
+import { getArchiveServiceStatus } from './service-control.js';
 
 function transaction(db, fn) {
   db.exec('BEGIN IMMEDIATE;');
@@ -105,15 +106,38 @@ export function deleteArchiveSessions(rows = [], {
 export function clearArchive({
   openDatabase = openArchiveDatabase,
   now = () => Date.now(),
-  preserveSuppressions = false
+  suppressTrackedSources = true
 } = {}) {
   let opened = null;
   try {
     opened = openDatabase();
     const db = opened.repository.db;
     const result = transaction(db, () => {
+      const atMs = Math.trunc(Number(now()));
       const sessionCount = Number(db.prepare('SELECT COUNT(*) AS count FROM sessions').get()?.count ?? 0);
-      if (!preserveSuppressions) db.prepare('DELETE FROM archive_suppressions').run();
+      let suppressed = 0;
+      if (suppressTrackedSources) {
+        const tracked = db.prepare(`
+          SELECT source_path, session_id, file_identity
+          FROM ingest_state
+          WHERE source_path IS NOT NULL
+        `).all();
+        const suppress = db.prepare(`
+          INSERT INTO archive_suppressions (source_path, session_id, file_identity, suppressed_at, reason)
+          VALUES (?, ?, ?, ?, 'user-clear-archive')
+          ON CONFLICT(source_path) DO UPDATE SET
+            session_id = excluded.session_id,
+            file_identity = excluded.file_identity,
+            suppressed_at = excluded.suppressed_at,
+            reason = excluded.reason
+        `);
+        for (const item of tracked) {
+          suppress.run(item.source_path, item.session_id ?? null, item.file_identity ?? null, atMs);
+          suppressed += 1;
+        }
+      } else {
+        db.prepare('DELETE FROM archive_suppressions').run();
+      }
       db.prepare('DELETE FROM ingest_state').run();
       db.prepare('DELETE FROM sessions').run();
       db.prepare(`
@@ -125,25 +149,41 @@ export function clearArchive({
           pending_byte_count = 0
         WHERE singleton_id = 1
       `).run();
-      return { cleared: sessionCount, atMs: Math.trunc(Number(now())) };
+      return { cleared: sessionCount, suppressed, atMs };
     });
     return { ok: true, ...result, error: null };
   } catch (error) {
-    return { ok: false, cleared: 0, error: error?.message ?? String(error) };
+    return { ok: false, cleared: 0, suppressed: 0, error: error?.message ?? String(error) };
   } finally {
     try { opened?.close?.(); } catch {}
   }
 }
 
-export function compactArchive({ openDatabase = openArchiveDatabase } = {}) {
+export function compactArchive({
+  openDatabase = openArchiveDatabase,
+  readServiceStatus = getArchiveServiceStatus
+} = {}) {
+  try {
+    const status = readServiceStatus?.();
+    if (status?.running) {
+      return {
+        ok: false,
+        reason: 'service-running',
+        error: 'Stop or disable Archive Service before compacting the SQLite archive.'
+      };
+    }
+  } catch (error) {
+    return { ok: false, reason: 'service-status-failed', error: error?.message ?? String(error) };
+  }
+
   let opened = null;
   try {
     opened = openDatabase();
     opened.repository.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     opened.repository.db.exec('VACUUM;');
-    return { ok: true, error: null };
+    return { ok: true, reason: 'compacted', error: null };
   } catch (error) {
-    return { ok: false, error: error?.message ?? String(error) };
+    return { ok: false, reason: 'compact-failed', error: error?.message ?? String(error) };
   } finally {
     try { opened?.close?.(); } catch {}
   }
