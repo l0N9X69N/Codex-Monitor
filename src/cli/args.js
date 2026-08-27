@@ -5,12 +5,16 @@ const ACTION_FLAGS = Object.freeze({
   '--help': 'help',
   '--manager': 'manager',
   '--doctor': 'doctor',
+  '--diagnostics': 'doctor',
   '--repair': 'repair',
   '--monitor-version': 'monitor-version',
+  '--version': 'monitor-version',
   '--configure': 'configure',
   '--reset': 'reset',
   '--config': 'config',
   '--config-path': 'config-path',
+  '--update': 'update',
+  '--uninstall': 'uninstall',
   '--demo': 'demo'
 });
 
