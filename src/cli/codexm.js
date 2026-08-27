@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import process from 'node:process';
+import { kickArchiveService } from '../archive/integration.js';
 import { detectAuth } from '../core/auth.js';
 import { createCurrentRunState, withDetectedAuth } from '../core/state.js';
 import { applyRuntimeOverrides, DEFAULT_CONFIG } from '../config/schema.js';
@@ -55,6 +56,7 @@ async function main() {
 
   if (parsed.action === 'help') { printHelp(); return 0; }
   if (parsed.action === 'manager') {
+    kickArchiveService(config);
     const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
     const result = interactive
       ? await runSessionManagerTui({ platformAdapter, theme: config.theme })
@@ -98,6 +100,8 @@ async function main() {
     process.stderr.write('codexm: official Codex CLI was not found on PATH.\n');
     return 2;
   }
+
+  kickArchiveService(config);
 
   let codexArgs = parsed.codexArgs;
   let resumeTargetPath = null;
