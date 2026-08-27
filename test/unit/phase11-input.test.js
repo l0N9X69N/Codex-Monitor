@@ -21,7 +21,9 @@ test('clear confirmation accepts Y and cancels with N Q or Escape', () => {
   assert.equal(normalizeManagerInput('c', { confirmingDelete: true }), null);
 });
 
-test('Phase 11 preserves the Phase 9 V view cycle', () => {
+test('storage uses M while preserving the Phase 9 V view cycle', () => {
+  assert.equal(normalizeManagerInput('m'), 'storage-view');
+  assert.equal(normalizeManagerInput('M'), 'storage-view');
   assert.equal(nextManagerView('operations'), 'table');
   assert.equal(nextManagerView('table'), 'charts');
   assert.equal(nextManagerView('charts'), 'auto');
