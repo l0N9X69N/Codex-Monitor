@@ -5,6 +5,7 @@ import { renderManagerConfig } from '../manager/config-render.js';
 import { normalizeManagerInput } from '../manager/input.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { TerminalGuard } from '../terminal/guard.js';
+import { renderConfigPreview } from './preview.js';
 import { normalizeConfig } from './schema.js';
 
 function configPaintMode(theme, capability) {
@@ -25,7 +26,8 @@ export async function runStandaloneConfigTui({
   applyArchiveEffects,
   controller = null,
   colorCapability = detectHistoryColorMode(),
-  theme = currentConfig?.theme ?? 'color'
+  theme = currentConfig?.theme ?? 'color',
+  notice = ''
 } = {}) {
   if (!stdin?.isTTY || !stdout?.isTTY) {
     return {
@@ -44,10 +46,11 @@ export async function runStandaloneConfigTui({
     ...(applyArchiveEffects ? { applyArchiveEffects } : {})
   });
   if (!controller) activeController.draftConfig = normalizeConfig(currentConfig ?? previousConfig);
+  if (notice) activeController.status = notice;
 
-  const mode = configPaintMode(theme, colorCapability);
   const guard = new TerminalGuard({ stdin, stdout });
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
+  let previewKind = null;
   let done = false;
   let saved = false;
   let lastSave = null;
@@ -62,7 +65,10 @@ export async function runStandaloneConfigTui({
   const draw = (force = false) => {
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
-    const frame = renderManagerConfig({ controller: activeController, width, height, mode });
+    const mode = configPaintMode(activeController.draftConfig?.theme ?? theme, colorCapability);
+    const frame = previewKind
+      ? renderConfigPreview({ kind: previewKind, config: activeController.draftConfig, width, height, mode })
+      : renderManagerConfig({ controller: activeController, width, height, mode });
     if (force) renderer.reset([]);
     renderer.render(frame.lines);
     return frame;
@@ -98,9 +104,22 @@ export async function runStandaloneConfigTui({
 
   const handleInput = (data) => {
     if (done) return;
-    const normalized = normalizeManagerInput(data, { configOpen: true });
+    const normalized = normalizeManagerInput(data, {
+      configOpen: true,
+      configPreviewOpen: Boolean(previewKind)
+    });
     if (normalized == null) return;
     const action = typeof normalized === 'object' ? normalized.action : normalized;
+    if (action === 'config-preview-close') {
+      previewKind = null;
+      draw(true);
+      return;
+    }
+    if (action === 'config-preview-live' || action === 'config-preview-manager') {
+      previewKind = action === 'config-preview-live' ? 'live' : 'manager';
+      draw(true);
+      return;
+    }
     if (action === 'config-close') {
       close();
       return;
