@@ -32,13 +32,13 @@ export const DEFAULT_FIELD_VISIBILITY = Object.freeze({
 
 const PRESET_DEFINITIONS = Object.freeze({
   recommended: Object.freeze({
-    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: false }),
+    sections: Object.freeze({ context: true, usage: true, session: true, activity: true, system: true }),
     metrics: Object.freeze({
       activity: true, model: true, reasoning: true, project: true, context: true, usage: true,
-      quota: true, session: true, health: true, freshness: true, system: false, tools: true,
+      quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: false, gitDiff: false, gitAheadBehind: false
     }),
-    systemMode: 'off',
+    systemMode: 'on',
     beastMode: 'off',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project'])
   }),
@@ -137,7 +137,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   preset: 'recommended',
   theme: 'color',
   background: 'terminal',
-  systemMode: 'off',
+  systemMode: 'on',
   beastMode: 'off',
   layout: 'auto',
   sections: PRESET_DEFINITIONS.recommended.sections,
