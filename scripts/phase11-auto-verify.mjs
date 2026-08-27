@@ -16,7 +16,8 @@ const steps = [
   ['Phase 11 storage/delete safety, input and TUI surfaces', process.execPath, ['--test',
     'test/unit/phase11-storage-delete.test.js',
     'test/unit/phase11-input.test.js',
-    'test/unit/phase11-storage-render.test.js'
+    'test/unit/phase11-storage-render.test.js',
+    'test/unit/phase11-storage-navigation.test.js'
   ]]
 ];
 
@@ -30,4 +31,4 @@ for (const [label, command, args] of steps) {
 }
 
 process.stdout.write('\nPhase 11 automated verification: PASS\n');
-process.stdout.write('Gate covers syntax, Manager/analytics regressions, storage entry and clear-key compatibility, storage/confirmation surfaces, storage summary correctness and destructive temp-session delete safety. Runtime stress QA remains before Phase 11 closure.\n');
+process.stdout.write('Gate covers syntax, Manager/analytics regressions, storage entry and clear-key compatibility, navigable storage selection/confirmation surfaces, storage summary correctness and destructive temp-session delete safety. Runtime stress QA remains before Phase 11 closure.\n');
