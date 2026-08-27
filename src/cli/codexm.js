@@ -12,6 +12,9 @@ import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
+import { PRODUCT_VERSION } from '../product/meta.js';
+import { checkForUpdates, printUpdateReport } from '../product/update.js';
+import { printUninstallReport, uninstallMonitorIntegration } from '../product/uninstall.js';
 import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
@@ -21,16 +24,22 @@ import { runPortableSessionManagerTui } from '../manager/portable-tui.js';
 import { renderDemo } from '../ui/demo.js';
 import { parseMonitorArgs } from './args.js';
 
-const VERSION = '1.0.0-alpha.1';
-
 function configRecoveryNotice(loaded) {
   if (!loaded?.error) return '';
   if (loaded.futureVersion) return `RECOVERY: config v${loaded.sourceVersion} is newer than supported; using safe defaults until explicit Save.`;
   return 'RECOVERY: config could not be parsed/read; original file is preserved until explicit Save.';
 }
 
+function configErrorNotice(loaded) {
+  if (!loaded?.error) return '';
+  if (loaded.futureVersion) return `codexm: Monitor config version ${loaded.sourceVersion} is newer than this build; original file preserved.\n`;
+  if (loaded.error instanceof SyntaxError) return 'codexm: Monitor config JSON is malformed; original file preserved.\n';
+  if (loaded.error?.code === 'EACCES' || loaded.error?.code === 'EPERM') return 'codexm: Monitor config could not be read due to permissions; original file preserved.\n';
+  return 'codexm: Monitor config could not be read; original file preserved.\n';
+}
+
 function printHelp() {
-  process.stdout.write(`Codex Monitor ${VERSION}\n\n`);
+  process.stdout.write(`Codex Monitor ${PRODUCT_VERSION}\n\n`);
   process.stdout.write('LIVE / CODEX\n');
   process.stdout.write('  codexm [monitor options] [codex arguments]\n');
   process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
@@ -47,12 +56,14 @@ function printHelp() {
   process.stdout.write('  --configure                   Open the shared Monitor Config screen\n');
   process.stdout.write('  --reset                       Confirm reset, then open Config with defaults\n');
   process.stdout.write('  Config: P Live preview · M Manager preview\n\n');
-  process.stdout.write('DIAGNOSTICS\n');
-  process.stdout.write('  --doctor                      Run sanitized diagnostics, including Archive health\n');
+  process.stdout.write('DIAGNOSTICS / PRODUCT\n');
+  process.stdout.write('  --doctor, --diagnostics       Run sanitized diagnostics, including Archive health\n');
   process.stdout.write('  --repair                      Repair Monitor-owned Archive hook/service integration\n');
+  process.stdout.write('  --update                      Check GitHub Releases; never auto-installs\n');
+  process.stdout.write('  --uninstall                   Remove Monitor-owned integration; preserve user data\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
-  process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
+  process.stdout.write('  --version, --monitor-version  Show Codex Monitor version\n');
   process.stdout.write('  --demo                        Render passive Live HUD demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n\n');
   process.stdout.write('PASSTHROUGH\n');
@@ -61,9 +72,9 @@ function printHelp() {
   process.stdout.write('Live Monitor is passive after Codex starts: every keyboard byte belongs to official Codex.\n');
   process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
   process.stdout.write('Local Session Archive is optional/local-only and remains disabled until explicit opt-in.\n');
-  process.stdout.write('--repair never deletes Codex sessions/archive data and only touches Monitor-owned Archive integration.\n');
+  process.stdout.write('--repair/--uninstall touch only Monitor-owned integration and never delete Codex auth/sessions or the Archive DB.\n');
   process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
-  process.stdout.write('Example: codexm -- --help   # official Codex help\n');
+  process.stdout.write('Example: codexm -- --version   # official Codex version via exact passthrough\n');
 }
 
 async function main() {
@@ -76,10 +87,10 @@ async function main() {
   const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
   const recoveryNotice = configRecoveryNotice(loaded);
 
-  if (loaded.error) process.stderr.write(`codexm: config could not be used; original file preserved (${loaded.error.message}).\n`);
+  if (loaded.error) process.stderr.write(configErrorNotice(loaded));
 
   if (parsed.action === 'help') { printHelp(); return 0; }
-  if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
+  if (parsed.action === 'monitor-version') { process.stdout.write(`${PRODUCT_VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
     const report = doctorReport({ monitorConfig: loaded.config });
     printDoctor(report);
@@ -88,6 +99,16 @@ async function main() {
   if (parsed.action === 'repair') {
     const report = repairMonitorIntegration(loaded.config);
     printRepairReport(report);
+    return report.ok ? 0 : 2;
+  }
+  if (parsed.action === 'update') {
+    const report = await checkForUpdates();
+    printUpdateReport(report);
+    return 0;
+  }
+  if (parsed.action === 'uninstall') {
+    const report = uninstallMonitorIntegration();
+    printUninstallReport(report);
     return report.ok ? 0 : 2;
   }
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
@@ -102,6 +123,10 @@ async function main() {
     return result.code;
   }
   if (parsed.action === 'reset') {
+    if (!interactive) {
+      process.stderr.write('codexm: --reset requires an interactive TTY; no preferences were changed.\n');
+      return 2;
+    }
     const confirmation = await confirmMonitorReset({ archiveEnabled: loaded.config?.archive?.enabled === true });
     if (!confirmation.confirmed) return confirmation.code ?? 1;
     const result = await configureMonitor({
