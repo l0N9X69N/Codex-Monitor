@@ -10,6 +10,7 @@ import { openArchiveDatabase } from './database.js';
 import { ArchiveHealthStore } from './health-store.js';
 import {
   acquireArchiveServiceLock,
+  consumeArchiveServiceStopRequest,
   getArchiveServicePaths,
   releaseArchiveServiceLock
 } from './service-control.js';
@@ -17,13 +18,16 @@ import { ArchiveServiceRuntime } from './service-runtime.js';
 
 export function createArchiveSignalWatchers({
   wakePath,
+  stopPath,
   sessionsPath,
   onWake,
+  onStop,
   onWatcherSeen = () => {},
   fsRef = fs
 } = {}) {
   const watchers = [];
   const wakeName = wakePath ? path.basename(wakePath) : null;
+  const stopName = stopPath ? path.basename(stopPath) : null;
 
   const addWatcher = (target, listener) => {
     if (!target) return;
@@ -34,11 +38,17 @@ export function createArchiveSignalWatchers({
     } catch {}
   };
 
-  if (wakePath) {
-    addWatcher(path.dirname(wakePath), (_eventType, filename) => {
-      if (!filename || String(filename) !== wakeName) return;
+  if (wakePath || stopPath) {
+    addWatcher(path.dirname(wakePath ?? stopPath), (_eventType, filename) => {
+      if (!filename) return;
+      const name = String(filename);
       try { onWatcherSeen(); } catch {}
-      try { onWake?.('wake-file'); } catch {}
+      if (wakeName && name === wakeName) {
+        try { onWake?.('wake-file'); } catch {}
+      }
+      if (stopName && name === stopName) {
+        try { onStop?.(); } catch {}
+      }
     });
   }
 
@@ -72,6 +82,7 @@ export async function runArchiveServiceProcess({
   getServicePaths = getArchiveServicePaths,
   acquireLock = acquireArchiveServiceLock,
   releaseLock = releaseArchiveServiceLock,
+  consumeStopRequest = consumeArchiveServiceStopRequest,
   openDatabase = openArchiveDatabase,
   Coordinator = ArchiveReconcileCoordinator,
   HealthStore = ArchiveHealthStore,
@@ -99,6 +110,12 @@ export async function runArchiveServiceProcess({
   let opened = null;
   let watchers = null;
   let runtime = null;
+  const targetedStop = () => consumeStopRequest({
+    instanceId,
+    stopPath: servicePaths.stopPath,
+    dataDir: servicePaths.dataDir,
+    fsRef
+  });
   const stop = () => runtime?.stop();
 
   try {
@@ -108,12 +125,19 @@ export async function runArchiveServiceProcess({
       sessionsPath: sessionPaths.sessions,
       repository: opened.repository
     });
-    runtime = new Runtime({ coordinator, healthStore: health, instanceId });
+    runtime = new Runtime({
+      coordinator,
+      healthStore: health,
+      instanceId,
+      shouldStop: targetedStop
+    });
     watchers = watchSignals({
       wakePath: servicePaths.wakePath,
+      stopPath: servicePaths.stopPath,
       sessionsPath: sessionPaths.sessions,
       fsRef,
       onWake: (reason) => runtime.wake(reason),
+      onStop: () => { if (targetedStop()) runtime.stop(); },
       onWatcherSeen: () => health.markWatcherSeen()
     });
 
