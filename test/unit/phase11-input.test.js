@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeManagerInput } from '../../src/manager/input.js';
+import { normalizeManagerInput, nextManagerView } from '../../src/manager/input.js';
 
 test('Phase 11 clear uses C while D remains sort direction compatible', () => {
   assert.equal(normalizeManagerInput('c'), 'delete-selected');
@@ -19,4 +19,11 @@ test('clear confirmation accepts Y and cancels with N Q or Escape', () => {
   assert.equal(normalizeManagerInput('q', { confirmingDelete: true }), 'delete-cancel');
   assert.equal(normalizeManagerInput('\x1b', { confirmingDelete: true }), 'delete-cancel');
   assert.equal(normalizeManagerInput('c', { confirmingDelete: true }), null);
+});
+
+test('Phase 11 preserves the Phase 9 V view cycle', () => {
+  assert.equal(nextManagerView('operations'), 'table');
+  assert.equal(nextManagerView('table'), 'charts');
+  assert.equal(nextManagerView('charts'), 'auto');
+  assert.equal(nextManagerView('auto'), 'operations');
 });
