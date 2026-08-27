@@ -9,6 +9,7 @@ const steps = [
     'test/unit/phase11-1-archive-foundation.test.js',
     'test/unit/phase11-1-archive-repository.test.js',
     'test/unit/phase11-1-archive-database.test.js',
+    'test/unit/phase11-1-archive-fidelity.test.js',
     'test/unit/phase11-1-archive-coordinator.test.js',
     'test/unit/phase11-1-archive-service.test.js',
     'test/unit/phase11-1-archive-integration.test.js',
@@ -39,5 +40,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 committed-offset Manager live overlay checkpoint verification: PASS\n');
-process.stdout.write('Gate covers SQLite-base plus JSONL delta from committed offsets without double-counting whole-file raw summaries, immediate READY downgrade when raw size advances, bounded Manager archive refresh/overlay cadence, oversized-record progress, verified source-scan semantics, SQLite-backed READY/ARCHIVED detail, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 SQLite detail fidelity checkpoint verification: PASS\n');
+process.stdout.write('Gate covers additive archive schema v2 migration without parser checkpoint invalidation, cumulative token_samples, per-turn cached/reasoning deltas, technical tool grouping without persisted command/output payloads, SQLite token chart/detail fidelity, committed-offset Manager live overlay, oversized-record progress, verified source-scan semantics, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
