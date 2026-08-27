@@ -78,6 +78,24 @@ CREATE INDEX IF NOT EXISTS idx_context_session_turn ON context_samples(session_i
 CREATE UNIQUE INDEX IF NOT EXISTS uq_context_offset ON context_samples(session_id, source_offset, event_type) WHERE source_offset IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_context_event_id ON context_samples(session_id, source_event_id, event_type) WHERE source_event_id IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS token_samples (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  turn_no INTEGER,
+  input_tokens INTEGER,
+  cached_tokens INTEGER,
+  output_tokens INTEGER,
+  reasoning_tokens INTEGER,
+  source_offset INTEGER,
+  source_event_id TEXT,
+  FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tokens_session_time ON token_samples(session_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_tokens_session_turn ON token_samples(session_id, turn_no);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tokens_offset ON token_samples(session_id, source_offset) WHERE source_offset IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tokens_event_id ON token_samples(session_id, source_event_id) WHERE source_event_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS tool_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
