@@ -3,6 +3,8 @@ export * from './coordinator.js';
 export * from './database.js';
 export * from './event-normalizer.js';
 export * from './health-store.js';
+export * from './hook-config.js';
+export * from './hook-entry.js';
 export * from './integration.js';
 export * from './reconcile.js';
 export * from './repository.js';
