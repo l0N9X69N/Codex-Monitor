@@ -1,6 +1,6 @@
 # Phase 11 — Result
 
-Status: **FINAL VERIFICATION PENDING**
+Status: **COMPLETE — CLOSED**
 
 Implemented scope:
 
@@ -16,11 +16,11 @@ Implemented scope:
 - Destructive tests use temporary session roots.
 - Stress coverage includes 10k metadata rows, resize bounds, external deletion, partial unlink failure and terminal restore.
 
-Closure rule:
+Final closure evidence:
 
 ```text
-npm run test:phase11
-npm run verify:phase11
+npm run test:phase11    PASS
+npm run verify:phase11  PASS
 ```
 
-Both must PASS on current branch HEAD, followed by the already-reviewed Storage UI workflow. After that Phase 11 may be marked COMPLETE and Phase 11-1 Local Session Archive becomes the active implementation phase.
+The final destructive-workflow regression selects the exact highlighted temp ENDED session deterministically before confirm. Phase 11 is closed; Phase 11-1 Local Session Archive is active next.
