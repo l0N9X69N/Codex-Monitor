@@ -131,7 +131,7 @@ test('storage selection shortcuts stay inert on the main dashboard', async () =>
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('clear key stays scoped after returning from storage to dashboard', async () => {
+test('dashboard C opens Config after returning from storage without consuming clear selection', async () => {
   const root = tempDir();
   const base = Date.now() - 60_000;
   const selected = writeSession(root, 'selected', 4, base + 1000);
@@ -155,13 +155,17 @@ test('clear key stays scoped after returning from storage to dashboard', async (
     stdin.emit('data', Buffer.from(' '));
     stdin.emit('data', Buffer.from('m'));
     stdin.emit('data', Buffer.from('c'));
-    setImmediate(() => stdin.emit('data', Buffer.from('q')));
+    setImmediate(() => {
+      stdin.emit('data', Buffer.from('q'));
+      setImmediate(() => stdin.emit('data', Buffer.from('q')));
+    });
   }, 40);
 
   const result = await running;
   assert.equal(result.code, 0);
   assert.equal(result.clearSelectedIds.size, 1);
   assert.equal(result.clearSelectedIds.has(selected), true);
+  assert.match(stdout.output, /CODEX MONITOR · CONFIG/);
   assert.doesNotMatch(stdout.output, /STORAGE CLEAR CONFIRMATION/);
   assert.equal(stdin.isRaw, false);
 
