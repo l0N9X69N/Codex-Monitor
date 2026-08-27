@@ -11,6 +11,20 @@ export function getArchiveDatabasePath({ dataDir = null, ...pathOptions } = {}) 
   return path.join(root, ARCHIVE_DATABASE_FILENAME);
 }
 
+function archiveDatabaseHandle(resolvedPath, db, repository) {
+  let closed = false;
+  return {
+    filePath: resolvedPath,
+    db,
+    repository,
+    close() {
+      if (closed) return;
+      closed = true;
+      db.close();
+    }
+  };
+}
+
 export function openArchiveDatabase({
   filePath = null,
   dataDir = null,
@@ -36,18 +50,29 @@ export function openArchiveDatabase({
         fsRef.chmodSync(resolvedPath, 0o600);
       }
     } catch {}
+    return archiveDatabaseHandle(resolvedPath, db, repository);
+  } catch (error) {
+    try { db?.close(); } catch {}
+    throw error;
+  }
+}
 
-    let closed = false;
-    return {
-      filePath: resolvedPath,
-      db,
-      repository,
-      close() {
-        if (closed) return;
-        closed = true;
-        db.close();
-      }
-    };
+export function openArchiveDatabaseReadOnly({
+  filePath = null,
+  dataDir = null,
+  env,
+  platform,
+  homedir,
+  Database = DatabaseSync,
+  Repository = ArchiveRepository,
+  now = () => Date.now()
+} = {}) {
+  const resolvedPath = path.resolve(filePath ?? getArchiveDatabasePath({ dataDir, env, platform, homedir }));
+  let db = null;
+  try {
+    db = new Database(resolvedPath, { readOnly: true });
+    const repository = new Repository(db, { now });
+    return archiveDatabaseHandle(resolvedPath, db, repository);
   } catch (error) {
     try { db?.close(); } catch {}
     throw error;
