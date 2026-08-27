@@ -158,6 +158,15 @@ CREATE TABLE IF NOT EXISTS ingest_state (
 );
 CREATE INDEX IF NOT EXISTS idx_ingest_session ON ingest_state(session_id);
 
+CREATE TABLE IF NOT EXISTS archive_suppressions (
+  source_path TEXT PRIMARY KEY,
+  session_id TEXT,
+  file_identity TEXT,
+  suppressed_at INTEGER NOT NULL,
+  reason TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_archive_suppressions_session ON archive_suppressions(session_id);
+
 CREATE TABLE IF NOT EXISTS archive_meta (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   schema_version INTEGER NOT NULL,
