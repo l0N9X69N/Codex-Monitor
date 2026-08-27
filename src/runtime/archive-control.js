@@ -1,6 +1,17 @@
 import { readArchiveConfigHealth } from '../manager/archive-config-panel.js';
 import { reconcileArchiveNow, repairArchiveHook } from '../archive/maintenance.js';
 
+function sanitizeArchiveError(value, fallback = 'archive runtime unavailable') {
+  if (!value) return null;
+  const text = String(value).toLowerCase();
+  if (text.includes('eacces') || text.includes('eperm') || text.includes('permission')) return 'permission denied';
+  if (text.includes('database') || text.includes('sqlite') || text.includes('unable to open')) return 'database unavailable';
+  if (text.includes('hook')) return 'hook integration unavailable';
+  if (text.includes('service') || text.includes('spawn')) return 'archive service unavailable';
+  if (text.includes('lock') || text.includes('busy')) return 'database busy';
+  return fallback;
+}
+
 export function archiveDoctorReport(config, { readHealth = readArchiveConfigHealth } = {}) {
   const enabled = config?.archive?.enabled === true;
   let health = null;
@@ -8,8 +19,9 @@ export function archiveDoctorReport(config, { readHealth = readArchiveConfigHeal
   try {
     health = readHealth();
   } catch (caught) {
-    error = caught?.message ?? String(caught);
+    error = sanitizeArchiveError(caught);
   }
+  const healthError = health?.sqliteError ?? health?.serviceError ?? health?.hookError ?? null;
   return {
     enabled,
     service: health?.serviceRunning === true ? 'running' : 'idle',
@@ -19,7 +31,7 @@ export function archiveDoctorReport(config, { readHealth = readArchiveConfigHeal
     archivedSessions: Number(health?.sessions ?? 0),
     pendingFiles: Number(health?.pendingFiles ?? 0),
     failedFiles: Number(health?.failedFiles ?? 0),
-    error: error ?? health?.sqliteError ?? health?.serviceError ?? health?.hookError ?? null
+    error: error ?? sanitizeArchiveError(healthError)
   };
 }
 
@@ -48,7 +60,7 @@ export function repairMonitorIntegration(config, {
       reason: 'hook-repair-failed',
       hook,
       reconcile: null,
-      error: hook?.error ?? 'Archive hook repair failed.'
+      error: sanitizeArchiveError(hook?.error, 'Archive hook repair failed.')
     };
   }
 
@@ -60,7 +72,7 @@ export function repairMonitorIntegration(config, {
     reason: wake?.ok === true ? 'repaired' : 'reconcile-failed',
     hook,
     reconcile: wake,
-    error: wake?.error ?? null
+    error: sanitizeArchiveError(wake?.error, 'Archive reconcile failed.')
   };
 }
 
@@ -74,3 +86,5 @@ export function printRepairReport(report, stream = process.stdout) {
   if (report?.error) stream.write(`Attention: ${report.error}\n`);
   stream.write('Scope: Monitor-owned Archive integration only; Codex auth, sessions and archive data were not modified.\n');
 }
+
+export { sanitizeArchiveError };
