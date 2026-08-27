@@ -3,6 +3,7 @@ import { hpaint, detectHistoryColorMode } from '../history/theme.js';
 import { truncateCells } from '../ui/cell-width.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { TerminalGuard } from '../terminal/guard.js';
+import { attachTerminalKeyInput } from '../terminal/key-input.js';
 
 function paintMode(capability) {
   return capability === 'mono' ? 'mono' : capability;
@@ -50,6 +51,7 @@ export async function confirmMonitorReset({
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
   const mode = paintMode(colorCapability);
   let done = false;
+  let detachKeyInput = () => {};
   let finish;
   let fail;
   const finished = new Promise((resolve, reject) => { finish = resolve; fail = reject; });
@@ -68,7 +70,7 @@ export async function confirmMonitorReset({
   const cleanup = () => {
     if (done) return;
     done = true;
-    try { stdin.off?.('data', onInput); } catch {}
+    try { detachKeyInput(); } catch {}
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.pause?.(); } catch {}
     guard.restore();
@@ -89,7 +91,7 @@ export async function confirmMonitorReset({
     try {
       const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
       if (/^[\r\n]+$/.test(text) || text.toLowerCase() === 'y') complete(true);
-      else if (text === '\x1b' || text.toLowerCase() === 'n' || text.toLowerCase() === 'q') complete(false);
+      else if (text === '\x1b' || text === '\x03' || text.toLowerCase() === 'n' || text.toLowerCase() === 'q') complete(false);
     } catch (error) { abort(error); }
   };
   const onResize = () => { try { draw(true); } catch (error) { abort(error); } };
@@ -102,7 +104,7 @@ export async function confirmMonitorReset({
     guard.hideCursor();
     guard.enterRawMode();
     stdin.resume?.();
-    stdin.on?.('data', onInput);
+    detachKeyInput = attachTerminalKeyInput(stdin, onInput);
     stdout.on?.('resize', onResize);
     stdout.write('\x1b[2J\x1b[H');
     draw(true);
