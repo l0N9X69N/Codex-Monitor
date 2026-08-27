@@ -40,6 +40,25 @@ const FIELD_LABELS = Object.freeze({
   tools: 'Tools', lastTool: 'Last tool', approval: 'Approval', retry: 'Retries', errors: 'Errors', cpu: 'CPU', ram: 'RAM', ramCapacity: 'RAM capacity'
 });
 
+const CARD_META = Object.freeze({
+  context: Object.freeze({ label: 'Context', description: 'Track context-window usage and pressure.' }),
+  usage: Object.freeze({ label: 'Usage', description: 'Track token usage and available quota.' }),
+  session: Object.freeze({ label: 'Session', description: 'Show current session identity and timing.' }),
+  activity: Object.freeze({ label: 'Activity', description: 'Show current Codex activity and tool state.' }),
+  system: Object.freeze({ label: 'System', description: 'Show CPU/RAM telemetry when available.' })
+});
+
+const HEADER_META = Object.freeze({
+  activity: Object.freeze({ label: 'Activity', description: 'Current Codex activity state.' }),
+  model: Object.freeze({ label: 'Model', description: 'Active model name.' }),
+  reasoning: Object.freeze({ label: 'Reasoning', description: 'Current reasoning effort.' }),
+  project: Object.freeze({ label: 'Project', description: 'Current project or working directory label.' }),
+  git: Object.freeze({ label: 'Git', description: 'Current branch and revision when available.' }),
+  auth: Object.freeze({ label: 'Auth', description: 'Detected login or API authentication mode.' }),
+  health: Object.freeze({ label: 'Health', description: 'Monitor/runtime health summary.' }),
+  'session-age': Object.freeze({ label: 'Session age', description: 'Elapsed age of the current session.' })
+});
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -56,11 +75,28 @@ function enabledLabel(value) {
   return value ? 'On' : 'Off';
 }
 
+function toggleRow({ id, label, checked, description = '', editable = true }) {
+  return {
+    id,
+    label,
+    value: enabledLabel(checked),
+    editable,
+    kind: 'toggle',
+    checked: Boolean(checked),
+    description
+  };
+}
+
 function fieldRows(config) {
   const rows = [];
   for (const [section, fields] of Object.entries(DEFAULT_FIELD_VISIBILITY)) {
     for (const key of Object.keys(fields)) {
-      rows.push({ id: `field:${section}:${key}`, label: `${section.toUpperCase()} · ${FIELD_LABELS[key] ?? key}`, value: enabledLabel(config.fields?.[section]?.[key]), editable: true });
+      rows.push(toggleRow({
+        id: `field:${section}:${key}`,
+        label: `${section.toUpperCase()} · ${FIELD_LABELS[key] ?? key}`,
+        checked: config.fields?.[section]?.[key],
+        description: `Show this metric in the ${section.toUpperCase()} card.`
+      }));
     }
   }
   return rows;
@@ -68,38 +104,52 @@ function fieldRows(config) {
 
 function headerRows(config) {
   const selected = new Set(config.header ?? []);
-  return [...CONFIG_VALUES.header].map((key) => ({ id: `header:${key}`, label: key, value: enabledLabel(selected.has(key)), editable: true }));
+  return [...CONFIG_VALUES.header].map((key) => {
+    const meta = HEADER_META[key] ?? { label: key, description: 'Show this item in the Live HUD header.' };
+    return toggleRow({
+      id: `header:${key}`,
+      label: meta.label,
+      checked: selected.has(key),
+      description: meta.description
+    });
+  });
 }
 
 function rowsForTab(tab, config, archivePanel = null) {
   if (tab === 'live-view') {
     return [
-      { id: 'preset', label: 'Preset', value: config.preset, editable: true },
-      { id: 'systemMode', label: 'System mode', value: config.systemMode, editable: true },
-      { id: 'beastMode', label: 'Companion / Beast mode', value: config.beastMode, editable: true }
+      { id: 'preset', label: 'Preset', value: config.preset, editable: true, description: 'Choose the base Live HUD layout.' },
+      { id: 'systemMode', label: 'System mode', value: config.systemMode, editable: true, description: 'Control when system telemetry is collected and shown.' },
+      { id: 'beastMode', label: 'Companion / Beast mode', value: config.beastMode, editable: true, description: 'Control companion visibility in the Live HUD.' }
     ];
   }
   if (tab === 'cards') {
-    return ['context', 'usage', 'session', 'activity', 'system'].map((key) => ({
-      id: `card:${key}`,
-      label: key,
-      value: key === 'system' ? config.systemMode : enabledLabel(config.sections?.[key]),
-      editable: true
-    }));
+    return ['context', 'usage', 'session', 'activity', 'system'].map((key) => {
+      const meta = CARD_META[key] ?? { label: key, description: '' };
+      const checked = key === 'system' ? config.systemMode !== 'off' : config.sections?.[key];
+      return toggleRow({ id: `card:${key}`, label: meta.label, checked, description: meta.description });
+    });
   }
   if (tab === 'fields') return fieldRows(config);
   if (tab === 'header') return headerRows(config);
   if (tab === 'companion') return [{ id: 'companion-status', label: 'Companion controls', value: 'Uses Live View Beast mode in current schema', editable: false }];
   if (tab === 'appearance') {
     return [
-      { id: 'theme', label: 'Theme', value: config.theme, editable: true },
-      { id: 'background', label: 'Background', value: config.background, editable: true },
-      { id: 'language', label: 'Language', value: config.language, editable: true }
+      { id: 'theme', label: 'Theme', value: config.theme, editable: true, description: 'Choose the terminal color treatment.' },
+      { id: 'background', label: 'Background', value: config.background, editable: true, description: 'Choose the expected terminal background.' },
+      { id: 'language', label: 'Language', value: config.language, editable: true, description: 'Choose the Monitor UI language.' }
     ];
   }
   if (tab === 'archive') return archivePanel?.rows?.(config) ?? [];
   if (tab === 'manager') return [{ id: 'manager-status', label: 'Manager preferences', value: 'No persisted Manager-only fields in v1 schema yet', editable: false }];
-  if (tab === 'updates') return [{ id: 'updateCheck', label: 'Update checks', value: enabledLabel(config.updateCheck), editable: true }];
+  if (tab === 'updates') {
+    return [toggleRow({
+      id: 'updateCheck',
+      label: 'Update checks',
+      checked: config.updateCheck,
+      description: 'Allow Monitor to check whether a newer release is available.'
+    })];
+  }
   return [];
 }
 
