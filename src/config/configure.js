@@ -83,13 +83,18 @@ export async function configureMonitor({
     const archiveEffects = applyArchiveEffects(before, result.config);
     output.write(`Saved: ${result.filePath}\n`);
     if (archiveEffects?.transition === 'off-to-on') {
-      output.write(archiveEffects.ok
-        ? 'Archive enabled: SQLite initialized and Archive Service started/woken.\n'
-        : `Archive enabled, but runtime activation needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
+      if (archiveEffects.ok) {
+        output.write('Archive enabled: SQLite initialized, Codex wake hooks installed, and Archive Service started/woken.\n');
+        if (archiveEffects.hooks?.trustRequired) {
+          output.write('Codex hook review required: open /hooks in Codex and trust the new Codex Monitor hooks before they can run.\n');
+        }
+      } else {
+        output.write(`Archive enabled, but runtime activation needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
+      }
     } else if (archiveEffects?.transition === 'on-to-off') {
       output.write(archiveEffects.ok
-        ? 'Archive disabled: service stop requested; existing SQLite archive was kept.\n'
-        : `Archive disabled and data kept, but service stop needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
+        ? 'Archive disabled: Monitor-owned Codex hooks removed, service stop requested, and existing SQLite archive was kept.\n'
+        : `Archive disabled and data kept, but runtime cleanup needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
     }
     return { saved: true, ...result, archiveEffects };
   } finally {
