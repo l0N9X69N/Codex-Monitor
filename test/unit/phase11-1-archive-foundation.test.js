@@ -13,7 +13,7 @@ import {
 import { classifyArchiveSyncState } from '../../src/archive/sync-state.js';
 import { inspectArchiveSource, readCommittedJsonlChunk } from '../../src/archive/source-reader.js';
 import { ARCHIVE_PRAGMAS, ARCHIVE_SCHEMA_SQL, archiveBootstrapSql } from '../../src/archive/sql-schema.js';
-import { DEFAULT_CONFIG, normalizeArchiveConfig, normalizeConfig } from '../../src/config/schema.js';
+import { CONFIG_VERSION, DEFAULT_CONFIG, normalizeArchiveConfig, normalizeConfig } from '../../src/config/schema.js';
 
 function tempFile(contents) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-phase11-1-'));
@@ -113,7 +113,7 @@ test('sync classifier enforces READY only at a verified current parser high-wate
 
 test('main config schema migrates legacy config to archive-disabled defaults', () => {
   const legacy = normalizeConfig({ configVersion: 2, language: 'en', preset: 'compact' });
-  assert.equal(legacy.configVersion, 2);
+  assert.equal(legacy.configVersion, CONFIG_VERSION);
   assert.equal(legacy.language, 'en');
   assert.deepEqual(legacy.archive, DEFAULT_ARCHIVE_CONFIG);
   assert.deepEqual(DEFAULT_CONFIG.archive, DEFAULT_ARCHIVE_CONFIG);
