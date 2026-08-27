@@ -1,6 +1,8 @@
 # Phase 13 Auto Test Report
 
-Status: **PENDING TARGET-MACHINE VERIFICATION**
+Status: **PASS — RELEASE-CANDIDATE AUTO VERIFIED**
+
+Recorded: **2026-08-27**
 
 Command:
 
@@ -8,7 +10,30 @@ Command:
 npm run verify:phase13
 ```
 
-The Phase 13 gate is designed to run:
+Result reported by the target development machine: **PASS**.
+
+Verified implementation head before this QA bookkeeping commit:
+
+```text
+b60388282e2d4263bd341c72f700d90fa758ae1b
+```
+
+Observed final gate summary:
+
+```text
+Full repository regression:
+398 tests
+397 pass
+0 fail
+1 skipped
+
+Package smoke:
+251 file(s)
+302384 bytes packed
+PASS
+```
+
+The Phase 13 automatic gate covered:
 
 - syntax verification;
 - Phase 13 productization control tests;
@@ -17,10 +42,10 @@ The Phase 13 gate is designed to run:
 - diagnostics path/error redaction;
 - safe uninstall ownership/preservation assertions;
 - Archive Disabled zero-service-kick assertion;
-- the complete Phase 12 verifier, which includes the full Phase 11-1 Archive/Manager regression gate;
+- the complete Phase 12 verifier, including the full Phase 11-1 Archive/Manager regression gate;
 - the full repository `node --test` suite;
 - npm package smoke using `npm pack --dry-run` and forbidden-local-data checks.
 
-Do not mark this report PASS until the target development machine runs the command successfully after the Phase 13 implementation head is finalized.
+During this gate, stale Phase 5/8 regression expectations were migrated to the current passive responsive Live HUD and bounded streaming Manager parser contracts. The final full repository run is green.
 
-Manual release installation, visual approval, real-machine Archive lifecycle, performance measurements, Linux/macOS evidence and signing/timestamping are separate RC gates and are not implied by an automatic PASS.
+Automatic verification does not close Phase 13 by itself. Real-machine release installation/link behavior, visual approval, Archive lifecycle/recovery, performance measurements, signing/timestamping disposition and platform evidence remain manual RC gates.
