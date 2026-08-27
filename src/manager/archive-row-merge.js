@@ -12,14 +12,22 @@ function pathKey(value) {
   return normalizePlatformPath(value) ?? path.resolve(String(value));
 }
 
-function mergeRecent(base = [], overlay = []) {
-  const values = [...(Array.isArray(base) ? base : []), ...(Array.isArray(overlay) ? overlay : [])];
+function mergeRecent(base = []) {
+  const values = [...(Array.isArray(base) ? base : [])];
   values.sort((left, right) => Number(left?.atMs ?? 0) - Number(right?.atMs ?? 0));
   return values.slice(-8);
 }
 
 function archiveAuthoritative(archived) {
   return Boolean(archived?.archiveBacked && archived?.archiveSyncState !== 'UNINDEXED' && archived?.archiveSyncState !== 'STALE');
+}
+
+function effectiveArchiveSyncState(raw, archived) {
+  if (!archiveAuthoritative(archived)) return archived?.archiveSyncState ?? null;
+  const rawSize = numberOrNull(raw?.fileSizeBytes);
+  const committedOffset = numberOrNull(archived?.archiveCommittedOffset);
+  if (rawSize != null && committedOffset != null && rawSize > committedOffset) return 'CATCHING_UP';
+  return archived?.archiveSyncState ?? null;
 }
 
 export function mergeManagerArchiveRows(rawRows = [], archiveRows = []) {
@@ -59,6 +67,8 @@ export function mergeManagerArchiveRows(rawRows = [], archiveRows = []) {
       continue;
     }
 
+    const effectiveSyncState = effectiveArchiveSyncState(raw, archived);
+    const archiveVerified = effectiveSyncState === 'READY' ? archived.archiveVerified : false;
     merged.push({
       ...archived,
       id: raw.id ?? archived.id,
@@ -93,15 +103,15 @@ export function mergeManagerArchiveRows(rawRows = [], archiveRows = []) {
         numberOrNull(archived.lastActivityAtMs) ?? 0
       ) || null,
       lastActivitySource: archived.archiveOverlayOffset != null ? 'archive+jsonl-delta' : archived.lastActivitySource,
-      recentErrors: mergeRecent(archived.recentErrors, raw.recentErrors?.filter?.(() => false)),
-      recentRetries: mergeRecent(archived.recentRetries, raw.recentRetries?.filter?.(() => false)),
-      recentCompactions: mergeRecent(archived.recentCompactions, raw.recentCompactions?.filter?.(() => false)),
+      recentErrors: mergeRecent(archived.recentErrors),
+      recentRetries: mergeRecent(archived.recentRetries),
+      recentCompactions: mergeRecent(archived.recentCompactions),
       fileSizeBytes: raw.fileSizeBytes ?? archived.fileSizeBytes,
       modifiedAtMs: raw.modifiedAtMs ?? archived.modifiedAtMs,
       rawSourceExists: true,
       archiveBacked: true,
-      archiveVerified: archived.archiveVerified,
-      archiveSyncState: archived.archiveSyncState,
+      archiveVerified,
+      archiveSyncState: effectiveSyncState,
       observationGap: Boolean(archived.observationGap)
     });
   }
