@@ -18,7 +18,8 @@ const steps = [
     'test/unit/phase11-1-manager-config.test.js',
     'test/unit/phase11-1-manager-archive-index.test.js',
     'test/unit/phase11-1-manager-index-health.test.js',
-    'test/unit/phase11-1-manager-verified-detail.test.js'
+    'test/unit/phase11-1-manager-verified-detail.test.js',
+    'test/unit/phase11-1-manager-live-overlay.test.js'
   ]],
   ['Phase 11 storage/delete/input safety regression', process.execPath, ['--test',
     'test/unit/phase11-storage-delete.test.js',
@@ -38,5 +39,5 @@ for (const [label, command, args] of steps) {
   }
 }
 
-process.stdout.write('\nPhase 11-1 oversized-record resilience checkpoint verification: PASS\n');
-process.stdout.write('Gate covers large valid JSONL records beyond the normal 256 KiB soft chunk, bounded discard/progress for extreme oversized records without retaining payloads, atomic checkpoint advancement with archive_parse_error evidence, complete-scan READY semantics, SQLite-backed READY/ARCHIVED Manager detail, raw LIVE fallback, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
+process.stdout.write('\nPhase 11-1 committed-offset Manager live overlay checkpoint verification: PASS\n');
+process.stdout.write('Gate covers SQLite-base plus JSONL delta from committed offsets without double-counting whole-file raw summaries, immediate READY downgrade when raw size advances, bounded Manager archive refresh/overlay cadence, oversized-record progress, verified source-scan semantics, SQLite-backed READY/ARCHIVED detail, archive service/config/hooks safety, and Phase 11 storage/delete regressions.\n');
