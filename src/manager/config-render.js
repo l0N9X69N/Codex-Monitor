@@ -18,14 +18,14 @@ export function renderManagerConfig({
   const cursorIndex = Math.max(0, Math.min(rows.length - 1, Number(controller?.cursorIndex) || 0));
   const tabs = MANAGER_CONFIG_TABS.map((tab) => {
     const label = MANAGER_CONFIG_TAB_LABELS[tab] ?? tab;
-    return tab === controller?.activeTab ? hpaint(`[${label}]`, 'accent', mode) : hpaint(label, 'dim', mode);
+    return tab === controller?.activeTab ? hpaint(`[${label}]`, 'nav', mode) : hpaint(label, 'dim', mode);
   }).join('  ');
 
   const lines = [
-    padLine(hpaint('CODEX MONITOR · CONFIG', 'title', mode), safeWidth),
+    padLine(hpaint('CODEX MONITOR · CONFIG', 'heading', mode), safeWidth),
     padLine(tabs, safeWidth),
-    padLine('─'.repeat(Math.max(0, safeWidth)), safeWidth),
-    padLine(`${controller?.activeTabLabel ?? 'Config'}${controller?.dirty ? ' · UNSAVED' : ''}`, safeWidth),
+    padLine(hpaint('─'.repeat(Math.max(0, safeWidth)), 'grid', mode), safeWidth),
+    padLine(`${controller?.activeTabLabel ?? 'Config'}${controller?.dirty ? ` ${hpaint('· UNSAVED', 'pressure', mode)}` : ''}`, safeWidth),
     ''
   ];
 
@@ -35,16 +35,17 @@ export function renderManagerConfig({
   for (let index = 0; index < visible.length; index += 1) {
     const row = visible[index];
     const absoluteIndex = start + index;
-    const pointer = absoluteIndex === cursorIndex ? '›' : ' ';
-    const editable = row.editable ? '' : ' · read-only';
-    lines.push(padLine(`${pointer} ${row.label}  ${hpaint(String(row.value), absoluteIndex === cursorIndex ? 'accent' : 'value', mode)}${hpaint(editable, 'dim', mode)}`, safeWidth));
+    const pointer = absoluteIndex === cursorIndex ? hpaint('›', 'nav', mode) : ' ';
+    const value = hpaint(String(row.value), absoluteIndex === cursorIndex ? 'strong' : 'text', mode);
+    const editable = row.editable ? '' : hpaint(' · read-only', 'dim', mode);
+    lines.push(padLine(`${pointer} ${row.label}  ${value}${editable}`, safeWidth));
   }
 
   while (lines.length < safeHeight - 3) lines.push('');
-  if (controller?.status) lines.push(padLine(hpaint(controller.status, controller.status.startsWith('Save failed') ? 'error' : 'dim', mode), safeWidth));
+  if (controller?.status) lines.push(padLine(hpaint(controller.status, controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
   else lines.push('');
-  lines.push(padLine('Tab/←/→ tabs · ↑/↓ select · Enter/Space change · S save · R revert · Esc/Q back', safeWidth));
-  lines.push(padLine('Archive enable/disable uses the same lifecycle engine as codexm --configure.', safeWidth));
+  lines.push(padLine(hpaint('Tab/←/→ tabs · ↑/↓ select · Enter/Space change · S save · R revert · Esc/Q back', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint('Archive enable/disable uses the same lifecycle engine as codexm --configure.', 'dim', mode), safeWidth));
 
   return {
     lines: lines.slice(0, safeHeight),
