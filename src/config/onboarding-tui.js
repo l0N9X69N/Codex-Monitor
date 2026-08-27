@@ -4,6 +4,7 @@ import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { TerminalGuard } from '../terminal/guard.js';
 import { OnboardingController, ONBOARDING_STEP } from './onboarding.js';
 import { renderOnboarding } from './onboarding-render.js';
+import { renderConfigPreview } from './preview.js';
 
 function paintMode(theme, capability) {
   const normalized = String(theme ?? 'color').toLowerCase();
@@ -12,14 +13,22 @@ function paintMode(theme, capability) {
   return capability;
 }
 
-function actionForInput(data) {
+function actionForInput(data, { previewOpen = false } = {}) {
   const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!text) return null;
+  if (previewOpen) {
+    if (text === '\x1b' || text.toLowerCase() === 'q') return 'preview-close';
+    if (text.toLowerCase() === 'p') return 'preview-live';
+    if (text.toLowerCase() === 'm') return 'preview-manager';
+    return null;
+  }
   if (text === '\x1b') return 'cancel';
   if (text === '\x1b[A') return 'up';
   if (text === '\x1b[B') return 'down';
   if (text === '\x1b[D' || text === '\x7f' || text === '\b') return 'back';
   if (text === '\x1b[C') return 'forward';
+  if (text.toLowerCase() === 'p') return 'preview-live';
+  if (text.toLowerCase() === 'm') return 'preview-manager';
   if (/^[\r\n]+$/.test(text) || text === ' ') return 'activate';
   return null;
 }
@@ -43,6 +52,7 @@ export async function runFirstRunOnboarding({
   const activeController = controller ?? new OnboardingController({ currentConfig, previousConfig, filePath, save, applyArchiveEffects });
   const guard = new TerminalGuard({ stdin, stdout });
   const renderer = new AnsiDiffRenderer({ stdout, originRow: 1 });
+  let previewKind = null;
   let done = false;
   let finish;
   let fail;
@@ -52,7 +62,9 @@ export async function runFirstRunOnboarding({
     const width = Math.max(44, stdout.columns || 100);
     const height = Math.max(16, stdout.rows || 30);
     const mode = paintMode(activeController.draftConfig?.theme, colorCapability);
-    const frame = renderOnboarding({ controller: activeController, width, height, mode });
+    const frame = previewKind
+      ? renderConfigPreview({ kind: previewKind, config: activeController.draftConfig, width, height, mode })
+      : renderOnboarding({ controller: activeController, width, height, mode });
     if (force) renderer.reset([]);
     renderer.render(frame.lines);
     return frame;
@@ -79,8 +91,20 @@ export async function runFirstRunOnboarding({
   };
 
   const handle = (data) => {
-    const action = actionForInput(data);
+    const action = actionForInput(data, { previewOpen: Boolean(previewKind) });
     if (!action) return;
+    if (action === 'preview-close') {
+      previewKind = null;
+      draw(true);
+      return;
+    }
+    if (action === 'preview-live' || action === 'preview-manager') {
+      if (previewKind || activeController.step === ONBOARDING_STEP.SUMMARY) {
+        previewKind = action === 'preview-live' ? 'live' : 'manager';
+        draw(true);
+      }
+      return;
+    }
     if (action === 'cancel') {
       complete(activeController.cancel());
       return;
@@ -93,13 +117,14 @@ export async function runFirstRunOnboarding({
     if (action === 'up') activeController.moveCursor(-1);
     else if (action === 'down') activeController.moveCursor(1);
     else if (action === 'activate' || action === 'forward') {
-      const result = activeController.activateCurrent(action === 'forward' ? 1 : 1);
+      const result = activeController.activateCurrent(1);
       if (activeController.step === ONBOARDING_STEP.SUMMARY && result?.saved) {
         complete(result);
         return;
       }
-      if (result?.saved || result?.error) {
-        if (result.saved) complete(result);
+      if (result?.saved) {
+        complete(result);
+        return;
       }
     }
     draw(false);
