@@ -5,6 +5,7 @@ import { renderManagerConfig } from '../manager/config-render.js';
 import { normalizeManagerInput } from '../manager/input.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
 import { TerminalGuard } from '../terminal/guard.js';
+import { attachTerminalKeyInput } from '../terminal/key-input.js';
 import { renderConfigPreview } from './preview.js';
 import { normalizeConfig } from './schema.js';
 
@@ -54,6 +55,7 @@ export async function runStandaloneConfigTui({
   let done = false;
   let saved = false;
   let lastSave = null;
+  let detachKeyInput = () => {};
 
   let finish;
   let fail;
@@ -77,7 +79,7 @@ export async function runStandaloneConfigTui({
   const cleanup = () => {
     if (done) return;
     done = true;
-    try { stdin.off?.('data', onInput); } catch {}
+    try { detachKeyInput(); } catch {}
     try { stdout.off?.('resize', onResize); } catch {}
     try { stdin.pause?.(); } catch {}
     guard.restore();
@@ -104,6 +106,10 @@ export async function runStandaloneConfigTui({
 
   const handleInput = (data) => {
     if (done) return;
+    if (data === '\x03') {
+      close();
+      return;
+    }
     const normalized = normalizeManagerInput(data, {
       configOpen: true,
       configPreviewOpen: Boolean(previewKind),
@@ -156,7 +162,7 @@ export async function runStandaloneConfigTui({
     guard.hideCursor();
     guard.enterRawMode();
     stdin.resume?.();
-    stdin.on?.('data', onInput);
+    detachKeyInput = attachTerminalKeyInput(stdin, onInput);
     stdout.on?.('resize', onResize);
     stdout.write('\x1b[2J\x1b[H');
     draw(true);
