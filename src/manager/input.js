@@ -1,6 +1,6 @@
 const SORT_FIELDS = Object.freeze(['lastActivity', 'context', 'input', 'tools', 'size', 'state', 'project', 'model']);
 const SCOPES = Object.freeze(['all', 'live', 'ended']);
-const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'storage', 'auto']);
+const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'auto']);
 
 export function nextManagerScope(scope = 'all') {
   const index = SCOPES.indexOf(String(scope).toLowerCase());
