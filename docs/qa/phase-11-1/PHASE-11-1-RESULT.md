@@ -1,6 +1,6 @@
 # Phase 11-1 — Result
 
-Status: **IMPLEMENTED — AUTO VERIFIED; MANUAL CLOSEOUT PENDING**
+Status: **IMPLEMENTED — AUTO VERIFIED; FINAL CROSS-PHASE REVIEW DEFERRED TO PHASE 13**
 
 Implemented scope:
 
@@ -27,11 +27,16 @@ npm run verify:phase11-1
 
 Recorded on 2026-08-27: **PASS on the target machine**.
 
-Phase 11-1 implementation/correctness is therefore auto-verified. It must not be changed to `COMPLETE — CLOSED` until:
+Phase 11-1 implementation/correctness is auto-verified and is now frozen for normal feature work. Do not continue cosmetic or non-blocking polish in this phase while Phase 12/13 are still being built.
 
-1. required Windows manual lifecycle/hook/delete QA is completed;
-2. performance observations in `MANUAL-TEST-REQUIRED.md` are acceptable, especially Manager raw-summary I/O and large-archive Compact behavior;
-3. network/privacy spot checks are completed;
-4. cross-platform verification status is recorded honestly.
+The remaining items are intentionally deferred into the final cross-phase review in Phase 13 so they can be evaluated against the complete product shell/package rather than repeatedly patched in isolation:
 
-Known non-correctness blockers/limits are documented in `KNOWN-ISSUES.md`.
+1. Windows source/runtime and packaged lifecycle/hook/delete observations as applicable to the final product shape;
+2. Manager/archive performance observations, including redundant raw-summary I/O and large-archive Compact behavior;
+3. privacy/network spot checks on the final productized runtime;
+4. native/platform packaging verification status;
+5. accumulated UI/UX consistency review across Live, Manager, Config, onboarding and packaging surfaces.
+
+Only correctness, data-loss, safety, or phase-blocking regressions should reopen Phase 11-1 before that final review.
+
+Known non-correctness blockers/limits remain documented in `KNOWN-ISSUES.md`.
