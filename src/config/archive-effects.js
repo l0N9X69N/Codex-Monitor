@@ -2,6 +2,7 @@ import { openArchiveDatabase } from '../archive/database.js';
 import { installArchiveHooks, uninstallArchiveHooks } from '../archive/hook-config.js';
 import { kickArchiveService } from '../archive/integration.js';
 import { requestArchiveServiceStop } from '../archive/service-control.js';
+import { publishManagerArchiveConfig } from '../manager/archive-config-state.js';
 import { normalizeConfig } from './schema.js';
 
 export function applyArchiveConfigSideEffects(previousConfig, nextConfig, {
@@ -13,6 +14,7 @@ export function applyArchiveConfigSideEffects(previousConfig, nextConfig, {
 } = {}) {
   const previous = normalizeConfig(previousConfig);
   const next = normalizeConfig(nextConfig);
+  publishManagerArchiveConfig(next);
   const wasEnabled = previous.archive.enabled === true;
   const isEnabled = next.archive.enabled === true;
 
