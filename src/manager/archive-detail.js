@@ -28,9 +28,45 @@ function toolByName(rows) {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+function toolByType(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    const type = row.tool_type ?? 'tool';
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
 function signalKind(type) {
   if (type === 'archive_parse_error') return 'error';
   return type ?? 'event';
+}
+
+function tableExists(db, name) {
+  try {
+    return Boolean(db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+  } catch {
+    return false;
+  }
+}
+
+function tokenDerived(row) {
+  const input = finiteOrNull(row?.input_tokens);
+  const cached = finiteOrNull(row?.cached_tokens);
+  const output = finiteOrNull(row?.output_tokens);
+  const reasoning = finiteOrNull(row?.reasoning_tokens);
+  return {
+    atMs: finiteOrNull(row?.timestamp),
+    turnNo: finiteOrNull(row?.turn_no),
+    input,
+    cached,
+    uncachedInput: input != null && cached != null ? Math.max(0, input - cached) : null,
+    output,
+    reasoning,
+    total: input != null && output != null ? input + output : null
+  };
 }
 
 function timelineEvents(turns, tools, events) {
@@ -61,12 +97,13 @@ function timelineEvents(turns, tools, events) {
   }
   for (const tool of tools) {
     const failed = String(tool.status ?? '').toUpperCase() === 'FAILED';
+    const group = tool.tool_type ?? 'tool';
     output.push({
       atMs: finiteOrNull(tool.timestamp),
-      category: 'tool',
-      group: 'tool',
-      label: tool.tool_name ?? tool.tool_type ?? 'tool',
-      rawType: tool.tool_type ?? 'tool',
+      category: failed ? 'error' : group,
+      group,
+      label: tool.tool_name ?? group,
+      rawType: group,
       tool: tool.tool_name ?? null,
       callId: tool.source_event_id ?? null,
       detail: tool.status ?? null,
@@ -107,9 +144,13 @@ export function readManagerArchiveDetail(archiveIndex, row) {
 
   const turns = db.prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY turn_no ASC').all(sessionId);
   const contexts = db.prepare('SELECT * FROM context_samples WHERE session_id = ? ORDER BY timestamp ASC, id ASC').all(sessionId);
+  const tokenRows = tableExists(db, 'token_samples')
+    ? db.prepare('SELECT * FROM token_samples WHERE session_id = ? ORDER BY timestamp ASC, id ASC').all(sessionId)
+    : [];
   const tools = db.prepare('SELECT * FROM tool_events WHERE session_id = ? ORDER BY timestamp ASC, id ASC').all(sessionId);
   const events = db.prepare('SELECT * FROM session_events WHERE session_id = ? ORDER BY timestamp ASC, id ASC').all(sessionId);
   const resources = db.prepare('SELECT * FROM resource_usage WHERE session_id = ? ORDER BY resource_type ASC, use_count DESC, name ASC').all(sessionId);
+  const schemaVersion = integer(db.prepare('SELECT schema_version FROM archive_meta WHERE singleton_id = 1').get()?.schema_version, 1);
 
   const contextPoints = contexts.map((item) => ({
     atMs: finiteOrNull(item.timestamp),
@@ -118,38 +159,44 @@ export function readManagerArchiveDetail(archiveIndex, row) {
     percent: finiteOrNull(item.percent),
     eventType: item.event_type ?? null
   }));
+  const tokenPoints = tokenRows.map(tokenDerived);
+  const tokenTurns = new Set(tokenRows.map((item) => finiteOrNull(item.turn_no)).filter((value) => value != null));
   const compactions = events
     .filter((item) => item.type === 'compaction')
     .map((item) => ({ atMs: finiteOrNull(item.timestamp), kind: 'compaction' }));
   const turnItems = turns.map((item, index) => {
-    const input = finiteOrNull(item.input_tokens) ?? 0;
-    const cached = finiteOrNull(item.cached_tokens) ?? 0;
-    const output = finiteOrNull(item.output_tokens) ?? 0;
-    const reasoning = finiteOrNull(item.reasoning_tokens) ?? 0;
+    const turnNo = integer(item.turn_no, index + 1);
+    const hasTokenCoverage = tokenTurns.has(turnNo);
+    const input = finiteOrNull(item.input_tokens);
+    const cached = hasTokenCoverage ? finiteOrNull(item.cached_tokens) : null;
+    const output = finiteOrNull(item.output_tokens);
+    const reasoning = hasTokenCoverage ? finiteOrNull(item.reasoning_tokens) : null;
     const completed = finiteOrNull(item.ended_at) != null;
     const contextUsed = finiteOrNull(item.context_used);
     return {
       index,
-      turnNo: integer(item.turn_no, index + 1),
+      turnNo,
       startedAtMs: finiteOrNull(item.started_at),
       completedAtMs: finiteOrNull(item.ended_at),
       durationMs: finiteOrNull(item.duration_ms) ?? duration(item.started_at, item.ended_at),
       inputTokens: input,
       cachedTokens: cached,
-      uncachedInputTokens: Math.max(0, input - cached),
+      uncachedInputTokens: input != null && cached != null ? Math.max(0, input - cached) : null,
       outputTokens: output,
       reasoningTokens: reasoning,
-      totalTokens: input + output,
+      totalTokens: input != null && output != null ? input + output : null,
       contextUsed,
       contextWindow: null,
       toolCount: integer(item.tool_count, 0),
       completed,
-      incomplete: !completed
+      incomplete: !completed,
+      tokenCoverage: hasTokenCoverage ? 'indexed' : 'legacy'
     };
   });
   const toolEvents = tools.map((item) => ({
     atMs: finiteOrNull(item.timestamp),
     name: item.tool_name ?? item.tool_type ?? null,
+    group: item.tool_type ?? 'tool',
     callId: item.source_event_id ?? null,
     durationMs: finiteOrNull(item.duration_ms),
     failed: String(item.status ?? '').toUpperCase() === 'FAILED',
@@ -178,6 +225,7 @@ export function readManagerArchiveDetail(archiveIndex, row) {
     tabs: [...DETAIL_TABS],
     source: 'archive-sqlite',
     archiveSyncState: row.archiveSyncState ?? null,
+    archiveSchemaVersion: schemaVersion,
     info: {
       threadId: sessionId,
       model: session.model ?? row.model ?? null,
@@ -208,6 +256,7 @@ export function readManagerArchiveDetail(archiveIndex, row) {
     tools: {
       count: integer(session.tool_count, tools.length),
       byName: toolByName(tools),
+      byType: toolByType(tools),
       recent: toolEvents.slice(-12)
     },
     analytics: {
@@ -226,7 +275,8 @@ export function readManagerArchiveDetail(archiveIndex, row) {
         output,
         reasoning,
         total: input != null && output != null ? input + output : null,
-        points: []
+        points: tokenPoints,
+        coverage: tokenPoints.length > 0 ? 'indexed' : (schemaVersion >= 2 ? 'empty' : 'legacy')
       },
       turns: {
         completed: turnItems.filter((item) => item.completed).length,
@@ -236,6 +286,7 @@ export function readManagerArchiveDetail(archiveIndex, row) {
       tools: {
         total: tools.length,
         byName: toolByName(tools),
+        byType: toolByType(tools),
         events: toolEvents
       },
       signals
