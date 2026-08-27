@@ -131,7 +131,15 @@ export class ArchiveConfigPanel {
     const health = this.health ?? this.refresh();
     const enabled = config?.archive?.enabled === true;
     return [
-      { id: 'archive:enabled', label: 'Archive', value: enabled ? 'On' : 'Off', editable: true },
+      {
+        id: 'archive:enabled',
+        label: 'Archive',
+        value: enabled ? 'On' : 'Off',
+        editable: true,
+        kind: 'toggle',
+        checked: enabled,
+        description: 'Keep normalized technical session analytics in local SQLite.'
+      },
       { id: 'archive:health:service', label: 'Service', value: health.serviceRunning ? 'Running' : 'Idle', editable: false },
       { id: 'archive:health:hook', label: 'Codex Hook', value: health.hookComplete ? 'Installed' : health.hookInstalled ? 'Partial' : 'Missing', editable: false },
       { id: 'archive:health:watcher', label: 'Watcher', value: health.display?.watcher ?? '--', editable: false },
