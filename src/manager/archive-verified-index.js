@@ -105,6 +105,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
         sourceCount: 0,
         pendingFileCount: 0,
         pendingByteCount: 0,
+        failedFileCount: 0,
         health: null,
         error: null
       });
@@ -118,6 +119,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
         sourceCount: 0,
         pendingFileCount: 0,
         pendingByteCount: 0,
+        failedFileCount: 0,
         health: null,
         error: null
       });
@@ -128,6 +130,17 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
   get enabled() {
     this.syncPublishedConfig();
     return this.config?.archive?.enabled === true;
+  }
+
+  applyFailedSourceHealth(snapshot) {
+    if (!snapshot?.available) return snapshot;
+    const failedFileCount = Math.max(0, Number(snapshot.health?.failedFileCount ?? 0) || 0);
+    snapshot.failedFileCount = failedFileCount;
+    if (failedFileCount > 0 && snapshot.sourceScanComplete === true) {
+      snapshot.globalSyncState = ARCHIVE_SYNC_STATE.STALE;
+      snapshot.error = snapshot.error ?? `${failedFileCount} archive source${failedFileCount === 1 ? '' : 's'} failed ingestion`;
+    }
+    return snapshot;
   }
 
   verifyServiceLiveness(snapshot) {
@@ -181,6 +194,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
     this.syncPublishedConfig();
     const snapshot = super.open();
     if (!snapshot?.available) return snapshot;
+    this.applyFailedSourceHealth(snapshot);
     this.verifyServiceLiveness(snapshot);
     this.lastSnapshot = snapshot;
     return snapshot;
@@ -215,6 +229,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
       snapshot.sourceScanErrors = scan.errors;
       snapshot.sourceScanLimited = scan.limited;
       snapshot.error = snapshot.error ?? scanError;
+      this.applyFailedSourceHealth(snapshot);
       this.verifyServiceLiveness(snapshot);
       this.lastSnapshot = snapshot;
       return snapshot;
@@ -223,6 +238,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
     snapshot.sourceScanComplete = true;
     snapshot.sourceScanErrors = [];
     snapshot.sourceScanLimited = false;
+    this.applyFailedSourceHealth(snapshot);
     this.verifyServiceLiveness(snapshot);
     this.lastSnapshot = snapshot;
     return snapshot;
