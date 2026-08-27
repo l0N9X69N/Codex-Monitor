@@ -1,9 +1,11 @@
+import { mergeManagerArchiveRows } from './archive-index.js';
 import { buildProcessEvidence } from './session-core.js';
 
 export class SessionManagerTracker {
   constructor({
     core,
     platformAdapter,
+    archiveIndex = null,
     now = () => Date.now(),
     discoveryIntervalMs = 5000,
     coldSweepIntervalMs = 60_000,
@@ -16,6 +18,9 @@ export class SessionManagerTracker {
     if (!core) throw new Error('SessionManagerTracker requires core');
     this.core = core;
     this.platformAdapter = platformAdapter ?? null;
+    this.archiveIndex = archiveIndex ?? null;
+    this.archivePrimed = false;
+    this.archiveSnapshot = archiveIndex?.lastSnapshot ?? null;
     this.now = now;
     this.discoveryIntervalMs = Math.max(1000, Number(discoveryIntervalMs) || 5000);
     this.coldSweepIntervalMs = Math.max(this.discoveryIntervalMs, Number(coldSweepIntervalMs) || 60_000);
@@ -100,8 +105,67 @@ export class SessionManagerTracker {
     });
   }
 
+  archiveEnabled() {
+    return Boolean(this.archiveIndex?.enabled);
+  }
+
+  archiveRows() {
+    return this.archiveSnapshot?.available ? (this.archiveSnapshot.rows ?? []) : [];
+  }
+
+  mergedRows() {
+    const rawRows = this.core.rows();
+    return this.archiveSnapshot?.available
+      ? mergeManagerArchiveRows(rawRows, this.archiveRows())
+      : rawRows;
+  }
+
+  archiveResultFields() {
+    const snapshot = this.archiveSnapshot;
+    return {
+      archiveEnabled: Boolean(snapshot?.enabled),
+      archiveAvailable: Boolean(snapshot?.available),
+      archiveSourceScanComplete: Boolean(snapshot?.sourceScanComplete),
+      archiveSyncState: snapshot?.globalSyncState ?? null,
+      archivePendingFileCount: Number(snapshot?.pendingFileCount ?? 0),
+      archivePendingByteCount: Number(snapshot?.pendingByteCount ?? 0),
+      archiveError: snapshot?.error ?? null
+    };
+  }
+
   async tick() {
     const nowMs = this.now();
+
+    if (this.archiveEnabled() && !this.archivePrimed) {
+      this.archivePrimed = true;
+      this.archiveSnapshot = this.archiveIndex.open();
+      if (this.archiveSnapshot?.available) {
+        this.cachedRows = [...(this.archiveSnapshot.rows ?? [])];
+        this.hasCachedRows = true;
+        return {
+          atMs: nowMs,
+          changed: true,
+          processPolled: false,
+          discovered: false,
+          coldSwept: false,
+          knownRefreshed: false,
+          summariesTailed: false,
+          selectedTailed: false,
+          sessions: this.core.index,
+          rows: this.cachedRows,
+          selected: null,
+          selectedDetail: null,
+          processDiagnostics: this.processEvidence.diagnostics ?? null,
+          processError: this.lastProcessError,
+          ...this.archiveResultFields()
+        };
+      }
+    }
+
+    if (this.archiveEnabled()) {
+      this.archiveSnapshot = await this.archiveIndex.refresh();
+    }
+
     const discoveryDue = nowMs - this.lastDiscoveryAtMs >= this.discoveryIntervalMs;
     const firstDiscovery = discoveryDue && this.core.index.length === 0;
     const coldSweepDue = nowMs - this.lastColdSweepAtMs >= this.coldSweepIntervalMs;
@@ -154,9 +218,9 @@ export class SessionManagerTracker {
       selectedTailed = Boolean(selectedResult?.changed || selectedResult?.reset || selectedResult?.error);
     }
 
-    const changed = firstDiscovery || discovered || coldSwept || knownRefreshed || summariesTailed || selectedTailed || processPolled;
+    const changed = firstDiscovery || discovered || coldSwept || knownRefreshed || summariesTailed || selectedTailed || processPolled || this.archiveEnabled();
     if (changed || !this.hasCachedRows) {
-      this.cachedRows = this.core.rows();
+      this.cachedRows = this.mergedRows();
       this.hasCachedRows = true;
     }
 
@@ -174,7 +238,8 @@ export class SessionManagerTracker {
       selected: this.core.selectedModel(),
       selectedDetail: this.core.selectedDetail(),
       processDiagnostics: this.processEvidence.diagnostics ?? null,
-      processError: this.lastProcessError
+      processError: this.lastProcessError,
+      ...this.archiveResultFields()
     };
   }
 }
