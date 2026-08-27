@@ -73,6 +73,30 @@ export class ArchiveHealthStore {
     return healthRow(this.db.prepare('SELECT * FROM archive_meta WHERE singleton_id = 1').get());
   }
 
+  markServiceStarted(instanceId) {
+    if (!instanceId) throw new Error('archive service instanceId is required');
+    this.db.prepare('UPDATE archive_meta SET service_instance_id = ? WHERE singleton_id = 1').run(String(instanceId));
+    return this.getHealth();
+  }
+
+  markServiceStopped(instanceId) {
+    if (!instanceId) return { cleared: false, health: this.getHealth() };
+    const result = this.db.prepare('UPDATE archive_meta SET service_instance_id = NULL WHERE singleton_id = 1 AND service_instance_id = ?').run(String(instanceId));
+    return { cleared: Number(result?.changes ?? 0) > 0, health: this.getHealth() };
+  }
+
+  markWatcherSeen({ nowMs = this.now() } = {}) {
+    const atMs = timestamp(nowMs, Date.now());
+    this.db.prepare('UPDATE archive_meta SET watcher_last_seen_at = ? WHERE singleton_id = 1').run(atMs);
+    return this.getHealth();
+  }
+
+  markHookSeen({ nowMs = this.now() } = {}) {
+    const atMs = timestamp(nowMs, Date.now());
+    this.db.prepare('UPDATE archive_meta SET hook_last_seen_at = ? WHERE singleton_id = 1').run(atMs);
+    return this.getHealth();
+  }
+
   beginGeneration({ sourceCount = 0, nowMs = this.now() } = {}) {
     const atMs = timestamp(nowMs, Date.now());
     const count = integer(sourceCount, 0);

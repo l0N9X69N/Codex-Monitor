@@ -5,6 +5,8 @@ export * from './event-normalizer.js';
 export * from './health-store.js';
 export * from './reconcile.js';
 export * from './repository.js';
+export * from './service-control.js';
+export * from './service-runtime.js';
 export * from './source-reader.js';
 export * from './source-scan.js';
 export * from './sql-schema.js';
