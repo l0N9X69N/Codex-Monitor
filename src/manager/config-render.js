@@ -1,9 +1,30 @@
 import { hpaint } from '../history/theme.js';
-import { truncateCells } from '../ui/cell-width.js';
+import { padCells, truncateCells } from '../ui/cell-width.js';
 import { MANAGER_CONFIG_TABS, MANAGER_CONFIG_TAB_LABELS } from './config-controller.js';
 
 function padLine(text, width) {
   return truncateCells(String(text ?? ''), width, '');
+}
+
+function toggleText(row) {
+  const mark = row.checked ? 'x' : ' ';
+  const description = row.description ? `  (${row.description})` : '';
+  return `[${mark}] ${row.label}${description}`;
+}
+
+function valueText(row) {
+  const description = row.description ? `  (${row.description})` : '';
+  const editable = row.editable ? '' : ' · read-only';
+  return `${row.label}  ${row.value}${description}${editable}`;
+}
+
+function renderRow(row, selected, width, mode) {
+  const raw = row.kind === 'toggle' ? toggleText(row) : valueText(row);
+  const prefix = selected ? '▸ ' : '  ';
+  const text = padCells(truncateCells(`${prefix}${raw}`, width, '…'), width);
+  if (selected) return hpaint(text, 'selected', mode);
+  if (!row.editable) return hpaint(text, 'dim', mode);
+  return row.kind === 'toggle' && row.checked ? hpaint(text, 'strong', mode) : text;
 }
 
 export function renderManagerConfig({
@@ -35,17 +56,14 @@ export function renderManagerConfig({
   for (let index = 0; index < visible.length; index += 1) {
     const row = visible[index];
     const absoluteIndex = start + index;
-    const pointer = absoluteIndex === cursorIndex ? hpaint('›', 'nav', mode) : ' ';
-    const value = hpaint(String(row.value), absoluteIndex === cursorIndex ? 'strong' : 'text', mode);
-    const editable = row.editable ? '' : hpaint(' · read-only', 'dim', mode);
-    lines.push(padLine(`${pointer} ${row.label}  ${value}${editable}`, safeWidth));
+    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode));
   }
 
   while (lines.length < safeHeight - 3) lines.push('');
   if (controller?.status) lines.push(padLine(hpaint(controller.status, controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
   else lines.push('');
-  lines.push(padLine(hpaint('Tab/←/→ tabs · ↑/↓ select · Enter/Space change · S save · R revert · Esc/Q back', 'dim', mode), safeWidth));
-  lines.push(padLine(hpaint('Archive enable/disable uses the same lifecycle engine as codexm --configure.', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint('Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change · S save · R revert · Esc/Q back', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint('Checkboxes are choices; Archive enable/disable uses the same lifecycle engine as codexm --configure.', 'dim', mode), safeWidth));
 
   return {
     lines: lines.slice(0, safeHeight),
