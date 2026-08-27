@@ -1,6 +1,6 @@
 # Phase 12 Result
 
-Status: **IMPLEMENTED — CLOSE CANDIDATE; AUTO VERIFICATION PENDING; MANUAL UX CLOSEOUT PENDING**
+Status: **IMPLEMENTED — AUTO VERIFIED; MANUAL UX CLOSEOUT PENDING**
 
 Phase 12 implements the source-runtime product shell around the existing Codex Monitor runtime. It does not claim global installation, packaging, signing, native service installation, or release artifacts; those remain Phase 13 responsibilities.
 
@@ -23,10 +23,15 @@ Implemented scope:
 - non-interactive control paths do not open an alternate-screen wizard or wait for keypresses;
 - Phase 12 verification re-runs the full Phase 11-1 Archive/Manager regression gate.
 
+Verification:
+
+- Latest 12D source-runtime verifier reported PASS on the target development machine on 2026-08-27.
+- Verified implementation head before QA bookkeeping commits: `a97970f94eafb3b8d16b92eb1d2ab597c7dcdf2d`.
+- Automatic gate status: **PASS / AUTO VERIFIED**.
+
 Close conditions remaining:
 
-1. Run the latest `npm run verify:phase12` on the target development machine and record PASS.
-2. Perform the focused Phase 12 source-runtime manual UX checklist on Windows Terminal.
-3. Confirm BLOCKER = 0 and P0 = 0.
+1. Perform the focused Phase 12 source-runtime manual UX checklist on Windows Terminal.
+2. Confirm BLOCKER = 0 and P0 = 0.
 
 Broad visual polish, product packaging/install/PATH behavior, release artifacts, and final cross-phase review remain Phase 13 work.
