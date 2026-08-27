@@ -1,11 +1,11 @@
 # Codex Monitor — PROJECT-SPEC
 
-**Version:** 1.1 implementation baseline  
-**Updated:** 2026-08-26  
-**Status:** Phase 06 closed; Phase 07 closed development checkpoint; Phase 08 next  
+**Version:** 1.2 release-candidate baseline  
+**Updated:** 2026-08-27  
+**Status:** Phase 01–12 closed; Phase 13 implementation candidate awaiting RC verification/manual polish  
 **Scope:** Codex Monitor v1
 
-> This file is the current product/architecture source of truth. The numbered files in `docs/RoadMap/` define execution details for each phase.
+> This file is the current product/architecture source of truth. Accepted decisions under `docs/decisions/` and numbered files in `docs/RoadMap/` define detailed execution semantics where explicitly stated.
 
 ---
 
@@ -20,28 +20,38 @@ CODEX MONITOR
 │       ├── launches official Codex
 │       ├── passive HUD only
 │       ├── binds telemetry to the exact new/resumed session
-│       └── never owns Codex navigation/input
-└── SESSION MANAGER
-    └── codexm --manager
-        ├── independent interactive TUI
-        ├── reads local LIVE + ENDED sessions
-        └── owns analytics and session storage management
+│       └── never owns Codex navigation/input after spawn
+├── SESSION MANAGER
+│   └── codexm --manager
+│       ├── independent interactive TUI
+│       ├── reads local LIVE + ENDED + optional ARCHIVED sessions
+│       └── owns analytics and session storage management
+└── PRODUCT SHELL
+    ├── first-run onboarding
+    ├── shared Config
+    ├── doctor / diagnostics / repair
+    ├── update check
+    └── safe Monitor integration uninstall
 ```
 
 Product laws:
 
 1. Official Codex owns stdin after spawn.
-2. Live Monitor never adds navigation hotkeys, tabs, mouse navigation, or input interception.
+2. Live Monitor never adds navigation hotkeys, tabs, mouse navigation, or input interception after Codex spawn.
 3. Unrelated previous sessions must never fill missing current-session telemetry.
 4. Exact resume may hydrate durable state from the exact resumed rollout only; transient state starts clean.
 5. No extra model/API calls are made for monitoring.
-6. Normal monitoring is local-only. The updater is the only automatic network exception.
+6. Normal monitoring and Archive are local-only. The updater is the only automatic network exception.
 7. What is not demanded should not be collected; what has not changed should not be repainted unnecessarily.
-8. Windows/Linux/macOS share product semantics; OS differences stay behind Platform Adapters.
+8. Windows/Linux/macOS share intended product semantics; OS differences stay behind Platform Adapters. Real release verification is claimed only per tested platform.
+9. Local Session Archive is optional and Disabled until explicit user opt-in.
+10. Monitor reset/uninstall must not remove official Codex auth/sessions; Archive DB is preserved unless an explicit destructive Archive flow says otherwise.
+
+Runtime requirement for the v1 rearchitecture is Node.js `>=22.13 <27`, primarily because Archive uses built-in `node:sqlite` without an external SQLite runtime.
 
 ---
 
-## 2. Live CLI contract
+## 2. Live CLI and product-shell contract
 
 Examples:
 
@@ -52,29 +62,47 @@ codexm resume --last
 codexm resume <thread-id>
 codexm -m <model>
 codexm --preset compact resume
+codexm --manager
+codexm --configure
+codexm --doctor
 ```
 
 Monitor-owned options are consumed by Codex Monitor. Unknown arguments are forwarded to official Codex.
 
 ```powershell
 codexm -- --help
+codexm -- --version
 ```
 
 Everything after `--` is passed through unchanged.
 
 There is no Monitor-owned public `--history` mode in v1. `--history` is forwarded to official Codex.
 
+Phase 13 product controls include:
+
+```text
+--doctor / --diagnostics
+--repair
+--update
+--uninstall
+--version / --monitor-version
+--config / --config-path
+--configure / --reset
+```
+
+`--version` is Monitor-owned; use the exact `--` boundary when the official Codex version is desired.
+
 ---
 
 ## 3. Data ownership and resume
 
-Codex owns session history:
+Codex owns raw session history:
 
 ```text
 ~/.codex/sessions/**/*.jsonl
 ```
 
-Codex Monitor does not maintain a second transcript/history database by default.
+Codex Monitor does not maintain a second transcript/history database by default. When Local Session Archive is explicitly enabled, it maintains a Monitor-owned technical analytics SQLite archive; it is not a transcript/conversation-memory database.
 
 ### New session
 
@@ -270,7 +298,7 @@ Rules:
 - no redundant FREE row;
 - do not mix Codex process CPU/RAM into this card.
 
-Future workspace/disk/Codex-home sizing is backlog, not part of closed Phase 06.
+Future workspace/disk/Codex-home sizing is backlog.
 
 ---
 
@@ -296,14 +324,7 @@ AUTO priority favors SYSTEM before BEAST.
 
 When six selected cards cannot fit six columns, avoid a one-card tail. Prefer balanced layouts such as `4+2`, then `3+3`, `2+2+2`, then one-column fallback as width requires.
 
-Current testing checkpoint intentionally sets the `full` preset to:
-
-```text
-systemMode = on
-beastMode  = on
-```
-
-This is for easy testing. The intended release/customization default is `auto` unless a later product decision changes it.
+The current `full` preset intentionally keeps SYSTEM/BEAST explicitly visible for testing/product richness; final visual preference remains subject to Phase 13 polish without changing the mode semantics.
 
 `systemMode=off` must also remove SYSTEM collector demand when no other consumer requires it.
 
@@ -311,15 +332,15 @@ This is for easy testing. The intended release/customization default is `auto` u
 
 ## 11. BEAST MODE
 
-BEAST MODE currently exists only as an empty reserved responsive card. Runtime dog animation is not part of the closed Phase 06 checkpoint.
+BEAST MODE is a geometry-aware cosmetic surface and must remain isolated from correctness/telemetry/input paths. Animation/design assets do not justify input interception or extra collector demand.
 
-Future direction is a geometry-aware ASCII pet. Resize must never clip it, increase HUD height unexpectedly, intercept input, or require telemetry collectors.
+Resize must never clip it in a way that corrupts the terminal, unexpectedly expand the protected HUD region, or affect Codex stdin ownership.
 
-Existing animation assets are design material, not proof that live Beast animation is implemented.
+Final pet art/animation polish may continue during Phase 13 as cosmetic work provided it does not alter product semantics.
 
 ---
 
-## 12. Field visibility, theme and background
+## 12. Field visibility, Config, theme and background
 
 Per-field visibility exists for CONTEXT, USAGE, SESSION, ACTIVITY and SYSTEM. Disabled fields should be omitted/reflowed rather than shown as fake missing values.
 
@@ -341,7 +362,11 @@ dark
 
 Background styling applies only to Monitor rows and must reset before Codex content.
 
-The polished Custom UX is future work.
+Phase 12 owns the shared configuration product surface. `Manager -> C` and `codexm --configure` share the same schema/controller. Config edits are draft-based; Preview does not save, Revert restores saved state, and Archive lifecycle effects occur only after a successful explicit Save.
+
+First-run onboarding occurs before Codex spawn only. Existing valid configs migrate without forced onboarding. Runtime Manager `V` cycling does not persist a new default unless explicitly saved.
+
+Reset changes Monitor preference draft only and never deletes Codex auth/sessions or Archive SQLite data.
 
 ---
 
@@ -358,11 +383,13 @@ Priority order:
 
 Full Live SYSTEM uses its own light bounded history and does not require the heavy performance/process collectors.
 
-Collectors are demand-driven and scheduled centrally. Optional telemetry must never make Codex input lag.
+Collectors are demand-driven and scheduled centrally. Optional telemetry and Archive work must never make Codex input lag.
+
+Archive SQLite/service work must stay off the Codex stdin/PTY critical path. Archive failure must fail soft so Live/Codex remains usable.
 
 ---
 
-## 14. Platform architecture — Phase 07 checkpoint
+## 14. Platform architecture
 
 Supported design target:
 
@@ -384,7 +411,7 @@ capabilities
 cleanup
 ```
 
-`openHistoryTerminal` is obsolete and has been removed from the platform contract and Windows adapter implementation.
+`openHistoryTerminal` is obsolete and removed from the platform contract.
 
 Normalized process shape:
 
@@ -404,21 +431,21 @@ Unsupported capabilities degrade explicitly instead of crashing or fabricating d
 
 Optional platform telemetry must not block PTY/input. Windows CIM/PowerShell work is asynchronous/cached; POSIX `ps`/`df` execution is asynchronous and process-tree work uses a short TTL cache.
 
-Verification status at Phase 07 close:
+Current real-machine verification status:
 
 ```text
-Windows  VERIFIED — development checkpoint
+Windows  VERIFIED — development/Phase 12 focused UX evidence; Phase 13 RC checklist pending
 Linux    UNVERIFIED PLATFORM
 macOS    UNVERIFIED PLATFORM
 ```
 
-Linux/macOS must remain UNVERIFIED until real-machine/CI evidence exists. Their unverified state does not block Phase 08 development, but does block any claim of release-quality cross-platform verification.
+Linux/macOS must remain UNVERIFIED until real-machine/CI evidence exists. Their unverified state blocks any claim of release-quality verification for those platforms, not continued source development.
 
 ---
 
-## 15. Session Manager direction
+## 15. Session Manager
 
-Session Manager owns interactive local analytics and storage management for LIVE + ENDED sessions.
+Session Manager owns interactive local analytics and storage management for LIVE + ENDED sessions and, when Archive is enabled, ARCHIVED analytics history.
 
 Global tracking must stay lightweight; deep aggregation activates only for the selected session/view.
 
@@ -430,52 +457,136 @@ Primary dashboard chart direction remains:
 
 Selected-session signature chart remains Context Timeline/Stream with compaction markers when evidence exists.
 
-Detailed views remain conceptually:
-
-```text
-Info | Tokens | Turns | Tools | Resources | Errors
-```
+Detailed views are implemented around session info/analytics/timeline concepts and may adapt labels/layout responsively.
 
 Historical resources must be evidence-based, not inferred from today's filesystem.
 
 Session deletion is read-only by default, never automatic, never allowed for LIVE sessions, and always requires explicit confirmation.
 
+Manager presentation modes are:
+
+```text
+Operations
+Table
+Charts
+Auto
+```
+
+The saved default and one-shot `--manager-view` override are distinct. Runtime `V` does not silently persist.
+
 ---
 
-## 16. Network/privacy
+## 16. Local Session Archive
 
-Normal monitoring must perform no network requests and no telemetry upload.
+Local Session Archive is optional/local-only technical analytics storage using Node's built-in `node:sqlite` / `DatabaseSync`.
+
+Data ownership:
+
+```text
+Codex JSONL     = Codex-owned raw source
+Archive SQLite  = Monitor-owned technical analytics archive
+```
+
+Archive defaults:
+
+```text
+enabled      false
+retention    forever
+autoCleanup  false
+sizeLimit    off
+```
+
+Correctness law:
+
+> Codex hook and filesystem-watch events are signals only. Missed signals must not cause missed data because startup/recovery/safety reconcile re-discovers JSONL and resumes from committed offsets.
+
+Committed offsets must advance only after corresponding analytics changes commit successfully. Duplicate signals must not duplicate analytics rows.
+
+Enable lifecycle after explicit successful Config Save:
+
+```text
+open/migrate SQLite -> install Monitor-owned hooks -> start/wake service -> reconcile
+```
+
+Disable lifecycle:
+
+```text
+request service stop -> remove only Monitor-owned hooks -> keep SQLite DB
+```
+
+Archive Disabled must not cause normal Live/Manager launch to start the Archive Service.
+
+An ARCHIVED session may remain after raw JSONL is deleted. Therefore clearing Archive can destroy non-rebuildable analytics history and is not equivalent to deleting Codex raw sessions.
+
+Archive failure, lock/corruption/staleness or service failure must degrade honestly without blocking Codex input/PTY/Live rendering.
+
+---
+
+## 17. Network, privacy and security
+
+Normal monitoring, Manager and Local Session Archive perform no telemetry upload and no monitoring/archive network lookup.
 
 Do not add remote quota lookup, pricing lookup, provider metadata lookup, transcript upload, machine telemetry upload or extra model calls.
 
-Updater/network productization is isolated from monitoring and handled in later roadmap phases.
+The updater is the sole automatic network exception:
+
+- source of truth: GitHub Releases metadata;
+- background check throttled to approximately once per 24h;
+- disable-able in Config;
+- startup/runtime check must be non-blocking and TUI-silent;
+- auto-install is Off;
+- failure never blocks Live/Manager/Archive;
+- it must not upload prompts, project data, tokens, session content or Archive data.
+
+Doctor/diagnostics may report sanitized versions/platform/auth-mode source and Archive health categories/counts, but must not dump prompts, assistant responses, full tool output, raw transcripts, tokens or arbitrary raw filesystem error messages.
+
+Repair/uninstall may alter only Monitor-owned Archive integration. They must not modify official Codex binaries/auth/sessions or unrelated hooks/plugins. Built-in uninstall preserves Monitor config and Archive DB; package removal is a separate package-manager operation.
 
 ---
 
-## 17. Numbered roadmap status
+## 18. Packaging and release contract
+
+The npm package exposes:
 
 ```text
-Phase 01  Correctness / terminal safety              COMPLETE checkpoint
-Phase 02  Normalized state / parsers                 COMPLETE checkpoint
-Phase 03  Demand / scheduler / diff infrastructure   COMPLETE checkpoint
-Phase 04  Live UI / responsive / custom foundation  COMPLETE checkpoint
-Phase 05  Live UI fuzz / UX gate                     COMPLETE checkpoint
-Phase 06  Passive Live HUD completion                CLOSED by product decision
-Phase 07  Platform adapters                          CLOSED development checkpoint
-Phase 08  Session Manager core                       NEXT
-Phase 09+ Session Manager UI / productization        PLANNED / scaffold may exist
+codexm -> ./src/cli/codexm.js
 ```
 
-Closing a phase means new polish moves to backlog unless it exposes a correctness/integration blocker.
+Package allowlist must not include local config/auth/session/archive runtime data. Release artifact generation produces an npm tarball plus `SHA256SUMS`.
 
-Phase 06 backlog includes runtime Beast animation, polished Custom UX, richer SYSTEM storage metrics, trusted LiteLLM ROUTED telemetry, and non-blocking cosmetic refinements.
+Clean install does not enable Archive automatically. Upgrade migrations must preserve Monitor config and Archive history where supported; schema/config mismatch must never silently delete/recreate user data merely to recover.
 
-Phase 07 release backlog includes real Linux/macOS verification and a broader terminal/Windows compatibility matrix.
+Real package/link installation, update/uninstall UX, performance baseline, signing/timestamping and visual approval remain Phase 13 release gates rather than assumptions from source tests.
 
 ---
 
-## 18. Change control
+## 19. Numbered roadmap status
 
-When product semantics change, update this file/version/date or add a superseding decision under `docs/decisions/`.
+```text
+Phase 01   Correctness / terminal safety                         CLOSED
+Phase 02   Normalized state / parsers                            CLOSED
+Phase 03   Demand / scheduler / diff infrastructure              CLOSED
+Phase 04   Live UI / responsive / custom foundation              CLOSED
+Phase 05   Live UI fuzz / UX gate                                CLOSED
+Phase 06   Passive Live HUD completion                           CLOSED
+Phase 07   Platform adapters                                     CLOSED development checkpoint
+Phase 08   Session Manager core                                  CLOSED
+Phase 09   Session Manager dashboard TUI                         CLOSED
+Phase 10   Session detail analytics / live dynamics              CLOSED
+Phase 11   Session storage / delete safety / Manager QA          CLOSED
+Phase 11-1 Local Session Archive                                 IMPLEMENTED; release review active in Phase 13
+Phase 12   Product shell / CLI / onboarding / Config             CLOSED; auto verified; focused Windows UX passed
+Phase 13   Productization / full QA / packaging / RC             IMPLEMENTED candidate; auto/manual RC gates pending
+```
+
+Closing a phase means new polish moves to backlog unless it exposes a correctness/integration/release blocker. Phase 13 is the final place for cross-phase release hardening and user-driven visual/copy/interaction polish before RC close.
+
+Linux/macOS release verification, package signing/timestamping and any explicitly unverified platform/distribution item must stay labeled honestly rather than inferred from source adapters or Windows tests.
+
+---
+
+## 20. Change control
+
+When product semantics change, update this file/version/date or add a superseding accepted decision under `docs/decisions/`.
 
 Do not leave major product decisions only in chat or code.
