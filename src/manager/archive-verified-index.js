@@ -39,17 +39,31 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
       : scan.limited ? 'source scan limited' : null;
 
     if (!scan.complete) {
+      const storedRows = this._readRows({ verified: false });
+      const storedByThread = new Map(storedRows.map((row) => [row.threadId, row]));
+      snapshot.rows = (snapshot.rows ?? []).map((row) => {
+        const stored = row?.threadId ? storedByThread.get(row.threadId) : null;
+        if (stored?.rawSourceExists !== false && row?.rawSourceExists === false) {
+          return {
+            ...stored,
+            archiveSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP,
+            archiveVerified: false
+          };
+        }
+        if (row?.archiveSyncState === ARCHIVE_SYNC_STATE.READY) {
+          return {
+            ...row,
+            archiveSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP,
+            archiveVerified: false
+          };
+        }
+        return row;
+      });
       snapshot.sourceScanComplete = false;
       snapshot.globalSyncState = ARCHIVE_SYNC_STATE.CATCHING_UP;
       snapshot.sourceScanErrors = scan.errors;
       snapshot.sourceScanLimited = scan.limited;
       snapshot.error = snapshot.error ?? scanError;
-      for (const row of snapshot.rows ?? []) {
-        if (row?.archiveSyncState === ARCHIVE_SYNC_STATE.READY) {
-          row.archiveSyncState = ARCHIVE_SYNC_STATE.CATCHING_UP;
-          row.archiveVerified = false;
-        }
-      }
       this.lastSnapshot = snapshot;
       return snapshot;
     }
