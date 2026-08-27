@@ -34,7 +34,7 @@ export function deleteManagerSessions(rows = [], selectedIds = [], {
 
   if (mode === MANAGER_DELETE_SCOPE.ARCHIVE) {
     const archiveRows = selected.filter((row) => row?.archiveBacked === true && row?.threadId);
-    report.archive = deleteArchive(archiveRows);
+    report.archive = deleteArchive(archiveRows, { suppressRawSources: true });
     report.deletedIds = report.archive.deleted.map((item) => item.id);
     report.rejected.push(...report.archive.rejected);
     report.errors.push(...report.archive.errors);
@@ -52,7 +52,10 @@ export function deleteManagerSessions(rows = [], selectedIds = [], {
       // for rows whose raw source was removed successfully, so a raw failure can
       // never destroy the only remaining archived evidence.
       const archiveRows = selected.filter((row) => rawDeletedIds.has(row.id) && row?.archiveBacked === true && row?.threadId);
-      report.archive = deleteArchive(archiveRows, { reason: 'user-delete-everything' });
+      report.archive = deleteArchive(archiveRows, {
+        reason: 'user-delete-everything',
+        suppressRawSources: false
+      });
       const archiveDeleted = new Set(report.archive.deleted.map((item) => item.id));
       for (const id of rawDeletedIds) {
         const row = selected.find((item) => item.id === id);
