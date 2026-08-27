@@ -23,6 +23,8 @@
     "@homebridge/node-pty-prebuilt-multiarch": "0.14.1"
   },
   "scripts": {
+    "install:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install.ps1",
+    "uninstall:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/uninstall.ps1",
     "check": "node ./scripts/check-syntax.mjs",
     "test": "node --test",
     "test:phase1": "node --test",
