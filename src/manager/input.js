@@ -21,10 +21,18 @@ export function normalizeManagerInput(data, {
   searching = false,
   confirmingDelete = false,
   storageOpen = false,
-  configOpen = false
+  configOpen = false,
+  configPreviewOpen = false
 } = {}) {
   const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!text) return null;
+
+  if (configPreviewOpen) {
+    if (text === '\x1b' || text.toLowerCase() === 'q') return 'config-preview-close';
+    if (text.toLowerCase() === 'p') return 'config-preview-live';
+    if (text.toLowerCase() === 'm') return 'config-preview-manager';
+    return null;
+  }
 
   if (confirmingDelete) {
     if (text === '\x1b' || text.toLowerCase() === 'n' || text.toLowerCase() === 'q') return 'delete-cancel';
@@ -43,6 +51,8 @@ export function normalizeManagerInput(data, {
     if (/^[\r\n]+$/.test(text) || text === ' ') return 'config-edit';
     if (text.toLowerCase() === 's') return 'config-save';
     if (text.toLowerCase() === 'r') return 'config-revert';
+    if (text.toLowerCase() === 'p') return 'config-preview-live';
+    if (text.toLowerCase() === 'm') return 'config-preview-manager';
     return null;
   }
 
