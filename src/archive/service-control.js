@@ -7,6 +7,7 @@ import { monitorDataDir } from '../platform/common.js';
 
 export const ARCHIVE_SERVICE_LOCK_FILENAME = 'archive-service.lock';
 export const ARCHIVE_SERVICE_WAKE_FILENAME = 'archive-service.wake';
+export const ARCHIVE_SERVICE_HOOK_FILENAME = 'archive-service.hook';
 export const ARCHIVE_SERVICE_STOP_FILENAME = 'archive-service.stop';
 export const ARCHIVE_SERVICE_ENTRY_PATH = fileURLToPath(new URL('./service-entry.js', import.meta.url));
 
@@ -20,6 +21,7 @@ export function getArchiveServicePaths(options = {}) {
     dataDir,
     lockPath: path.join(dataDir, ARCHIVE_SERVICE_LOCK_FILENAME),
     wakePath: path.join(dataDir, ARCHIVE_SERVICE_WAKE_FILENAME),
+    hookPath: path.join(dataDir, ARCHIVE_SERVICE_HOOK_FILENAME),
     stopPath: path.join(dataDir, ARCHIVE_SERVICE_STOP_FILENAME)
   };
 }
@@ -194,6 +196,37 @@ export function wakeArchiveService({
   fsRef.mkdirSync(path.dirname(resolvedWakePath), { recursive: true, mode: 0o700 });
   fsRef.writeFileSync(resolvedWakePath, `${Math.trunc(Number(now()))}\n`, { encoding: 'utf8', mode: 0o600 });
   return resolvedWakePath;
+}
+
+export function signalArchiveHook({
+  hookPath = null,
+  fsRef = fs,
+  now = () => Date.now(),
+  ...pathOptions
+} = {}) {
+  const paths = getArchiveServicePaths(pathOptions);
+  const resolvedHookPath = hookPath ? path.resolve(hookPath) : paths.hookPath;
+  fsRef.mkdirSync(path.dirname(resolvedHookPath), { recursive: true, mode: 0o700 });
+  fsRef.writeFileSync(resolvedHookPath, `${Math.trunc(Number(now()))}\n`, { encoding: 'utf8', mode: 0o600 });
+  return resolvedHookPath;
+}
+
+export function consumeArchiveHookSignal({
+  hookPath = null,
+  fsRef = fs,
+  ...pathOptions
+} = {}) {
+  const paths = getArchiveServicePaths(pathOptions);
+  const resolvedHookPath = hookPath ? path.resolve(hookPath) : paths.hookPath;
+  try {
+    const raw = fsRef.readFileSync(resolvedHookPath, 'utf8');
+    const atMs = Number(String(raw).trim());
+    fsRef.unlinkSync(resolvedHookPath);
+    return Number.isFinite(atMs) ? Math.trunc(atMs) : Date.now();
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 export function requestArchiveServiceStop({
