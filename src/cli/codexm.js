@@ -62,7 +62,7 @@ async function main() {
       ? await runSessionManagerTui({
         platformAdapter,
         theme: config.theme,
-        monitorConfig: config,
+        monitorConfig: loaded.config,
         configPath
       })
       : await runSessionManagerRuntime({ platformAdapter });
