@@ -38,11 +38,15 @@ test('Config previews use production Live and Manager renderers and stay cell-bo
   for (const width of [48, 90, 160]) {
     const live = renderConfigPreview({ kind: 'live', config, width, height: 28, mode: 'mono', nowMs: 100_000 });
     const manager = renderConfigPreview({ kind: 'manager', config, width, height: 28, mode: 'mono', nowMs: 100_000 });
+    const liveText = live.lines.join('\n');
+    const managerText = manager.lines.join('\n');
+
     assert.equal(live.source, 'renderDemo');
     assert.equal(manager.source, 'renderSessionDashboard');
-    assert.match(live.lines.join('\n'), /LIVE CONFIG PREVIEW/);
-    assert.match(manager.lines.join('\n'), /CONFIG PREVIEW/);
-    assert.match(manager.lines.join('\n'), /CHARTS/);
+    assert.match(liveText, /LIVE CONFIG PREVIEW/);
+    assert.match(managerText, /CODEX \/\/ SESSION MANAGER/);
+    assert.match(managerText, /Preview only/);
+    if (width >= 90) assert.match(managerText, /CHARTS/);
     assert.ok(live.lines.every((line) => cellWidth(line) <= width));
     assert.ok(manager.lines.every((line) => cellWidth(line) <= width));
   }
