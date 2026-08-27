@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeConfig, configForPreset, applyRuntimeOverrides } from '../../src/config/schema.js';
+import { CONFIG_VERSION, normalizeConfig, configForPreset, applyRuntimeOverrides } from '../../src/config/schema.js';
 import { cellWidth, stripAnsi, truncateCells } from '../../src/ui/cell-width.js';
 import { layoutSections, monitorRowBudget } from '../../src/ui/layout.js';
 import { assertNoWrap, buildLiveFrame } from '../../src/ui/live-renderer.js';
@@ -22,7 +22,7 @@ test('config schema preserves valid header choices and removes legacy Live tabs'
   });
   assert.deepEqual(config.header, ['activity', 'model', 'reasoning', 'project', 'git', 'auth']);
   assert.equal(Object.prototype.hasOwnProperty.call(config, 'tabs'), false);
-  assert.equal(config.configVersion, 2);
+  assert.equal(config.configVersion, CONFIG_VERSION);
 });
 
 test('runtime preset/theme/lang overrides are invocation-local transformations', () => {
