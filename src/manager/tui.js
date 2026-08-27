@@ -505,34 +505,6 @@ export async function runSessionManagerTui({
       storageOpen = true;
       clearStatus = '';
       forceDraw = true;
-    } else if (action === 'select-toggle') {
-      toggleClearSelection(selectedDashboardRow());
-      syncStorageCursorToDashboard();
-      storageOpen = true;
-      forceDraw = true;
-    } else if (action === 'select-all') {
-      selectEnded('all', visibleDashboardRows());
-      syncStorageCursorToDashboard();
-      storageOpen = true;
-      forceDraw = true;
-    } else if (action === 'select-none') {
-      selectEnded('none', visibleDashboardRows());
-      syncStorageCursorToDashboard();
-      storageOpen = true;
-      forceDraw = true;
-    } else if (action === 'select-invert') {
-      selectEnded('invert', visibleDashboardRows());
-      syncStorageCursorToDashboard();
-      storageOpen = true;
-      forceDraw = true;
-    } else if (action === 'delete-selected') {
-      if (clearSelectedIds.size) clearConfirming = true;
-      else {
-        syncStorageCursorToDashboard();
-        storageOpen = true;
-        clearStatus = 'No ENDED sessions selected';
-      }
-      forceDraw = true;
     } else if (action === 'up' && lastFrame?.model?.rows?.length) {
       selectedIndex = Math.max(0, selectedIndex - 1);
       selectedId = lastFrame.model.rows[selectedIndex]?.id ?? selectedId;
