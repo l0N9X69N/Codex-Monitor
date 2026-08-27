@@ -68,6 +68,17 @@ async function readBlock(handle, position, length) {
   return buffer.subarray(0, bytesRead);
 }
 
+function oversizedMarker(sourceOffset, nextOffset, { completeRecord, byteLength }) {
+  return {
+    sourceOffset,
+    nextOffset,
+    text: null,
+    oversized: true,
+    oversizedCompleteRecord: completeRecord,
+    byteLength
+  };
+}
+
 async function readRecordBeyondSoftLimit(handle, {
   offset,
   observedSize,
@@ -96,13 +107,13 @@ async function readRecordBeyondSoftLimit(handle, {
       const complete = Buffer.concat(retained, retainedBytes + newline + 1);
       return {
         bytesRead,
-        complete,
         commitCandidateOffset: offset + complete.length,
         pendingPartialBytes: Math.max(0, bytesRead - complete.length),
         lines: decodeCompleteLines(complete, offset),
         expandedRecord: complete.length > softLimit,
         oversizedLineCount: 0,
-        recordTooLarge: false
+        recordTooLarge: false,
+        oversizeContinuation: false
       };
     }
     retained.push(block);
@@ -113,13 +124,13 @@ async function readRecordBeyondSoftLimit(handle, {
   if (cursor >= observedSize) {
     return {
       bytesRead,
-      complete: Buffer.alloc(0),
       commitCandidateOffset: offset,
       pendingPartialBytes: bytesRead,
       lines: [],
       expandedRecord: bytesRead > softLimit,
       oversizedLineCount: 0,
-      recordTooLarge: false
+      recordTooLarge: false,
+      oversizeContinuation: false
     };
   }
 
@@ -138,34 +149,47 @@ async function readRecordBeyondSoftLimit(handle, {
       const nextOffset = cursor + newline + 1;
       return {
         bytesRead,
-        complete: Buffer.alloc(0),
         commitCandidateOffset: nextOffset,
         pendingPartialBytes: Math.max(0, bytesRead - (nextOffset - offset)),
-        lines: [{
-          sourceOffset: offset,
-          nextOffset,
-          text: null,
-          oversized: true,
+        lines: [oversizedMarker(offset, nextOffset, {
+          completeRecord: true,
           byteLength: nextOffset - offset
-        }],
+        })],
         expandedRecord: true,
         oversizedLineCount: 1,
-        recordTooLarge: false
+        recordTooLarge: false,
+        oversizeContinuation: false
       };
     }
     cursor += block.length;
   }
 
-  const exhaustedScanBudget = cursor < observedSize && bytesRead >= maximumScanBytes;
+  if (bytesRead > 0) {
+    const nextOffset = Math.min(observedSize, offset + bytesRead);
+    return {
+      bytesRead,
+      commitCandidateOffset: nextOffset,
+      pendingPartialBytes: 0,
+      lines: [oversizedMarker(offset, nextOffset, {
+        completeRecord: false,
+        byteLength: nextOffset - offset
+      })],
+      expandedRecord: true,
+      oversizedLineCount: 1,
+      recordTooLarge: true,
+      oversizeContinuation: nextOffset < observedSize
+    };
+  }
+
   return {
-    bytesRead,
-    complete: Buffer.alloc(0),
+    bytesRead: 0,
     commitCandidateOffset: offset,
-    pendingPartialBytes: bytesRead,
+    pendingPartialBytes: 0,
     lines: [],
     expandedRecord: true,
     oversizedLineCount: 0,
-    recordTooLarge: exhaustedScanBudget
+    recordTooLarge: true,
+    oversizeContinuation: false
   };
 }
 
@@ -201,7 +225,8 @@ export async function readCommittedJsonlChunk(filePath, {
         highWaterVerified: false,
         expandedRecord: false,
         oversizedLineCount: 0,
-        recordTooLarge: false
+        recordTooLarge: false,
+        oversizeContinuation: false
       };
     }
 
@@ -220,7 +245,8 @@ export async function readCommittedJsonlChunk(filePath, {
         highWaterVerified: true,
         expandedRecord: false,
         oversizedLineCount: 0,
-        recordTooLarge: false
+        recordTooLarge: false,
+        oversizeContinuation: false
       };
     }
 
@@ -239,7 +265,8 @@ export async function readCommittedJsonlChunk(filePath, {
         lines: decodeCompleteLines(complete, offset),
         expandedRecord: false,
         oversizedLineCount: 0,
-        recordTooLarge: false
+        recordTooLarge: false,
+        oversizeContinuation: false
       };
     } else {
       result = await readRecordBeyondSoftLimit(handle, {
@@ -268,7 +295,8 @@ export async function readCommittedJsonlChunk(filePath, {
       highWaterVerified: result.commitCandidateOffset === latestSize,
       expandedRecord: result.expandedRecord,
       oversizedLineCount: result.oversizedLineCount,
-      recordTooLarge: result.recordTooLarge
+      recordTooLarge: result.recordTooLarge,
+      oversizeContinuation: result.oversizeContinuation
     };
   } finally {
     await handle.close();
