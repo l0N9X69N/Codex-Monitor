@@ -144,14 +144,35 @@ test('boolean Config choices render as descriptive checkboxes and toggle with En
   assert.equal(before.kind, 'toggle');
   assert.equal(before.label, 'Context');
   assert.equal(typeof before.checked, 'boolean');
-  assert.match(before.description, /context-window/i);
+  assert.match(before.description, /context-window pressure/i);
 
-  const frameBefore = renderManagerConfig({ controller, width: 120, height: 30, mode: 'mono' });
-  assert.match(frameBefore.lines.join('\n'), /\[[ x]\] Context\s+\(Track context-window usage and pressure\.\)/);
+  const frameBefore = renderManagerConfig({ controller, width: 140, height: 30, mode: 'mono' });
+  assert.match(frameBefore.lines.join('\n'), /\[[ x]\] Context\s+\(Show context-window pressure, remaining capacity, cache reuse, and compactions\.\)/);
 
   const oldValue = controller.draftConfig.sections.context;
   controller.editCurrent();
   assert.equal(controller.draftConfig.sections.context, !oldValue);
-  const frameAfter = renderManagerConfig({ controller, width: 120, height: 30, mode: 'mono' });
+  const frameAfter = renderManagerConfig({ controller, width: 140, height: 30, mode: 'mono' });
   assert.match(frameAfter.lines.join('\n'), oldValue ? /\[ \] Context/ : /\[x\] Context/);
+});
+
+test('Fields explain what each metric means and align descriptions into one column', () => {
+  const controller = new ManagerConfigController({ config: config(false), archivePanel: panel() });
+  controller.moveTab(2);
+  assert.equal(controller.activeTab, 'fields');
+
+  const rows = controller.rows();
+  const used = rows.find((row) => row.id === 'field:context:used');
+  const updateAge = rows.find((row) => row.id === 'field:session:update');
+  const approval = rows.find((row) => row.id === 'field:activity:approval');
+  assert.match(used.description, /context window is already occupied/i);
+  assert.match(updateAge.description, /latest session event/i);
+  assert.match(approval.description, /waiting for user approval/i);
+  assert.equal(rows.some((row) => /Show this metric/i.test(row.description ?? '')), false);
+
+  const frame = renderManagerConfig({ controller, width: 180, height: 50, mode: 'mono' });
+  const fieldLines = frame.lines.filter((line) => /\[[ x]\] (CONTEXT|USAGE|SESSION|ACTIVITY|SYSTEM) ·/.test(line));
+  const starts = fieldLines.slice(0, 12).map((line) => line.indexOf('  ('));
+  assert.ok(starts.length >= 10);
+  assert.ok(starts.every((start) => start === starts[0] && start > 0));
 });
