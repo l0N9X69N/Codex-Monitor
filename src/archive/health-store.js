@@ -6,6 +6,7 @@ function integer(value, fallback = 0) {
 }
 
 function timestamp(value, fallback = null) {
+  if (value === null || value === undefined || value === '') return fallback;
   const number = Number(value);
   return Number.isFinite(number) ? Math.trunc(number) : fallback;
 }
