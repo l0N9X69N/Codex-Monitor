@@ -31,7 +31,7 @@
     "test:phase8": "node --test test/unit/phase8-history-core.test.js test/unit/phase8-detail-view.test.js test/unit/phase8-lightweight-summary.test.js test/unit/phase8-process-evidence.test.js test/unit/phase8-runtime.test.js test/unit/phase8-io-bounds.test.js",
     "test:phase9": "node --test test/unit/phase9-dashboard.test.js test/unit/phase9-tui.test.js test/unit/phase9-history-ui.test.js test/unit/phase9-manager-performance.test.js test/unit/phase9-timeline.test.js test/unit/phase9-activity-preview.test.js test/unit/phase9-preview-capacity.test.js",
     "test:phase10": "node --test test/unit/phase10-session-analytics.test.js test/unit/phase10-analytics-robustness.test.js test/unit/phase10-layout-density.test.js test/unit/phase9-timeline.test.js test/unit/phase9-tui.test.js",
-    "test:phase11": "node --test test/unit/phase11-storage-delete.test.js test/unit/phase11-input.test.js test/unit/phase11-storage-render.test.js",
+    "test:phase11": "node --test test/unit/phase11-storage-delete.test.js test/unit/phase11-input.test.js test/unit/phase11-storage-render.test.js test/unit/phase11-storage-navigation.test.js",
     "verify:phase1": "node ./scripts/phase1-auto-verify.mjs",
     "verify:phase2": "node ./scripts/phase2-auto-verify.mjs",
     "verify:phase3": "node ./scripts/phase3-auto-verify.mjs",
