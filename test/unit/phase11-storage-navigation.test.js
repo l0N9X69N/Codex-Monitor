@@ -94,3 +94,76 @@ test('storage view advertises entry, moves cursor and toggles the highlighted en
 
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test('storage selection shortcuts stay inert on the main dashboard', async () => {
+  const root = tempDir();
+  const base = Date.now() - 60_000;
+  writeSession(root, 'one', 4, base + 2000);
+  writeSession(root, 'two', 2, base + 1000);
+  const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
+  const { stdin, stdout } = fakeTerminal();
+  const processRef = new EventEmitter();
+
+  const running = runSessionManagerTui({
+    platformAdapter: adapter,
+    stdin,
+    stdout,
+    processRef,
+    colorCapability: 'mono',
+    intervalMs: 25,
+    telemetryIntervalMs: 1000,
+    initialViewMode: 'table'
+  });
+
+  setTimeout(() => {
+    for (const key of ['a', 'n', 'i', 'c', ' ', 'A', 'N', 'I', 'C']) stdin.emit('data', Buffer.from(key));
+    setImmediate(() => stdin.emit('data', Buffer.from('q')));
+  }, 40);
+
+  const result = await running;
+  assert.equal(result.code, 0);
+  assert.equal(result.clearSelectedIds.size, 0);
+  assert.doesNotMatch(stdout.output, /CODEX \/\/ STORAGE MANAGER/);
+  assert.doesNotMatch(stdout.output, /STORAGE CLEAR CONFIRMATION/);
+  assert.match(stdout.output, /M storage/);
+  assert.equal(stdin.isRaw, false);
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('clear key stays scoped after returning from storage to dashboard', async () => {
+  const root = tempDir();
+  const base = Date.now() - 60_000;
+  const selected = writeSession(root, 'selected', 4, base + 1000);
+  const adapter = createFakePlatformAdapter({ paths: { sessions: root }, processTree: [] });
+  const { stdin, stdout } = fakeTerminal();
+  const processRef = new EventEmitter();
+
+  const running = runSessionManagerTui({
+    platformAdapter: adapter,
+    stdin,
+    stdout,
+    processRef,
+    colorCapability: 'mono',
+    intervalMs: 25,
+    telemetryIntervalMs: 1000,
+    initialViewMode: 'table'
+  });
+
+  setTimeout(() => {
+    stdin.emit('data', Buffer.from('m'));
+    stdin.emit('data', Buffer.from(' '));
+    stdin.emit('data', Buffer.from('m'));
+    stdin.emit('data', Buffer.from('c'));
+    setImmediate(() => stdin.emit('data', Buffer.from('q')));
+  }, 40);
+
+  const result = await running;
+  assert.equal(result.code, 0);
+  assert.equal(result.clearSelectedIds.size, 1);
+  assert.equal(result.clearSelectedIds.has(selected), true);
+  assert.doesNotMatch(stdout.output, /STORAGE CLEAR CONFIRMATION/);
+  assert.equal(stdin.isRaw, false);
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
