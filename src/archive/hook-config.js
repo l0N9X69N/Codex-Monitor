@@ -58,12 +58,8 @@ function readHooksDocument(hooksPath, fsRef) {
     if (!parsed.hooks) parsed.hooks = {};
     return { ok: true, exists: true, error: null, document: parsed };
   } catch (error) {
-    if (error?.code === 'ENOENT') {
-      return { ok: true, exists: false, error: null, document: { hooks: {} } };
-    }
-    if (error instanceof SyntaxError) {
-      return { ok: false, exists: true, error: 'invalid-hooks-json', document: null };
-    }
+    if (error?.code === 'ENOENT') return { ok: true, exists: false, error: null, document: { hooks: {} } };
+    if (error instanceof SyntaxError) return { ok: false, exists: true, error: 'invalid-hooks-json', document: null };
     return { ok: false, exists: true, error: error?.message ?? String(error), document: null };
   }
 }
@@ -79,47 +75,53 @@ export function getCodexHooksPath({ env = process.env, homedir } = {}) {
   return path.join(codexHome({ env, homedir }), 'hooks.json');
 }
 
-export function buildArchiveHookHandler({
-  execPath = process.execPath,
-  entryPath = ARCHIVE_HOOK_ENTRY_PATH
-} = {}) {
-  const posixCommand = `${quotePosix(execPath)} ${quotePosix(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
-  const windowsCommand = `${quoteWindows(execPath)} ${quoteWindows(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
+export function inspectArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = fs } = {}) {
+  const loaded = readHooksDocument(hooksPath, fsRef);
+  if (!loaded.ok) return { installed: false, complete: false, hooksPath, events: [], handlerCount: 0, error: loaded.error };
+  if (!loaded.exists) return { installed: false, complete: false, hooksPath, events: [], handlerCount: 0, error: null };
+  const events = [];
+  let handlerCount = 0;
+  for (const eventName of ARCHIVE_HOOK_EVENTS) {
+    const groups = Array.isArray(loaded.document.hooks?.[eventName]) ? loaded.document.hooks[eventName] : [];
+    let found = false;
+    for (const group of groups) {
+      const handlers = Array.isArray(group?.hooks) ? group.hooks : [];
+      for (const handler of handlers) {
+        if (!isOwnedHandler(handler)) continue;
+        handlerCount += 1;
+        found = true;
+      }
+    }
+    if (found) events.push(eventName);
+  }
   return {
-    type: 'command',
-    command: posixCommand,
-    commandWindows: windowsCommand,
-    timeout: 1
+    installed: events.length > 0,
+    complete: ARCHIVE_HOOK_EVENTS.every((eventName) => events.includes(eventName)),
+    hooksPath,
+    events,
+    handlerCount,
+    error: null
   };
 }
 
-export function installArchiveHooks({
-  hooksPath = getCodexHooksPath(),
-  fsRef = fs,
-  handler = buildArchiveHookHandler()
-} = {}) {
+export function buildArchiveHookHandler({ execPath = process.execPath, entryPath = ARCHIVE_HOOK_ENTRY_PATH } = {}) {
+  const posixCommand = `${quotePosix(execPath)} ${quotePosix(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
+  const windowsCommand = `${quoteWindows(execPath)} ${quoteWindows(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
+  return { type: 'command', command: posixCommand, commandWindows: windowsCommand, timeout: 1 };
+}
+
+export function installArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = fs, handler = buildArchiveHookHandler() } = {}) {
   const loaded = readHooksDocument(hooksPath, fsRef);
   if (!loaded.ok) {
-    return {
-      installed: false,
-      changed: false,
-      hooksPath,
-      trustRequired: true,
-      error: loaded.error
-    };
+    return { installed: false, changed: false, hooksPath, trustRequired: true, error: loaded.error };
   }
 
   const document = loaded.document;
   const before = JSON.stringify(document);
   stripOwnedHandlers(document);
-
   const sessionStart = Array.isArray(document.hooks.SessionStart) ? document.hooks.SessionStart : [];
-  sessionStart.push({
-    matcher: 'startup|resume|clear|compact',
-    hooks: [{ ...handler }]
-  });
+  sessionStart.push({ matcher: 'startup|resume|clear|compact', hooks: [{ ...handler }] });
   document.hooks.SessionStart = sessionStart;
-
   const userPrompt = Array.isArray(document.hooks.UserPromptSubmit) ? document.hooks.UserPromptSubmit : [];
   userPrompt.push({ hooks: [{ ...handler }] });
   document.hooks.UserPromptSubmit = userPrompt;
@@ -136,18 +138,10 @@ export function installArchiveHooks({
   };
 }
 
-export function uninstallArchiveHooks({
-  hooksPath = getCodexHooksPath(),
-  fsRef = fs
-} = {}) {
+export function uninstallArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = fs } = {}) {
   const loaded = readHooksDocument(hooksPath, fsRef);
-  if (!loaded.ok) {
-    return { removed: false, changed: false, hooksPath, error: loaded.error };
-  }
-  if (!loaded.exists) {
-    return { removed: true, changed: false, hooksPath, error: null };
-  }
-
+  if (!loaded.ok) return { removed: false, changed: false, hooksPath, error: loaded.error };
+  if (!loaded.exists) return { removed: true, changed: false, hooksPath, error: null };
   const document = loaded.document;
   const changed = stripOwnedHandlers(document);
   if (changed) writeHooksDocument(hooksPath, document, fsRef);
