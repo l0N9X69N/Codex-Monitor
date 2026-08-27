@@ -10,6 +10,7 @@ import { openArchiveDatabase } from './database.js';
 import { ArchiveHealthStore } from './health-store.js';
 import {
   acquireArchiveServiceLock,
+  consumeArchiveHookSignal,
   consumeArchiveServiceStopRequest,
   getArchiveServicePaths,
   releaseArchiveServiceLock
@@ -18,15 +19,18 @@ import { ArchiveServiceRuntime } from './service-runtime.js';
 
 export function createArchiveSignalWatchers({
   wakePath,
+  hookPath,
   stopPath,
   sessionsPath,
   onWake,
+  onHook,
   onStop,
   onWatcherSeen = () => {},
   fsRef = fs
 } = {}) {
   const watchers = [];
   const wakeName = wakePath ? path.basename(wakePath) : null;
+  const hookName = hookPath ? path.basename(hookPath) : null;
   const stopName = stopPath ? path.basename(stopPath) : null;
 
   const addWatcher = (target, listener) => {
@@ -38,13 +42,16 @@ export function createArchiveSignalWatchers({
     } catch {}
   };
 
-  if (wakePath || stopPath) {
-    addWatcher(path.dirname(wakePath ?? stopPath), (_eventType, filename) => {
+  if (wakePath || hookPath || stopPath) {
+    addWatcher(path.dirname(wakePath ?? hookPath ?? stopPath), (_eventType, filename) => {
       if (!filename) return;
       const name = String(filename);
       try { onWatcherSeen(); } catch {}
       if (wakeName && name === wakeName) {
         try { onWake?.('wake-file'); } catch {}
+      }
+      if (hookName && name === hookName) {
+        try { onHook?.(); } catch {}
       }
       if (stopName && name === stopName) {
         try { onStop?.(); } catch {}
@@ -83,6 +90,7 @@ export async function runArchiveServiceProcess({
   acquireLock = acquireArchiveServiceLock,
   releaseLock = releaseArchiveServiceLock,
   consumeStopRequest = consumeArchiveServiceStopRequest,
+  consumeHookSignal = consumeArchiveHookSignal,
   openDatabase = openArchiveDatabase,
   Coordinator = ArchiveReconcileCoordinator,
   HealthStore = ArchiveHealthStore,
@@ -121,6 +129,17 @@ export async function runArchiveServiceProcess({
   try {
     opened = openDatabase({ dataDir: servicePaths.dataDir, env, fsRef });
     const health = new HealthStore(opened.repository);
+    const consumeHook = () => {
+      const atMs = consumeHookSignal({
+        hookPath: servicePaths.hookPath,
+        dataDir: servicePaths.dataDir,
+        fsRef
+      });
+      if (atMs !== null && atMs !== undefined) health.markHookSeen({ nowMs: atMs });
+      return atMs;
+    };
+    try { consumeHook(); } catch {}
+
     const coordinator = new Coordinator({
       sessionsPath: sessionPaths.sessions,
       repository: opened.repository
@@ -133,10 +152,15 @@ export async function runArchiveServiceProcess({
     });
     watchers = watchSignals({
       wakePath: servicePaths.wakePath,
+      hookPath: servicePaths.hookPath,
       stopPath: servicePaths.stopPath,
       sessionsPath: sessionPaths.sessions,
       fsRef,
       onWake: (reason) => runtime.wake(reason),
+      onHook: () => {
+        try { consumeHook(); } catch {}
+        runtime.wake('hook-signal');
+      },
       onStop: () => { if (targetedStop()) runtime.stop(); },
       onWatcherSeen: () => health.markWatcherSeen()
     });
