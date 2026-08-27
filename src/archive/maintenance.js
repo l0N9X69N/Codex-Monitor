@@ -27,7 +27,8 @@ function rowIdentity(row) {
 export function deleteArchiveSessions(rows = [], {
   openDatabase = openArchiveDatabase,
   now = () => Date.now(),
-  reason = 'user-delete-archive'
+  reason = 'user-delete-archive',
+  suppressRawSources = true
 } = {}) {
   const sourceRows = Array.isArray(rows) ? rows : [];
   const report = { requested: sourceRows.length, deleted: [], rejected: [], errors: [] };
@@ -42,6 +43,7 @@ export function deleteArchiveSessions(rows = [], {
       const deleteSession = db.prepare('DELETE FROM sessions WHERE session_id = ?');
       const deleteIngestBySession = db.prepare('DELETE FROM ingest_state WHERE session_id = ?');
       const deleteIngestByPath = db.prepare('DELETE FROM ingest_state WHERE source_path = ?');
+      const deleteSuppression = db.prepare('DELETE FROM archive_suppressions WHERE source_path = ? OR session_id = ?');
       const suppress = db.prepare(`
         INSERT INTO archive_suppressions (source_path, session_id, file_identity, suppressed_at, reason)
         VALUES (?, ?, ?, ?, ?)
@@ -67,7 +69,9 @@ export function deleteArchiveSessions(rows = [], {
           }
           deleteIngestBySession.run(String(identity.sessionId));
           if (identity.sourcePath) deleteIngestByPath.run(String(identity.sourcePath));
-          if (identity.rawSourceExists && identity.sourcePath) {
+          if (identity.sourcePath) deleteSuppression.run(String(identity.sourcePath), String(identity.sessionId));
+          const shouldSuppress = Boolean(suppressRawSources && identity.rawSourceExists && identity.sourcePath);
+          if (shouldSuppress) {
             suppress.run(
               String(identity.sourcePath),
               String(identity.sessionId),
@@ -80,7 +84,7 @@ export function deleteArchiveSessions(rows = [], {
             id: row?.id ?? identity.sessionId,
             sessionId: String(identity.sessionId),
             sourcePath: identity.sourcePath,
-            suppressed: Boolean(identity.rawSourceExists && identity.sourcePath)
+            suppressed: shouldSuppress
           });
         } catch (error) {
           report.errors.push({ id: row?.id ?? identity.sessionId, reason: 'archive-delete-failed', error: error?.message ?? String(error) });
