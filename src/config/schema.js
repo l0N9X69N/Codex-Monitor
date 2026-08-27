@@ -1,5 +1,7 @@
 import { DEFAULT_ARCHIVE_CONFIG } from '../archive/constants.js';
 
+export const CONFIG_VERSION = 3;
+
 const VALID = Object.freeze({
   languages: new Set(['vi', 'en']),
   presets: new Set(['recommended', 'compact', 'full', 'custom']),
@@ -7,6 +9,7 @@ const VALID = Object.freeze({
   backgrounds: new Set(['terminal', 'black', 'dark']),
   beastModes: new Set(['off', 'auto', 'on']),
   systemModes: new Set(['off', 'auto', 'on']),
+  managerViews: new Set(['operations', 'table', 'charts', 'auto']),
   archiveRetentions: new Set(['forever']),
   header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']),
   sections: new Set(['context', 'usage', 'session', 'activity', 'system']),
@@ -57,8 +60,6 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: true, gitDiff: true, gitAheadBehind: true
     }),
-    // Temporary Phase 6 visual-test defaults. The future customization UX can
-    // switch these defaults back to auto without changing renderer semantics.
     systemMode: 'on',
     beastMode: 'on',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project', 'git'])
@@ -108,9 +109,12 @@ function normalizeBeastMode(input = {}, fallback = 'off') {
 }
 
 function normalizeSystemMode(input = {}, fallback = 'off') {
-  // Before systemMode existed, sections.system=true meant the System card was
-  // always rendered. Preserve that behavior for old custom config files.
   return normalizeMode(input, 'systemMode', VALID.systemModes, fallback, input?.sections?.system, 'on');
+}
+
+function normalizeManager(input = {}, fallback = { view: 'operations' }) {
+  const requested = String(input?.manager?.view ?? '').trim().toLowerCase();
+  return { view: VALID.managerViews.has(requested) ? requested : fallback?.view ?? 'operations' };
 }
 
 export function normalizeArchiveConfig(input = {}, fallback = DEFAULT_ARCHIVE_CONFIG) {
@@ -127,7 +131,8 @@ export function normalizeArchiveConfig(input = {}, fallback = DEFAULT_ARCHIVE_CO
 }
 
 export const DEFAULT_CONFIG = Object.freeze({
-  configVersion: 2,
+  configVersion: CONFIG_VERSION,
+  setupComplete: false,
   language: 'vi',
   preset: 'recommended',
   theme: 'color',
@@ -139,6 +144,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   metrics: PRESET_DEFINITIONS.recommended.metrics,
   fields: DEFAULT_FIELD_VISIBILITY,
   header: PRESET_DEFINITIONS.recommended.header,
+  manager: Object.freeze({ view: 'operations' }),
   archive: DEFAULT_ARCHIVE_CONFIG,
   updateCheck: true
 });
@@ -163,7 +169,8 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
   const requestedPreset = VALID.presets.has(input?.preset) ? input.preset : base.preset;
   const presetBase = configForPreset(requestedPreset, base);
   const config = {
-    configVersion: 2,
+    configVersion: CONFIG_VERSION,
+    setupComplete: typeof input?.setupComplete === 'boolean' ? input.setupComplete : Boolean(presetBase.setupComplete),
     language: VALID.languages.has(input?.language) ? input.language : presetBase.language,
     preset: requestedPreset,
     theme: VALID.themes.has(input?.theme) ? input.theme : presetBase.theme,
@@ -175,11 +182,22 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     metrics: booleanMap(input?.metrics, [...VALID.metrics], presetBase.metrics),
     fields: fieldVisibility(input?.fields, presetBase.fields ?? DEFAULT_FIELD_VISIBILITY),
     header: uniqueValid(input?.header, VALID.header, presetBase.header),
+    manager: normalizeManager(input, presetBase.manager ?? DEFAULT_CONFIG.manager),
     archive: normalizeArchiveConfig(input?.archive, presetBase.archive ?? DEFAULT_ARCHIVE_CONFIG),
     updateCheck: typeof input?.updateCheck === 'boolean' ? input.updateCheck : Boolean(presetBase.updateCheck)
   };
   config.sections.system = config.systemMode !== 'off' && config.metrics.system !== false;
   return config;
+}
+
+export function migrateConfig(input = {}, { existing = false } = {}) {
+  const rawVersion = Number(input?.configVersion);
+  const migrated = clone(input && typeof input === 'object' ? input : {});
+  if (existing && (!Number.isSafeInteger(rawVersion) || rawVersion < CONFIG_VERSION) && typeof migrated.setupComplete !== 'boolean') {
+    migrated.setupComplete = true;
+  }
+  if (!migrated.manager || typeof migrated.manager !== 'object') migrated.manager = { view: 'operations' };
+  return normalizeConfig(migrated);
 }
 
 export function applyRuntimeOverrides(config, overrides = {}) {
@@ -188,6 +206,7 @@ export function applyRuntimeOverrides(config, overrides = {}) {
   if (overrides.theme && VALID.themes.has(overrides.theme)) next.theme = overrides.theme;
   if (overrides.background && VALID.backgrounds.has(overrides.background)) next.background = overrides.background;
   if (overrides.language && VALID.languages.has(overrides.language)) next.language = overrides.language;
+  if (overrides.managerView && VALID.managerViews.has(overrides.managerView)) next.manager.view = overrides.managerView;
   return next;
 }
 
