@@ -22,9 +22,7 @@ function defaultYieldControl() {
 }
 
 function normalizeScanResult(value) {
-  if (Array.isArray(value)) {
-    return { sources: value, complete: true, errors: [], limited: false };
-  }
+  if (Array.isArray(value)) return { sources: value, complete: true, errors: [], limited: false };
   return {
     sources: Array.isArray(value?.sources) ? value.sources : [],
     complete: value?.complete === true,
@@ -62,6 +60,16 @@ export class ArchiveReconcileCoordinator {
     this.queued = new Set();
   }
 
+  suppressionKeys() {
+    const db = this.repository?.db;
+    if (!db?.prepare) return new Set();
+    try {
+      return new Set(db.prepare('SELECT source_path FROM archive_suppressions').all().map((row) => queueKey(row.source_path)));
+    } catch {
+      return new Set();
+    }
+  }
+
   enqueue(filePath) {
     if (!filePath) return false;
     const key = queueKey(filePath);
@@ -75,27 +83,22 @@ export class ArchiveReconcileCoordinator {
     return this.queue.length;
   }
 
-  async runCycle({
-    maxBytesPerSource = this.maxBytesPerSource,
-    maxSources = this.maxSourcesPerCycle,
-    maxTotalBytes = this.maxTotalBytes
-  } = {}) {
+  async runCycle({ maxBytesPerSource = this.maxBytesPerSource, maxSources = this.maxSourcesPerCycle, maxTotalBytes = this.maxTotalBytes } = {}) {
     const perSourceLimit = positiveInteger(maxBytesPerSource, this.maxBytesPerSource);
     const sourceLimit = positiveInteger(maxSources, this.maxSourcesPerCycle);
     const totalLimit = positiveInteger(maxTotalBytes, this.maxTotalBytes);
     const scan = normalizeScanResult(await this.scanSources(this.sessionsPath));
-    const sources = scan.sources;
+    const suppressions = this.suppressionKeys();
+    const sources = scan.sources.filter((source) => !suppressions.has(queueKey(source?.filePath)));
     const sourceByKey = new Map(sources.map((source) => [queueKey(source.filePath), source]));
-    const tracked = this.health.listTrackedRawSources();
+    const tracked = this.health.listTrackedRawSources().filter((item) => !suppressions.has(queueKey(item?.sourcePath)));
     const trackedKeys = new Set(tracked.map((item) => queueKey(item.sourcePath)));
 
     for (const source of sources) {
       const ingest = this.repository.getIngestState(source.filePath);
       if (needsArchiveSourceReconcile(source, ingest, { parserVersion: this.parserVersion })) this.enqueue(source.filePath);
     }
-    for (const item of tracked) {
-      if (!sourceByKey.has(queueKey(item.sourcePath))) this.enqueue(item.sourcePath);
-    }
+    for (const item of tracked) if (!sourceByKey.has(queueKey(item.sourcePath))) this.enqueue(item.sourcePath);
 
     const generation = this.health.beginGeneration({ sourceCount: sources.length });
     const results = [];
@@ -109,59 +112,38 @@ export class ArchiveReconcileCoordinator {
       const filePath = this.queue.shift();
       const key = queueKey(filePath);
       this.queued.delete(key);
-      if (visited.has(key)) continue;
+      if (visited.has(key) || suppressions.has(key)) continue;
       visited.add(key);
 
       const source = sourceByKey.get(key) ?? null;
       if (source) {
         const ingest = this.repository.getIngestState(filePath);
         if (!needsArchiveSourceReconcile(source, ingest, { parserVersion: this.parserVersion })) continue;
-      } else if (!trackedKeys.has(key)) {
-        continue;
-      }
+      } else if (!trackedKeys.has(key)) continue;
 
       const remaining = Math.max(1, totalLimit - bytesRead);
       const chunkLimit = Math.min(perSourceLimit, remaining);
       try {
-        const result = await this.reconcileSource({
-          filePath,
-          repository: this.repository,
-          parserVersion: this.parserVersion,
-          maxBytes: chunkLimit
-        });
+        const result = await this.reconcileSource({ filePath, repository: this.repository, parserVersion: this.parserVersion, maxBytes: chunkLimit });
         const consumed = Math.max(0, Number(result?.bytesRead ?? 0));
         bytesRead += consumed;
         processedSourceCount += 1;
         results.push({ filePath, ...result });
-
-        if (result?.state === ARCHIVE_SYNC_STATE.CATCHING_UP
-          || result?.state === ARCHIVE_SYNC_STATE.UNINDEXED) {
-          this.enqueue(filePath);
-        }
+        if (result?.state === ARCHIVE_SYNC_STATE.CATCHING_UP || result?.state === ARCHIVE_SYNC_STATE.UNINDEXED) this.enqueue(filePath);
       } catch (error) {
         processedSourceCount += 1;
         errors.push({ filePath, error: error?.message ?? String(error) });
-        this.health.recordIngestError({
-          sourcePath: filePath,
-          source,
-          error,
-          parserVersion: this.parserVersion
-        });
+        this.health.recordIngestError({ sourcePath: filePath, source, error, parserVersion: this.parserVersion });
       }
-
       await this.yieldControl();
     }
 
     const pending = this.health.summarizePending(sources, { parserVersion: this.parserVersion });
-    const finished = this.health.finishGeneration({
-      generation,
-      ...pending,
-      success: scan.complete && errors.length === 0
-    });
-
+    const finished = this.health.finishGeneration({ generation, ...pending, success: scan.complete && errors.length === 0 });
     return {
       generation,
       scannedSourceCount: sources.length,
+      suppressedSourceCount: suppressions.size,
       sourceScanComplete: scan.complete,
       sourceScanLimited: scan.limited,
       sourceScanErrors: scan.errors,
