@@ -99,7 +99,9 @@ export function deleteManagerSessions(rows = [], selectedIds = [], {
     }
   }
 
+  report.rawDeletedCount = Number(report.raw?.deleted?.length ?? 0);
+  report.archiveDeletedCount = Number(report.archive?.deleted?.length ?? 0);
   report.ok = report.deletedIds.length === report.requested && report.rejected.length === 0 && report.errors.length === 0;
-  report.partial = report.deletedIds.length > 0 && !report.ok;
+  report.partial = (report.rawDeletedCount + report.archiveDeletedCount) > 0 && !report.ok;
   return report;
 }
