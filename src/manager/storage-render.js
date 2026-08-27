@@ -61,20 +61,42 @@ function ageLines(summary, mode) {
   return summary.byAge.map((item) => `${padCells(item.label, 10)} ${String(item.count).padStart(5)}  ${hpaint(fmtBytes(item.sizeBytes).padStart(9), 'secondary', mode)}`);
 }
 
-function largestLines(summary, selectedIds, mode) {
-  if (!summary.largest.length) return [hpaint('No sized sessions.', 'dim', mode)];
-  return summary.largest.map((row) => {
+function sessionViewport(rows, cursorIndex, visibleRows) {
+  if (!rows.length) return { cursor: 0, start: 0, end: 0 };
+  const cursor = Math.max(0, Math.min(rows.length - 1, Number(cursorIndex) || 0));
+  const visible = Math.max(1, visibleRows);
+  const start = Math.max(0, Math.min(cursor - Math.floor(visible / 2), Math.max(0, rows.length - visible)));
+  return { cursor, start, end: Math.min(rows.length, start + visible) };
+}
+
+function sessionLines(rows, selectedIds, cursorIndex, visibleRows, mode) {
+  if (!rows.length) return [hpaint('No sessions.', 'dim', mode)];
+  const viewport = sessionViewport(rows, cursorIndex, visibleRows);
+  const lines = [];
+  for (let index = viewport.start; index < viewport.end; index += 1) {
+    const row = rows[index];
     const selected = selectedIds.has(row.id);
-    const marker = row.state === 'ENDED' ? (selected ? '[x]' : '[ ]') : '[-]';
-    const token = row.state === 'LIVE' ? 'live' : row.state === 'ENDED' ? 'text' : 'secondary';
-    return `${hpaint(marker, selected ? 'nav' : token, mode)} ${padCells(truncateCells(row.project, 24, '…'), 24)} ${hpaint(shortId(row), 'session', mode)} ${padCells(row.state, 7)} ${hpaint(fmtBytes(row.sizeBytes).padStart(9), 'secondary', mode)}`;
-  });
+    const selectable = row.state === 'ENDED';
+    const marker = selectable ? (selected ? '[x]' : '[ ]') : '[-]';
+    const current = index === viewport.cursor;
+    const plain = `${current ? '▸' : ' '} ${marker} ${padCells(truncateCells(row.project ?? 'UNKNOWN', 24, '…'), 24)} ${shortId(row)} ${padCells(row.state ?? 'UNKNOWN', 7)} ${fmtBytes(row.fileSizeBytes ?? row.sizeBytes).padStart(9)}`;
+    if (current) {
+      lines.push(hpaint(plain, 'selected', mode));
+      continue;
+    }
+    const token = row.state === 'LIVE' ? 'live' : selectable ? 'text' : 'secondary';
+    const prefix = `${hpaint(' ', 'dim', mode)} ${hpaint(marker, selected ? 'nav' : token, mode)}`;
+    lines.push(`${prefix} ${padCells(truncateCells(row.project ?? 'UNKNOWN', 24, '…'), 24)} ${hpaint(shortId(row), 'session', mode)} ${hpaint(padCells(row.state ?? 'UNKNOWN', 7), token, mode)} ${hpaint(fmtBytes(row.fileSizeBytes ?? row.sizeBytes).padStart(9), 'secondary', mode)}`);
+  }
+  return lines;
 }
 
 export function renderStorageManager({
   summary,
   selectedSummary,
   selectedIds = new Set(),
+  rows = [],
+  cursorIndex = 0,
   width = 120,
   height = 36,
   mode = '256',
@@ -82,15 +104,19 @@ export function renderStorageManager({
 } = {}) {
   const safeWidth = Math.max(60, Number(width) || 120);
   const safeHeight = Math.max(18, Number(height) || 36);
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const cursor = sourceRows.length ? Math.max(0, Math.min(sourceRows.length - 1, Number(cursorIndex) || 0)) : 0;
   const header = truncateCells(`${hpaint('CODEX // STORAGE MANAGER', 'strong', mode)}  ${hpaint(fmtBytes(summary?.totalBytes), 'session', mode)}  ${summary?.count ?? 0} sessions`, safeWidth, '');
-  const help = truncateCells(hpaint('M back  Space select  A all-ended  N none  I invert  C clear selected', 'dim', mode), safeWidth, '');
-  const footer = truncateCells(status ? hpaint(status, 'pressure', mode) : hpaint('LIVE/UNKNOWN are protected; clear is revalidated immediately before unlink.', 'dim', mode), safeWidth, '');
+  const statusLine = truncateCells(status ? hpaint(status, 'pressure', mode) : hpaint('LIVE/UNKNOWN are protected; clear is revalidated immediately before unlink.', 'dim', mode), safeWidth, '');
+  const help = truncateCells(hpaint('↑↓ move  PgUp/PgDn  Home/End  Space toggle  A all-ended  N none  I invert  C clear  M/Q back', 'dim', mode), safeWidth, '');
   const bodyHeight = safeHeight - 3;
   const topHeight = Math.min(7, Math.max(6, Math.floor(bodyHeight * 0.22)));
   const lowerHeight = Math.max(6, bodyHeight - topHeight);
   const leftWidth = Math.max(36, Math.floor(safeWidth * 0.58));
   const rightWidth = safeWidth - leftWidth - 1;
-  const lines = [header, help];
+  const visibleSessionRows = Math.max(1, lowerHeight - 2);
+  const position = sourceRows.length ? `${cursor + 1}/${sourceRows.length}` : '--/--';
+  const lines = [header];
   lines.push(...joinPanels(
     panel(summaryLines(summary, selectedSummary, mode), leftWidth, topHeight, { title: 'STORAGE SUMMARY', mode, active: true }),
     panel(ageLines(summary, mode), rightWidth, topHeight, { title: 'BY AGE', mode }),
@@ -98,13 +124,14 @@ export function renderStorageManager({
     topHeight
   ));
   lines.push(...joinPanels(
-    panel(largestLines(summary, selectedIds, mode), leftWidth, lowerHeight, { title: 'LARGEST SESSIONS · [-] protected', mode }),
+    panel(sessionLines(sourceRows, selectedIds, cursor, visibleSessionRows, mode), leftWidth, lowerHeight, { title: `SESSIONS BY SIZE ${position} · [-] protected`, mode, active: true }),
     panel(projectLines(summary, mode), rightWidth, lowerHeight, { title: 'BY PROJECT', mode }),
     leftWidth,
     lowerHeight
   ));
-  lines.push(footer);
-  return { lines: lines.slice(0, safeHeight).map((line) => truncateCells(line, safeWidth, '')), width: safeWidth, height: safeHeight };
+  lines.push(statusLine);
+  lines.push(help);
+  return { lines: lines.slice(0, safeHeight).map((line) => truncateCells(line, safeWidth, '')), width: safeWidth, height: safeHeight, cursorIndex: cursor };
 }
 
 export function renderClearConfirmation({
