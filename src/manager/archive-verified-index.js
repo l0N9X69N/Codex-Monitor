@@ -1,6 +1,7 @@
 import { ARCHIVE_SYNC_STATE } from '../archive/constants.js';
 import { getArchiveServiceStatus } from '../archive/service-control.js';
 import { scanArchiveSourcesWithHealth } from '../archive/source-scan.js';
+import { managerArchiveConfigState } from './archive-config-state.js';
 import { ManagerArchiveIndex } from './archive-index.js';
 
 function normalizedScan(value) {
@@ -19,9 +20,7 @@ function normalizeServiceStatus(status, metadataInstanceId = null) {
   const ownerInstanceId = owner?.instanceId ? String(owner.instanceId) : null;
   const storedInstanceId = metadataInstanceId ? String(metadataInstanceId) : null;
   const staleLock = Boolean(owner && !running);
-  const metadataStale = Boolean(storedInstanceId && (
-    !running || (ownerInstanceId && ownerInstanceId !== storedInstanceId)
-  ));
+  const metadataStale = Boolean(storedInstanceId && (!running || (ownerInstanceId && ownerInstanceId !== storedInstanceId)));
   const ownerMismatch = Boolean(running && storedInstanceId && ownerInstanceId && ownerInstanceId !== storedInstanceId);
   return {
     checked: true,
@@ -39,11 +38,7 @@ function normalizeServiceStatus(status, metadataInstanceId = null) {
 }
 
 export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
-  constructor({
-    scanSourcesWithHealth = scanArchiveSourcesWithHealth,
-    readServiceStatus = undefined,
-    ...options
-  } = {}) {
+  constructor({ scanSourcesWithHealth = scanArchiveSourcesWithHealth, readServiceStatus = undefined, ...options } = {}) {
     let lastScan = { sources: [], complete: false, errors: [], limited: false };
     const scanSources = async (rootPath) => {
       lastScan = normalizedScan(await scanSourcesWithHealth(rootPath));
@@ -65,13 +60,56 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
       error: null
     };
     this._scanState = () => lastScan;
+    this.configRevision = managerArchiveConfigState().revision;
+  }
+
+  syncPublishedConfig() {
+    const state = managerArchiveConfigState();
+    if (!state.config || state.revision <= this.configRevision) return false;
+    this.configRevision = state.revision;
+    const wasEnabled = this.config?.archive?.enabled === true;
+    const enabled = state.config?.archive?.enabled === true;
+    this.config = state.config;
+
+    if (!enabled) {
+      super.close();
+      Object.assign(this.lastSnapshot, {
+        enabled: false,
+        available: false,
+        sourceScanComplete: false,
+        globalSyncState: null,
+        rows: [],
+        sourceCount: 0,
+        pendingFileCount: 0,
+        pendingByteCount: 0,
+        health: null,
+        error: null
+      });
+    } else if (!wasEnabled) {
+      Object.assign(this.lastSnapshot, {
+        enabled: true,
+        available: false,
+        sourceScanComplete: false,
+        globalSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP,
+        rows: [],
+        sourceCount: 0,
+        pendingFileCount: 0,
+        pendingByteCount: 0,
+        health: null,
+        error: null
+      });
+    }
+    return true;
+  }
+
+  get enabled() {
+    this.syncPublishedConfig();
+    return this.config?.archive?.enabled === true;
   }
 
   verifyServiceLiveness(snapshot) {
     if (!snapshot?.available) return snapshot;
-    const metadataInstanceId = snapshot.health?.serviceMetadataInstanceId
-      ?? snapshot.health?.serviceInstanceId
-      ?? null;
+    const metadataInstanceId = snapshot.health?.serviceMetadataInstanceId ?? snapshot.health?.serviceInstanceId ?? null;
     try {
       const raw = this.readServiceStatus ? this.readServiceStatus() : null;
       const status = this.readServiceStatus
@@ -117,6 +155,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
   }
 
   open() {
+    this.syncPublishedConfig();
     const snapshot = super.open();
     if (!snapshot?.available) return snapshot;
     this.verifyServiceLiveness(snapshot);
@@ -125,6 +164,7 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
   }
 
   async refresh() {
+    this.syncPublishedConfig();
     const snapshot = await super.refresh();
     const scan = this._scanState();
     this.lastVerifiedScan = scan;
@@ -140,18 +180,10 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
       snapshot.rows = (snapshot.rows ?? []).map((row) => {
         const stored = row?.threadId ? storedByThread.get(row.threadId) : null;
         if (stored?.rawSourceExists !== false && row?.rawSourceExists === false) {
-          return {
-            ...stored,
-            archiveSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP,
-            archiveVerified: false
-          };
+          return { ...stored, archiveSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP, archiveVerified: false };
         }
         if (row?.archiveSyncState === ARCHIVE_SYNC_STATE.READY) {
-          return {
-            ...row,
-            archiveSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP,
-            archiveVerified: false
-          };
+          return { ...row, archiveSyncState: ARCHIVE_SYNC_STATE.CATCHING_UP, archiveVerified: false };
         }
         return row;
       });
