@@ -135,6 +135,7 @@ test('READY Manager archive detail is read from normalized SQLite tables without
     const detail = readManagerArchiveDetail(archiveIndex, row);
     assert.ok(detail);
     assert.equal(detail.source, 'archive-sqlite');
+    assert.equal(detail.archiveSchemaVersion, 2);
     assert.equal(detail.info.threadId, 'thread-sqlite-detail');
     assert.equal(detail.info.model, 'gpt-detail');
     assert.equal(detail.info.reasoning, 'high');
@@ -147,13 +148,21 @@ test('READY Manager archive detail is read from normalized SQLite tables without
     assert.equal(detail.turns.completed, 1);
     assert.equal(detail.analytics.turns.items.length, 1);
     assert.equal(detail.analytics.turns.items[0].durationMs, 5000);
+    assert.equal(detail.analytics.turns.items[0].cachedTokens, 30);
+    assert.equal(detail.analytics.turns.items[0].reasoningTokens, 8);
+    assert.equal(detail.analytics.turns.items[0].tokenCoverage, 'indexed');
+    assert.equal(detail.analytics.tokens.points.length, 1);
+    assert.equal(detail.analytics.tokens.points[0].total, 160);
+    assert.equal(detail.analytics.tokens.coverage, 'indexed');
     assert.equal(detail.analytics.tools.total, 1);
     assert.equal(detail.analytics.tools.byName[0].name, 'exec');
+    assert.equal(detail.analytics.tools.byType[0].name, 'shell');
+    assert.equal(detail.analytics.tools.events[0].group, 'shell');
     assert.equal(detail.analytics.tools.events[0].durationMs, 500);
     assert.equal(detail.analytics.context.points.length, 1);
     assert.equal(detail.analytics.context.compactions.length, 1);
     assert.ok(detail.analytics.signals.some((item) => item.kind === 'error'));
-    assert.ok(detail.timeline.some((item) => item.tool === 'exec'));
+    assert.ok(detail.timeline.some((item) => item.tool === 'exec' && item.group === 'shell'));
     assert.ok(detail.errors.some((item) => /fixture-error/.test(item.detail)));
 
     assert.equal(canUseManagerArchiveDetail({ ...row, state: 'LIVE' }), false);
