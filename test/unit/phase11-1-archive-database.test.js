@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { getArchiveDatabasePath, openArchiveDatabase } from '../../src/archive/database.js';
+import { getArchiveDatabasePath, openArchiveDatabase, openArchiveDatabaseReadOnly } from '../../src/archive/database.js';
 import { monitorDataDir } from '../../src/platform/common.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -84,6 +84,39 @@ test('node:sqlite bootstrap creates a durable WAL archive and migration metadata
   } finally {
     try { reopened?.close(); } catch {}
     try { opened?.close(); } catch {}
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Manager archive database handle is read-only and never creates a missing archive', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-phase11-1-db-ro-'));
+  const dataDir = path.join(root, 'data');
+  const missingDir = path.join(root, 'missing', 'nested');
+  let writer = null;
+  let reader = null;
+  try {
+    writer = openArchiveDatabase({ dataDir });
+    writer.repository.commitChunk({
+      source: { filePath: path.join(root, 'session.jsonl'), fileIdentity: 'fixture:ro', size: 0, mtimeMs: Date.now() },
+      sessionId: 'thread-read-only',
+      events: [],
+      commitOffset: 0
+    });
+    writer.close();
+    writer = null;
+
+    reader = openArchiveDatabaseReadOnly({ dataDir });
+    assert.equal(reader.repository.getSession('thread-read-only').sessionId, 'thread-read-only');
+    assert.throws(() => reader.db.exec('CREATE TABLE manager_must_not_write (id INTEGER);'));
+    reader.close();
+    reader = null;
+
+    assert.equal(fs.existsSync(missingDir), false);
+    assert.throws(() => openArchiveDatabaseReadOnly({ dataDir: missingDir }));
+    assert.equal(fs.existsSync(missingDir), false);
+  } finally {
+    try { reader?.close(); } catch {}
+    try { writer?.close(); } catch {}
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
