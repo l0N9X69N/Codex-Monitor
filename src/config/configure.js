@@ -13,7 +13,8 @@ export async function configureMonitor({
   save = saveMonitorConfig,
   applyArchiveEffects = applyArchiveConfigSideEffects,
   colorCapability,
-  theme
+  theme,
+  notice = ''
 } = {}) {
   const result = await runStandaloneConfigTui({
     stdin: input,
@@ -24,6 +25,7 @@ export async function configureMonitor({
     filePath,
     save,
     applyArchiveEffects,
+    notice,
     ...(colorCapability ? { colorCapability } : {}),
     ...(theme ? { theme } : {})
   });
