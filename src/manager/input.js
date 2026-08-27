@@ -22,7 +22,8 @@ export function normalizeManagerInput(data, {
   confirmingDelete = false,
   storageOpen = false,
   configOpen = false,
-  configPreviewOpen = false
+  configPreviewOpen = false,
+  configPreviewAvailable = false
 } = {}) {
   const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!text) return null;
@@ -51,8 +52,8 @@ export function normalizeManagerInput(data, {
     if (/^[\r\n]+$/.test(text) || text === ' ') return 'config-edit';
     if (text.toLowerCase() === 's') return 'config-save';
     if (text.toLowerCase() === 'r') return 'config-revert';
-    if (text.toLowerCase() === 'p') return 'config-preview-live';
-    if (text.toLowerCase() === 'm') return 'config-preview-manager';
+    if (configPreviewAvailable && text.toLowerCase() === 'p') return 'config-preview-live';
+    if (configPreviewAvailable && text.toLowerCase() === 'm') return 'config-preview-manager';
     return null;
   }
 
