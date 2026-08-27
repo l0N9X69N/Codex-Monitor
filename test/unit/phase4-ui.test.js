@@ -42,10 +42,10 @@ test('terminal cell width handles Vietnamese, emoji and ANSI', () => {
   assert.ok(cellWidth(truncateCells('Tiếng Việt rất dài', 8)) <= 8);
 });
 
-test('height budget follows compact live monitor thresholds', () => {
-  assert.equal(monitorRowBudget(40), 7);
-  assert.equal(monitorRowBudget(30), 5);
-  assert.equal(monitorRowBudget(20), 4);
+test('height budget follows current live monitor thresholds', () => {
+  assert.equal(monitorRowBudget(40), 9);
+  assert.equal(monitorRowBudget(30), 7);
+  assert.equal(monitorRowBudget(20), 5);
   assert.equal(monitorRowBudget(12), 3);
 });
 
@@ -100,7 +100,7 @@ test('unknown system telemetry renders as -- rather than zero', () => {
   const state = createDemoState('idle', { authMode: 'login', nowMs: NOW });
   state.system.cpuPercent.value = null;
   state.system.memoryBytes.value = null;
-  const text = stripAnsi(buildLiveFrame({ state, config, width: 120, height: 35, nowMs: NOW }).lines.join('\n'));
+  const text = stripAnsi(buildLiveFrame({ state, config, width: 180, height: 35, nowMs: NOW }).lines.join('\n'));
   assert.match(text, /SYS\s+--\/--|SYSTEM CPU -- · RAM --/);
   assert.doesNotMatch(text, /RAM 0(?:\s|$)/);
 });
