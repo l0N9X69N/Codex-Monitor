@@ -1,5 +1,6 @@
 import readline from 'node:readline/promises';
 import { stdin as defaultInput, stdout as defaultOutput } from 'node:process';
+import { applyArchiveConfigSideEffects } from './archive-effects.js';
 import { configForPreset, normalizeConfig, CONFIG_VALUES } from './schema.js';
 import { saveMonitorConfig } from './store.js';
 
@@ -19,11 +20,14 @@ export async function configureMonitor({
   input = defaultInput,
   output = defaultOutput,
   currentConfig,
+  previousConfig = currentConfig,
   filePath,
-  save = saveMonitorConfig
+  save = saveMonitorConfig,
+  applyArchiveEffects = applyArchiveConfigSideEffects
 } = {}) {
   const rl = readline.createInterface({ input, output });
   try {
+    const before = normalizeConfig(previousConfig);
     let config = normalizeConfig(currentConfig);
     output.write('\nCodex Monitor configuration\n');
     output.write('Live Monitor is a passive HUD; official Codex owns all keyboard input.\n\n');
@@ -64,6 +68,11 @@ export async function configureMonitor({
     const theme = (await rl.question(`Theme [color/mono/matrix] (${config.theme}): `)).trim().toLowerCase();
     if (CONFIG_VALUES.themes.has(theme)) config.theme = theme;
 
+    output.write('\nLocal Session Archive\n');
+    output.write('Stores technical analytics locally in SQLite; raw prompt/assistant transcript content is not archived by default.\n');
+    const archiveEnabled = await rl.question(`Archive [y/n] (${config.archive.enabled ? 'y' : 'n'}): `);
+    config.archive.enabled = yesNo(archiveEnabled, config.archive.enabled);
+
     config = normalizeConfig(config);
     output.write('\nPreview config\n');
     output.write(`${JSON.stringify(config, null, 2)}\n`);
@@ -71,8 +80,18 @@ export async function configureMonitor({
     if (String(confirm).trim() && !yesNo(confirm, true)) return { saved: false, config };
 
     const result = save(config, { filePath });
+    const archiveEffects = applyArchiveEffects(before, result.config);
     output.write(`Saved: ${result.filePath}\n`);
-    return { saved: true, ...result };
+    if (archiveEffects?.transition === 'off-to-on') {
+      output.write(archiveEffects.ok
+        ? 'Archive enabled: SQLite initialized and Archive Service started/woken.\n'
+        : `Archive enabled, but runtime activation needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
+    } else if (archiveEffects?.transition === 'on-to-off') {
+      output.write(archiveEffects.ok
+        ? 'Archive disabled: service stop requested; existing SQLite archive was kept.\n'
+        : `Archive disabled and data kept, but service stop needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
+    }
+    return { saved: true, ...result, archiveEffects };
   } finally {
     rl.close();
   }
