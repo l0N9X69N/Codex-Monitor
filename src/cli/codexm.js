@@ -12,6 +12,7 @@ import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
+import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { codexArgsForLocalResume, localResumePickerIntent, pickLocalResumeSession } from '../runtime/local-resume-picker.js';
@@ -41,13 +42,14 @@ function printHelp() {
   process.stdout.write('  --manager                     Open Session Manager\n');
   process.stdout.write('  --manager-view operations|table|charts|auto\n');
   process.stdout.write('                                Override Manager view for this run only\n');
-  process.stdout.write('  Inside Manager: C Config\n\n');
+  process.stdout.write('  Inside Manager: C Config · P/M preview inside Config\n\n');
   process.stdout.write('CUSTOMIZE\n');
   process.stdout.write('  --configure                   Open the shared Monitor Config screen\n');
   process.stdout.write('  --reset                       Confirm reset, then open Config with defaults\n');
   process.stdout.write('  Config: P Live preview · M Manager preview\n\n');
   process.stdout.write('DIAGNOSTICS\n');
-  process.stdout.write('  --doctor                      Run sanitized diagnostics\n');
+  process.stdout.write('  --doctor                      Run sanitized diagnostics, including Archive health\n');
+  process.stdout.write('  --repair                      Repair Monitor-owned Archive hook/service integration\n');
   process.stdout.write('  --config                      Show effective Monitor config\n');
   process.stdout.write('  --config-path                 Show Monitor config path\n');
   process.stdout.write('  --monitor-version             Show Codex Monitor version\n');
@@ -59,6 +61,7 @@ function printHelp() {
   process.stdout.write('Live Monitor is passive after Codex starts: every keyboard byte belongs to official Codex.\n');
   process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
   process.stdout.write('Local Session Archive is optional/local-only and remains disabled until explicit opt-in.\n');
+  process.stdout.write('--repair never deletes Codex sessions/archive data and only touches Monitor-owned Archive integration.\n');
   process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
   process.stdout.write('Example: codexm -- --help   # official Codex help\n');
 }
@@ -78,9 +81,14 @@ async function main() {
   if (parsed.action === 'help') { printHelp(); return 0; }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
-    const report = doctorReport();
+    const report = doctorReport({ monitorConfig: loaded.config });
     printDoctor(report);
     return report.codexPath ? 0 : 2;
+  }
+  if (parsed.action === 'repair') {
+    const report = repairMonitorIntegration(loaded.config);
+    printRepairReport(report);
+    return report.ok ? 0 : 2;
   }
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
   if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
