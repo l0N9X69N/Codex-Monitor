@@ -6,6 +6,7 @@ import {
   normalizeConfig
 } from '../config/schema.js';
 import { saveMonitorConfig } from '../config/store.js';
+import { ArchiveConfigPanel } from './archive-config-panel.js';
 
 export const MANAGER_CONFIG_TABS = Object.freeze([
   'live-view',
@@ -32,37 +33,11 @@ export const MANAGER_CONFIG_TAB_LABELS = Object.freeze({
 });
 
 const FIELD_LABELS = Object.freeze({
-  used: 'Used % / tokens',
-  gauge: 'Gauge',
-  cache: 'Cache',
-  left: 'Left %',
-  compaction: 'Compactions',
-  fiveHour: '5-hour quota',
-  weekly: 'Weekly quota',
-  input: 'Input tokens',
-  output: 'Output tokens',
-  reasoning: 'Reasoning tokens',
-  turnInput: 'Turn input',
-  turnOutput: 'Turn output',
-  model: 'Model',
-  routed: 'Routed model',
-  elapsed: 'Elapsed',
-  turns: 'Turns',
-  last: 'Last turn',
-  update: 'Update age',
-  thread: 'Session ID',
-  freshness: 'Freshness',
-  data: 'Data source',
-  state: 'State',
-  source: 'Source',
-  tools: 'Tools',
-  lastTool: 'Last tool',
-  approval: 'Approval',
-  retry: 'Retries',
-  errors: 'Errors',
-  cpu: 'CPU',
-  ram: 'RAM',
-  ramCapacity: 'RAM capacity'
+  used: 'Used % / tokens', gauge: 'Gauge', cache: 'Cache', left: 'Left %', compaction: 'Compactions',
+  fiveHour: '5-hour quota', weekly: 'Weekly quota', input: 'Input tokens', output: 'Output tokens', reasoning: 'Reasoning tokens',
+  turnInput: 'Turn input', turnOutput: 'Turn output', model: 'Model', routed: 'Routed model', elapsed: 'Elapsed', turns: 'Turns',
+  last: 'Last turn', update: 'Update age', thread: 'Session ID', freshness: 'Freshness', data: 'Data source', state: 'State', source: 'Source',
+  tools: 'Tools', lastTool: 'Last tool', approval: 'Approval', retry: 'Retries', errors: 'Errors', cpu: 'CPU', ram: 'RAM', ramCapacity: 'RAM capacity'
 });
 
 function clone(value) {
@@ -85,12 +60,7 @@ function fieldRows(config) {
   const rows = [];
   for (const [section, fields] of Object.entries(DEFAULT_FIELD_VISIBILITY)) {
     for (const key of Object.keys(fields)) {
-      rows.push({
-        id: `field:${section}:${key}`,
-        label: `${section.toUpperCase()} · ${FIELD_LABELS[key] ?? key}`,
-        value: enabledLabel(config.fields?.[section]?.[key]),
-        editable: true
-      });
+      rows.push({ id: `field:${section}:${key}`, label: `${section.toUpperCase()} · ${FIELD_LABELS[key] ?? key}`, value: enabledLabel(config.fields?.[section]?.[key]), editable: true });
     }
   }
   return rows;
@@ -98,15 +68,10 @@ function fieldRows(config) {
 
 function headerRows(config) {
   const selected = new Set(config.header ?? []);
-  return [...CONFIG_VALUES.header].map((key) => ({
-    id: `header:${key}`,
-    label: key,
-    value: enabledLabel(selected.has(key)),
-    editable: true
-  }));
+  return [...CONFIG_VALUES.header].map((key) => ({ id: `header:${key}`, label: key, value: enabledLabel(selected.has(key)), editable: true }));
 }
 
-function rowsForTab(tab, config) {
+function rowsForTab(tab, config, archivePanel = null) {
   if (tab === 'live-view') {
     return [
       { id: 'preset', label: 'Preset', value: config.preset, editable: true },
@@ -124,11 +89,7 @@ function rowsForTab(tab, config) {
   }
   if (tab === 'fields') return fieldRows(config);
   if (tab === 'header') return headerRows(config);
-  if (tab === 'companion') {
-    return [
-      { id: 'companion-status', label: 'Companion controls', value: 'Uses Live View Beast mode in current schema', editable: false }
-    ];
-  }
+  if (tab === 'companion') return [{ id: 'companion-status', label: 'Companion controls', value: 'Uses Live View Beast mode in current schema', editable: false }];
   if (tab === 'appearance') {
     return [
       { id: 'theme', label: 'Theme', value: config.theme, editable: true },
@@ -136,24 +97,9 @@ function rowsForTab(tab, config) {
       { id: 'language', label: 'Language', value: config.language, editable: true }
     ];
   }
-  if (tab === 'archive') {
-    return [
-      { id: 'archive:enabled', label: 'Archive', value: enabledLabel(config.archive.enabled), editable: true },
-      { id: 'archive:retention', label: 'Retention', value: 'Forever', editable: false },
-      { id: 'archive:size', label: 'Size limit', value: config.archive.sizeLimitBytes == null ? 'Unlimited' : String(config.archive.sizeLimitBytes), editable: false },
-      { id: 'archive:auto-cleanup', label: 'Auto cleanup', value: 'Off (v1)', editable: false }
-    ];
-  }
-  if (tab === 'manager') {
-    return [
-      { id: 'manager-status', label: 'Manager preferences', value: 'No persisted Manager-only fields in v1 schema yet', editable: false }
-    ];
-  }
-  if (tab === 'updates') {
-    return [
-      { id: 'updateCheck', label: 'Update checks', value: enabledLabel(config.updateCheck), editable: true }
-    ];
-  }
+  if (tab === 'archive') return archivePanel?.rows?.(config) ?? [];
+  if (tab === 'manager') return [{ id: 'manager-status', label: 'Manager preferences', value: 'No persisted Manager-only fields in v1 schema yet', editable: false }];
+  if (tab === 'updates') return [{ id: 'updateCheck', label: 'Update checks', value: enabledLabel(config.updateCheck), editable: true }];
   return [];
 }
 
@@ -177,11 +123,13 @@ export class ManagerConfigController {
     config,
     filePath,
     save = saveMonitorConfig,
-    applyArchiveEffects = applyArchiveConfigSideEffects
+    applyArchiveEffects = applyArchiveConfigSideEffects,
+    archivePanel = new ArchiveConfigPanel()
   } = {}) {
     this.filePath = filePath;
     this.saveConfig = save;
     this.applyArchiveEffects = applyArchiveEffects;
+    this.archivePanel = archivePanel;
     this.savedConfig = normalizeConfig(config);
     this.draftConfig = clone(this.savedConfig);
     this.tabIndex = 0;
@@ -202,7 +150,7 @@ export class ManagerConfigController {
   }
 
   rows() {
-    return rowsForTab(this.activeTab, this.draftConfig);
+    return rowsForTab(this.activeTab, this.draftConfig, this.archivePanel);
   }
 
   currentRow() {
@@ -214,6 +162,8 @@ export class ManagerConfigController {
     this.tabIndex = (this.tabIndex + delta + count) % count;
     this.cursorIndex = 0;
     this.status = '';
+    this.archivePanel?.cancelConfirmation?.();
+    if (this.activeTab === 'archive') this.archivePanel?.refresh?.();
     return this.activeTab;
   }
 
@@ -223,16 +173,20 @@ export class ManagerConfigController {
       this.cursorIndex = 0;
       return 0;
     }
+    const previous = this.cursorIndex;
     this.cursorIndex = Math.max(0, Math.min(rows.length - 1, this.cursorIndex + delta));
+    if (this.cursorIndex !== previous) this.archivePanel?.cancelConfirmation?.();
     return this.cursorIndex;
   }
 
   cursorHome() {
     this.cursorIndex = 0;
+    this.archivePanel?.cancelConfirmation?.();
   }
 
   cursorEnd() {
     this.cursorIndex = Math.max(0, this.rows().length - 1);
+    this.archivePanel?.cancelConfirmation?.();
   }
 
   _customize() {
@@ -247,6 +201,12 @@ export class ManagerConfigController {
     }
 
     const id = row.id;
+    if (id.startsWith('archive:action:')) {
+      const action = this.archivePanel?.run?.(id, this.savedConfig) ?? { ok: false, status: 'Archive action unavailable' };
+      this.status = action.status ?? (action.ok ? 'Archive action complete' : 'Archive action failed');
+      return Boolean(action.ok || action.pending);
+    }
+
     if (id === 'preset') {
       const next = cycle(CONFIG_VALUES.presets, this.draftConfig.preset, delta);
       this.draftConfig = normalizeConfig(configForPreset(next, this.draftConfig));
@@ -289,6 +249,7 @@ export class ManagerConfigController {
     } else if (id === 'language') {
       this.draftConfig.language = cycle(CONFIG_VALUES.languages, this.draftConfig.language, delta);
     } else if (id === 'archive:enabled') {
+      this.archivePanel?.cancelConfirmation?.();
       this.draftConfig.archive.enabled = !this.draftConfig.archive.enabled;
     } else if (id === 'updateCheck') {
       this.draftConfig.updateCheck = !this.draftConfig.updateCheck;
@@ -301,6 +262,7 @@ export class ManagerConfigController {
 
   revert() {
     this.draftConfig = clone(this.savedConfig);
+    this.archivePanel?.cancelConfirmation?.();
     this.cursorIndex = Math.min(this.cursorIndex, Math.max(0, this.rows().length - 1));
     this.status = 'Reverted unsaved changes';
     return this.draftConfig;
@@ -314,6 +276,8 @@ export class ManagerConfigController {
       const effects = this.applyArchiveEffects(before, next);
       this.savedConfig = clone(next);
       this.draftConfig = clone(next);
+      this.archivePanel?.cancelConfirmation?.();
+      if (this.activeTab === 'archive') this.archivePanel?.refresh?.();
       this.status = archiveStatus(effects);
       return { saved: true, config: next, filePath: result?.filePath ?? this.filePath, archiveEffects: effects, error: null };
     } catch (error) {
