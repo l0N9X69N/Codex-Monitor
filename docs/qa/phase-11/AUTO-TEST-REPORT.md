@@ -1,6 +1,6 @@
 # Phase 11 — Automated Test Report
 
-Status: **FINAL VERIFICATION PENDING**
+Status: **PASS**
 
 Primary commands:
 
@@ -8,6 +8,8 @@ Primary commands:
 npm run test:phase11
 npm run verify:phase11
 ```
+
+Final user Windows verification passed on the current Phase 11 head after the destructive-selection fixture was made deterministic.
 
 The final automated gate covers:
 
@@ -26,7 +28,9 @@ The final automated gate covers:
 - external file deletion during workflow;
 - partial unlink failure reporting and continued independent deletes;
 - cancel confirmation preserving temp files;
-- confirm deletion of exactly the selected temp ENDED session;
+- confirm deletion of exactly the highlighted temp ENDED session;
 - terminal raw/alternate-screen/cursor restore after destructive workflows.
 
-Do not mark this report PASS until the user runs the commands above on the current branch HEAD and reports a clean result.
+Environment note:
+
+- Windows symlink fixture may report SKIP when the environment does not permit symlink creation; this is not a gate failure.
