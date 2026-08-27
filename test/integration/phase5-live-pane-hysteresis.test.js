@@ -13,30 +13,26 @@ function fakeStdout({ columns = 80, rows = 35 } = {}) {
   };
 }
 
-test('LivePane carries previous lane count through resize jitter', () => {
+test('LivePane resize follows current responsive card-grid density without stale lane assumptions', () => {
   const stdout = fakeStdout({ columns: 80, rows: 35 });
   const state = createDemoState('idle', { authMode: 'login', nowMs: 1000 });
   const config = normalizeConfig(configForPreset('recommended'));
   const pane = new LivePaneController({ stdout, state, config, now: () => 1000, hysteresisCells: 4 });
 
   const initial = pane.render({ force: true });
-  assert.equal(initial.frame.layout.laneCount, 1);
+  assert.equal(initial.frame.layout.responsiveCards, true);
+  assert.equal(initial.frame.layout.columns, 2);
 
-  stdout.columns = 85;
-  const nearThreshold = pane.render({ force: true });
-  assert.equal(nearThreshold.frame.layout.laneCount, 1);
+  for (const width of [85, 90, 83, 75]) {
+    stdout.columns = width;
+    const next = pane.render({ force: true });
+    assert.equal(next.frame.layout.columns, 2);
+    assert.equal(next.frame.semantic.interactive, false);
+  }
 
-  stdout.columns = 90;
-  const crossed = pane.render({ force: true });
-  assert.equal(crossed.frame.layout.laneCount, 2);
-
-  stdout.columns = 83;
-  const jitterBack = pane.render({ force: true });
-  assert.equal(jitterBack.frame.layout.laneCount, 2);
-
-  stdout.columns = 75;
-  const clearlyNarrow = pane.render({ force: true });
-  assert.equal(clearlyNarrow.frame.layout.laneCount, 1);
+  stdout.columns = 60;
+  const narrow = pane.render({ force: true });
+  assert.equal(narrow.frame.layout.columns, 1);
 
   pane.dispose({ clear: false });
 });
