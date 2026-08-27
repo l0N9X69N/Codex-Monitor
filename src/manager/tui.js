@@ -1,6 +1,7 @@
 import { TerminalGuard } from '../terminal/guard.js';
 import { AnsiDiffRenderer } from '../terminal/diff-renderer.js';
-import { detectHistoryColorMode } from '../history/theme.js';
+import { detectHistoryColorMode, hpaint } from '../history/theme.js';
+import { truncateCells } from '../ui/cell-width.js';
 import { SessionManagerCore, buildProcessEvidence } from './session-core.js';
 import { SessionManagerTracker } from './tracker.js';
 import { SessionManagerRuntime } from './runtime.js';
@@ -34,6 +35,21 @@ function clearReportStatus(report) {
   if (report.rejected?.length) parts.push(`protected ${report.rejected.length}`);
   if (report.errors?.length) parts.push(`failed ${report.errors.length}`);
   return parts.join(' · ');
+}
+
+function rowStorageSize(row) {
+  const value = Number(row?.fileSizeBytes ?? row?.sizeBytes);
+  return Number.isFinite(value) && value >= 0 ? value : -1;
+}
+
+function storageSortedRows(rows = []) {
+  return [...(Array.isArray(rows) ? rows : [])].sort((a, b) => {
+    const sizeDelta = rowStorageSize(b) - rowStorageSize(a);
+    if (sizeDelta) return sizeDelta;
+    const activityDelta = Number(b?.lastActivityAtMs ?? b?.modifiedAtMs ?? 0) - Number(a?.lastActivityAtMs ?? a?.modifiedAtMs ?? 0);
+    if (activityDelta) return activityDelta;
+    return String(a?.project ?? '').localeCompare(String(b?.project ?? ''));
+  });
 }
 
 export async function runSessionManagerTui({
@@ -73,6 +89,7 @@ export async function runSessionManagerTui({
   let selectedIndex = 0;
   let viewMode = initialViewMode;
   let storageOpen = false;
+  let storageCursorIndex = 0;
   let clearConfirming = false;
   let clearStatus = '';
   const clearSelectedIds = new Set();
@@ -97,6 +114,31 @@ export async function runSessionManagerTui({
   };
 
   const visibleDashboardRows = () => lastFrame?.model?.rows ?? [];
+  const currentStorageRows = () => storageSortedRows(rows);
+  const clampStorageCursor = (value = storageCursorIndex) => {
+    const list = currentStorageRows();
+    if (!list.length) {
+      storageCursorIndex = 0;
+      return 0;
+    }
+    storageCursorIndex = Math.max(0, Math.min(list.length - 1, Number(value) || 0));
+    return storageCursorIndex;
+  };
+  const currentStorageRow = () => {
+    const list = currentStorageRows();
+    const index = clampStorageCursor();
+    return list[index] ?? null;
+  };
+  const syncStorageCursorToDashboard = () => {
+    const selected = selectedDashboardRow();
+    const list = currentStorageRows();
+    if (!list.length) {
+      storageCursorIndex = 0;
+      return;
+    }
+    const match = selected ? list.findIndex((row) => row.id === selected.id) : -1;
+    storageCursorIndex = match >= 0 ? match : Math.max(0, Math.min(storageCursorIndex, list.length - 1));
+  };
   const pruneClearSelection = () => {
     const valid = new Set(rows.filter((row) => row?.state === 'ENDED').map((row) => row.id));
     for (const id of clearSelectedIds) if (!valid.has(id)) clearSelectedIds.delete(id);
@@ -107,6 +149,7 @@ export async function runSessionManagerTui({
     const width = Math.max(44, stdout.columns || 120);
     const height = Math.max(16, stdout.rows || 36);
     pruneClearSelection();
+    clampStorageCursor();
     const storageSummary = storageSummaryCache.get(rows, { nowMs: now() });
     const selectedSummary = summarizeSelectedSessions(rows, clearSelectedIds);
     let frame;
@@ -114,7 +157,17 @@ export async function runSessionManagerTui({
     if (clearConfirming) {
       frame = renderClearConfirmation({ rows, selectedIds: clearSelectedIds, selectedSummary, width, height, mode: colorMode });
     } else if (storageOpen) {
-      frame = renderStorageManager({ summary: storageSummary, selectedSummary, selectedIds: clearSelectedIds, width, height, mode: colorMode, status: clearStatus });
+      frame = renderStorageManager({
+        summary: storageSummary,
+        selectedSummary,
+        selectedIds: clearSelectedIds,
+        rows: currentStorageRows(),
+        cursorIndex: storageCursorIndex,
+        width,
+        height,
+        mode: colorMode,
+        status: clearStatus
+      });
     } else if (core.selectedId && selectedDetail) {
       frame = renderSessionInspect({
         detail: selectedDetail,
@@ -149,6 +202,9 @@ export async function runSessionManagerTui({
         telemetry,
         activityPreview
       });
+      if (frame.lines?.length) {
+        frame.lines[frame.lines.length - 1] = truncateCells(`${frame.lines.at(-1)}  ${hpaint('M storage', 'dim', colorMode)}`, width, '');
+      }
     }
 
     if (!core.selectedId && !storageOpen && !clearConfirming && frame.model) {
@@ -178,6 +234,7 @@ export async function runSessionManagerTui({
       rows = result.rows ?? [];
       selectedDetail = result.selectedDetail ?? selectedDetail;
       storageSummaryCache.invalidate();
+      clampStorageCursor();
       if (!telemetry.samples.length) telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
       draw(false);
     }
@@ -232,8 +289,7 @@ export async function runSessionManagerTui({
     return Math.max(0, Math.min(count - 1, Number(value) || 0));
   };
 
-  const toggleCurrentClearSelection = () => {
-    const row = selectedDashboardRow();
+  const toggleClearSelection = (row) => {
     if (!row) return;
     if (row.state !== 'ENDED') {
       clearStatus = `${row.state ?? 'UNKNOWN'} session is protected`;
@@ -244,8 +300,9 @@ export async function runSessionManagerTui({
     clearStatus = `${clearSelectedIds.size} ENDED selected`;
   };
 
-  const selectVisibleEnded = (mode) => {
-    const eligible = visibleDashboardRows().filter((row) => row?.state === 'ENDED');
+  const selectEnded = (mode, sourceRows = null) => {
+    const source = Array.isArray(sourceRows) ? sourceRows : visibleDashboardRows();
+    const eligible = source.filter((row) => row?.state === 'ENDED');
     if (mode === 'none') clearSelectedIds.clear();
     else if (mode === 'all') for (const row of eligible) clearSelectedIds.add(row.id);
     else if (mode === 'invert') {
@@ -275,6 +332,7 @@ export async function runSessionManagerTui({
     tracker.cachedRows = rows;
     tracker.hasCachedRows = true;
     storageSummaryCache.invalidate();
+    clampStorageCursor();
     draw(true);
   };
 
@@ -297,18 +355,41 @@ export async function runSessionManagerTui({
     }
 
     if (storageOpen) {
+      const storageRows = currentStorageRows();
+      const page = Math.max(5, (stdout.rows || 30) - 12);
       if (action === 'quit' || action === 'storage-view') {
         storageOpen = false;
         clearStatus = '';
         draw(true);
+      } else if (action === 'up') {
+        clampStorageCursor(storageCursorIndex - 1);
+        draw(false);
+      } else if (action === 'down') {
+        clampStorageCursor(storageCursorIndex + 1);
+        draw(false);
+      } else if (action === 'page-up') {
+        clampStorageCursor(storageCursorIndex - page);
+        draw(false);
+      } else if (action === 'page-down') {
+        clampStorageCursor(storageCursorIndex + page);
+        draw(false);
+      } else if (action === 'home') {
+        clampStorageCursor(0);
+        draw(false);
+      } else if (action === 'end') {
+        clampStorageCursor(storageRows.length - 1);
+        draw(false);
+      } else if (action === 'select-toggle') {
+        toggleClearSelection(currentStorageRow());
+        draw(false);
       } else if (action === 'select-none') {
-        selectVisibleEnded('none');
+        selectEnded('none', storageRows);
         draw(false);
       } else if (action === 'select-all') {
-        selectVisibleEnded('all');
+        selectEnded('all', storageRows);
         draw(false);
       } else if (action === 'select-invert') {
-        selectVisibleEnded('invert');
+        selectEnded('invert', storageRows);
         draw(false);
       } else if (action === 'delete-selected') {
         if (clearSelectedIds.size) clearConfirming = true;
@@ -420,28 +501,34 @@ export async function runSessionManagerTui({
     } else if (action === 'direction') direction = direction === 'desc' ? 'asc' : 'desc';
     else if (action === 'view') viewMode = nextManagerView(viewMode);
     else if (action === 'storage-view') {
+      syncStorageCursorToDashboard();
       storageOpen = true;
       clearStatus = '';
       forceDraw = true;
     } else if (action === 'select-toggle') {
-      toggleCurrentClearSelection();
+      toggleClearSelection(selectedDashboardRow());
+      syncStorageCursorToDashboard();
       storageOpen = true;
       forceDraw = true;
     } else if (action === 'select-all') {
-      selectVisibleEnded('all');
+      selectEnded('all', visibleDashboardRows());
+      syncStorageCursorToDashboard();
       storageOpen = true;
       forceDraw = true;
     } else if (action === 'select-none') {
-      selectVisibleEnded('none');
+      selectEnded('none', visibleDashboardRows());
+      syncStorageCursorToDashboard();
       storageOpen = true;
       forceDraw = true;
     } else if (action === 'select-invert') {
-      selectVisibleEnded('invert');
+      selectEnded('invert', visibleDashboardRows());
+      syncStorageCursorToDashboard();
       storageOpen = true;
       forceDraw = true;
     } else if (action === 'delete-selected') {
       if (clearSelectedIds.size) clearConfirming = true;
       else {
+        syncStorageCursorToDashboard();
         storageOpen = true;
         clearStatus = 'No ENDED sessions selected';
       }
@@ -491,7 +578,7 @@ export async function runSessionManagerTui({
     telemetryTimer.unref?.();
     void runtime.start().catch((error) => { void abort(error); });
     const code = await finished;
-    return { code, core, tracker, runtime, viewMode, theme, colorMode, telemetry, clearSelectedIds, clearStatus };
+    return { code, core, tracker, runtime, viewMode, theme, colorMode, telemetry, clearSelectedIds, clearStatus, storageCursorIndex };
   } finally {
     processRef?.removeListener?.('SIGINT', onSignal);
     processRef?.removeListener?.('SIGTERM', onSignal);
