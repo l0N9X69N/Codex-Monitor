@@ -1,103 +1,35 @@
-import readline from 'node:readline/promises';
-import { stdin as defaultInput, stdout as defaultOutput } from 'node:process';
 import { applyArchiveConfigSideEffects } from './archive-effects.js';
-import { configForPreset, normalizeConfig, CONFIG_VALUES } from './schema.js';
+import { normalizeConfig } from './schema.js';
 import { saveMonitorConfig } from './store.js';
-
-function parseList(answer, allowed, fallback) {
-  const text = String(answer ?? '').trim();
-  if (!text) return [...fallback];
-  return [...new Set(text.split(',').map((item) => item.trim().toLowerCase()).filter((item) => allowed.has(item)))];
-}
-
-function yesNo(answer, fallback = false) {
-  const value = String(answer ?? '').trim().toLowerCase();
-  if (!value) return fallback;
-  return ['y', 'yes', '1', 'true', 'on', 'c', 'co', 'có'].includes(value);
-}
+import { runStandaloneConfigTui } from './tui.js';
 
 export async function configureMonitor({
-  input = defaultInput,
-  output = defaultOutput,
+  input = process.stdin,
+  output = process.stdout,
+  processRef = process,
   currentConfig,
   previousConfig = currentConfig,
   filePath,
   save = saveMonitorConfig,
-  applyArchiveEffects = applyArchiveConfigSideEffects
+  applyArchiveEffects = applyArchiveConfigSideEffects,
+  colorCapability,
+  theme
 } = {}) {
-  const rl = readline.createInterface({ input, output });
-  try {
-    const before = normalizeConfig(previousConfig);
-    let config = normalizeConfig(currentConfig);
-    output.write('\nCodex Monitor configuration\n');
-    output.write('Live Monitor is a passive HUD; official Codex owns all keyboard input.\n\n');
+  const result = await runStandaloneConfigTui({
+    stdin: input,
+    stdout: output,
+    processRef,
+    currentConfig: normalizeConfig(currentConfig),
+    previousConfig: normalizeConfig(previousConfig),
+    filePath,
+    save,
+    applyArchiveEffects,
+    ...(colorCapability ? { colorCapability } : {}),
+    ...(theme ? { theme } : {})
+  });
 
-    const language = (await rl.question(`Language [vi/en] (${config.language}): `)).trim().toLowerCase();
-    if (CONFIG_VALUES.languages.has(language)) config.language = language;
-
-    const preset = (await rl.question(`Preset [recommended/compact/full/custom] (${config.preset}): `)).trim().toLowerCase();
-    if (CONFIG_VALUES.presets.has(preset)) config = normalizeConfig(configForPreset(preset, config));
-
-    if (config.preset === 'custom') {
-      output.write('\nSections / Metrics\n');
-      for (const section of CONFIG_VALUES.sections) {
-        if (section === 'system') continue;
-        const answer = await rl.question(`${section} [y/n] (${config.sections[section] ? 'y' : 'n'}): `);
-        config.sections[section] = yesNo(answer, config.sections[section]);
-      }
-
-      const systemMode = (await rl.question(`System [off/auto/on] (${config.systemMode}): `)).trim().toLowerCase();
-      if (CONFIG_VALUES.systemModes.has(systemMode)) config.systemMode = systemMode;
-      config.sections.system = config.systemMode !== 'off';
-
-      const beastMode = (await rl.question(`Beast Mode [off/auto/on] (${config.beastMode}): `)).trim().toLowerCase();
-      if (CONFIG_VALUES.beastModes.has(beastMode)) config.beastMode = beastMode;
-
-      const enabledMetrics = Object.entries(config.metrics).filter(([, enabled]) => enabled).map(([key]) => key);
-      const metrics = await rl.question(`Metrics comma-separated (${enabledMetrics.join(',')}): `);
-      if (metrics.trim()) {
-        const chosen = new Set(parseList(metrics, CONFIG_VALUES.metrics, enabledMetrics));
-        for (const key of CONFIG_VALUES.metrics) config.metrics[key] = chosen.has(key);
-      }
-    }
-
-    output.write('\nHeader — 4 items is the recommended density; extra items are preserved and shown when space allows\n');
-    const header = await rl.question(`Header comma-separated (${config.header.join(',')}): `);
-    config.header = parseList(header, CONFIG_VALUES.header, config.header);
-
-    const theme = (await rl.question(`Theme [color/mono/matrix] (${config.theme}): `)).trim().toLowerCase();
-    if (CONFIG_VALUES.themes.has(theme)) config.theme = theme;
-
-    output.write('\nLocal Session Archive\n');
-    output.write('Stores technical analytics locally in SQLite; raw prompt/assistant transcript content is not archived by default.\n');
-    const archiveEnabled = await rl.question(`Archive [y/n] (${config.archive.enabled ? 'y' : 'n'}): `);
-    config.archive.enabled = yesNo(archiveEnabled, config.archive.enabled);
-
-    config = normalizeConfig(config);
-    output.write('\nPreview config\n');
-    output.write(`${JSON.stringify(config, null, 2)}\n`);
-    const confirm = await rl.question('Save? [Y/n]: ');
-    if (String(confirm).trim() && !yesNo(confirm, true)) return { saved: false, config };
-
-    const result = save(config, { filePath });
-    const archiveEffects = applyArchiveEffects(before, result.config);
-    output.write(`Saved: ${result.filePath}\n`);
-    if (archiveEffects?.transition === 'off-to-on') {
-      if (archiveEffects.ok) {
-        output.write('Archive enabled: SQLite initialized, Codex wake hooks installed, and Archive Service started/woken.\n');
-        if (archiveEffects.hooks?.trustRequired) {
-          output.write('Codex hook review required: open /hooks in Codex and trust the new Codex Monitor hooks before they can run.\n');
-        }
-      } else {
-        output.write(`Archive enabled, but runtime activation needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
-      }
-    } else if (archiveEffects?.transition === 'on-to-off') {
-      output.write(archiveEffects.ok
-        ? 'Archive disabled: Monitor-owned Codex hooks removed, service stop requested, and existing SQLite archive was kept.\n'
-        : `Archive disabled and data kept, but runtime cleanup needs attention: ${archiveEffects.error ?? 'unknown error'}\n`);
-    }
-    return { saved: true, ...result, archiveEffects };
-  } finally {
-    rl.close();
+  if (result.error && result.code !== 0) {
+    output?.write?.(`${result.error.message}\n`);
   }
+  return result;
 }
