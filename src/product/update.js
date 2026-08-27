@@ -44,6 +44,7 @@ function requestJson(url, { timeoutMs = 2500, httpsRef = https } = {}) {
         try { resolve(JSON.parse(raw)); } catch { reject(new Error('release metadata JSON invalid')); }
       });
     });
+    request.on?.('socket', (socket) => socket?.unref?.());
     request.setTimeout?.(timeoutMs, () => request.destroy(new Error('release metadata request timed out')));
     request.on('error', reject);
   });
