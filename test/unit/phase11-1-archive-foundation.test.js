@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ARCHIVE_PARSER_VERSION,
+  ARCHIVE_SCHEMA_VERSION,
   ARCHIVE_SYNC_STATE,
   DEFAULT_ARCHIVE_CONFIG
 } from '../../src/archive/constants.js';
@@ -31,10 +32,11 @@ test('archive defaults are opt-in, forever retention, unlimited size and no auto
 });
 
 test('archive schema contains specialized tables, cascades and WAL-oriented pragmas', () => {
-  for (const table of ['sessions', 'turns', 'context_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_meta', 'schema_migrations']) {
+  for (const table of ['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_meta', 'schema_migrations']) {
     assert.match(ARCHIVE_SCHEMA_SQL, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
   assert.match(ARCHIVE_SCHEMA_SQL, /ON DELETE CASCADE/);
+  assert.match(ARCHIVE_SCHEMA_SQL, /uq_tokens_offset/);
   assert.match(ARCHIVE_SCHEMA_SQL, /uq_tools_offset/);
   assert.match(ARCHIVE_SCHEMA_SQL, /uq_events_offset/);
   assert.deepEqual(ARCHIVE_PRAGMAS, [
@@ -43,7 +45,7 @@ test('archive schema contains specialized tables, cascades and WAL-oriented prag
     'PRAGMA foreign_keys=ON;',
     'PRAGMA busy_timeout=2500;'
   ]);
-  assert.match(archiveBootstrapSql(123), /VALUES \(1, 1, 123\)/);
+  assert.match(archiveBootstrapSql(123), new RegExp(`VALUES \\(1, ${ARCHIVE_SCHEMA_VERSION}, 123\\)`));
 });
 
 test('byte-accurate tail reader advances only through complete JSONL lines', async () => {
@@ -141,10 +143,10 @@ test('archive schema is executable with built-in node:sqlite', () => {
     for (const pragma of ARCHIVE_PRAGMAS) db.exec(pragma);
     db.exec(archiveBootstrapSql(123));
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
-    for (const table of ['sessions', 'turns', 'context_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_meta', 'schema_migrations']) {
+    for (const table of ['sessions', 'turns', 'context_samples', 'token_samples', 'tool_events', 'session_events', 'resource_usage', 'ingest_state', 'archive_meta', 'schema_migrations']) {
       assert.ok(tables.includes(table), `missing table ${table}`);
     }
-    assert.equal(db.prepare('SELECT schema_version FROM archive_meta WHERE singleton_id = 1').get().schema_version, 1);
+    assert.equal(db.prepare('SELECT schema_version FROM archive_meta WHERE singleton_id = 1').get().schema_version, ARCHIVE_SCHEMA_VERSION);
   } finally {
     db.close();
   }
