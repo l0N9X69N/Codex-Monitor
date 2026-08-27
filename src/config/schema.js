@@ -1,3 +1,5 @@
+import { DEFAULT_ARCHIVE_CONFIG } from '../archive/constants.js';
+
 const VALID = Object.freeze({
   languages: new Set(['vi', 'en']),
   presets: new Set(['recommended', 'compact', 'full', 'custom']),
@@ -5,6 +7,7 @@ const VALID = Object.freeze({
   backgrounds: new Set(['terminal', 'black', 'dark']),
   beastModes: new Set(['off', 'auto', 'on']),
   systemModes: new Set(['off', 'auto', 'on']),
+  archiveRetentions: new Set(['forever']),
   header: new Set(['activity', 'model', 'reasoning', 'project', 'git', 'auth', 'health', 'session-age']),
   sections: new Set(['context', 'usage', 'session', 'activity', 'system']),
   metrics: new Set([
@@ -110,6 +113,19 @@ function normalizeSystemMode(input = {}, fallback = 'off') {
   return normalizeMode(input, 'systemMode', VALID.systemModes, fallback, input?.sections?.system, 'on');
 }
 
+export function normalizeArchiveConfig(input = {}, fallback = DEFAULT_ARCHIVE_CONFIG) {
+  const requestedLimit = input?.sizeLimitBytes;
+  const sizeLimitBytes = requestedLimit === null || requestedLimit === undefined || requestedLimit === ''
+    ? null
+    : Number(requestedLimit);
+  return {
+    enabled: typeof input?.enabled === 'boolean' ? input.enabled : Boolean(fallback?.enabled),
+    retention: VALID.archiveRetentions.has(input?.retention) ? input.retention : fallback?.retention ?? 'forever',
+    sizeLimitBytes: Number.isSafeInteger(sizeLimitBytes) && sizeLimitBytes > 0 ? sizeLimitBytes : null,
+    autoCleanup: typeof input?.autoCleanup === 'boolean' ? input.autoCleanup : Boolean(fallback?.autoCleanup)
+  };
+}
+
 export const DEFAULT_CONFIG = Object.freeze({
   configVersion: 2,
   language: 'vi',
@@ -123,6 +139,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   metrics: PRESET_DEFINITIONS.recommended.metrics,
   fields: DEFAULT_FIELD_VISIBILITY,
   header: PRESET_DEFINITIONS.recommended.header,
+  archive: DEFAULT_ARCHIVE_CONFIG,
   updateCheck: true
 });
 
@@ -158,6 +175,7 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
     metrics: booleanMap(input?.metrics, [...VALID.metrics], presetBase.metrics),
     fields: fieldVisibility(input?.fields, presetBase.fields ?? DEFAULT_FIELD_VISIBILITY),
     header: uniqueValid(input?.header, VALID.header, presetBase.header),
+    archive: normalizeArchiveConfig(input?.archive, presetBase.archive ?? DEFAULT_ARCHIVE_CONFIG),
     updateCheck: typeof input?.updateCheck === 'boolean' ? input.updateCheck : Boolean(presetBase.updateCheck)
   };
   config.sections.system = config.systemMode !== 'off' && config.metrics.system !== false;
