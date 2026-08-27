@@ -5,6 +5,7 @@ const ACTION_FLAGS = Object.freeze({
   '--help': 'help',
   '--manager': 'manager',
   '--doctor': 'doctor',
+  '--repair': 'repair',
   '--monitor-version': 'monitor-version',
   '--configure': 'configure',
   '--reset': 'reset',
