@@ -14,6 +14,7 @@ import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
 import { PRODUCT_VERSION } from '../product/meta.js';
 import { checkForUpdates, printUpdateReport } from '../product/update.js';
+import { scheduleBackgroundUpdateCheck } from '../product/update-scheduler.js';
 import { printUninstallReport, uninstallMonitorIntegration } from '../product/uninstall.js';
 import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
@@ -73,8 +74,17 @@ function printHelp() {
   process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
   process.stdout.write('Local Session Archive is optional/local-only and remains disabled until explicit opt-in.\n');
   process.stdout.write('--repair/--uninstall touch only Monitor-owned integration and never delete Codex auth/sessions or the Archive DB.\n');
+  process.stdout.write('Background update checks are throttled to about once per 24h, never auto-install, and can be disabled in Config.\n');
   process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
   process.stdout.write('Example: codexm -- --version   # official Codex version via exact passthrough\n');
+}
+
+function scheduleProductUpdateCheck(config) {
+  scheduleBackgroundUpdateCheck(config, {
+    onUpdate(report) {
+      process.stderr.write(`codexm: update available (${report.latestVersion}); run codexm --update for details.\n`);
+    }
+  });
 }
 
 async function main() {
@@ -163,6 +173,8 @@ async function main() {
     persistedConfig = onboarding.config;
     config = applyRuntimeOverrides(persistedConfig, parsed.overrides);
   }
+
+  scheduleProductUpdateCheck(config);
 
   if (parsed.action === 'manager') {
     kickArchiveService(config);
