@@ -1,6 +1,7 @@
 import { ARCHIVE_SYNC_STATE } from '../archive/constants.js';
 import { getArchiveServiceStatus } from '../archive/service-control.js';
 import { scanArchiveSourcesWithHealth } from '../archive/source-scan.js';
+import { normalizePlatformPath } from '../platform/common.js';
 import { managerArchiveConfigState } from './archive-config-state.js';
 import { ManagerArchiveIndex } from './archive-index.js';
 
@@ -12,6 +13,10 @@ function normalizedScan(value) {
     errors: Array.isArray(value?.errors) ? value.errors : [],
     limited: value?.limited === true
   };
+}
+
+function pathKey(value) {
+  return normalizePlatformPath(value) ?? String(value ?? '');
 }
 
 function normalizeServiceStatus(status, metadataInstanceId = null) {
@@ -40,12 +45,12 @@ function normalizeServiceStatus(status, metadataInstanceId = null) {
 export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
   constructor({ scanSourcesWithHealth = scanArchiveSourcesWithHealth, readServiceStatus = undefined, ...options } = {}) {
     let lastScan = { sources: [], complete: false, errors: [], limited: false };
-    const scanSources = async (rootPath) => {
+    const rawScanSources = async (rootPath) => {
       lastScan = normalizedScan(await scanSourcesWithHealth(rootPath));
       return lastScan.sources;
     };
     const usesDefaultDatabase = options.openDatabase === undefined;
-    super({ ...options, scanSources });
+    super({ ...options, scanSources: rawScanSources });
     this.scanSourcesWithHealth = scanSourcesWithHealth;
     this.readServiceStatus = readServiceStatus === undefined
       ? (usesDefaultDatabase ? getArchiveServiceStatus : null)
@@ -61,6 +66,24 @@ export class ManagerArchiveVerifiedIndex extends ManagerArchiveIndex {
     };
     this._scanState = () => lastScan;
     this.configRevision = managerArchiveConfigState().revision;
+    this.scanSources = async (rootPath) => {
+      const sources = await rawScanSources(rootPath);
+      const suppressed = this.suppressionKeys();
+      if (!suppressed.size) return sources;
+      const filtered = sources.filter((source) => !suppressed.has(pathKey(source?.filePath)));
+      lastScan = { ...lastScan, sources: filtered };
+      return filtered;
+    };
+  }
+
+  suppressionKeys() {
+    const db = this.opened?.repository?.db;
+    if (!db?.prepare) return new Set();
+    try {
+      return new Set(db.prepare('SELECT source_path FROM archive_suppressions').all().map((row) => pathKey(row.source_path)));
+    } catch {
+      return new Set();
+    }
   }
 
   syncPublishedConfig() {
