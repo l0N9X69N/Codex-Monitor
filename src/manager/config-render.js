@@ -90,7 +90,7 @@ export function renderManagerConfig({
     'dim',
     mode
   ), safeWidth));
-  lines.push(padLine(hpaint('S save · R revert · Esc/Q back · Archive lifecycle changes run only after Save.', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint('S save · R revert · Esc/Q back · Archive uses the same lifecycle engine; side effects run only after Save.', 'dim', mode), safeWidth));
 
   return {
     lines: lines.slice(0, safeHeight),
