@@ -18,8 +18,28 @@ function rawForKey(str, key = {}) {
   return null;
 }
 
+function isReadableInputStream(stream) {
+  return typeof stream?.read === 'function' && typeof stream?.pipe === 'function';
+}
+
 export function attachTerminalKeyInput(stream, onInput) {
   if (!stream?.on || typeof onInput !== 'function') return () => {};
+
+  // Real terminal streams go through Node's keypress decoder so Windows console
+  // input is normalized before the TUI sees it. Minimal fake TTYs used by tests
+  // are EventEmitters rather than Readable streams; keep their historical
+  // direct-data contract without installing both paths and double-dispatching.
+  if (!isReadableInputStream(stream)) {
+    const onData = (data) => {
+      const raw = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
+      if (raw) onInput(raw, null);
+    };
+    stream.on('data', onData);
+    return () => {
+      try { stream.off?.('data', onData); } catch {}
+    };
+  }
+
   readline.emitKeypressEvents(stream);
   const onKeypress = (str, key) => {
     const raw = rawForKey(str, key);
@@ -31,4 +51,4 @@ export function attachTerminalKeyInput(stream, onInput) {
   };
 }
 
-export { rawForKey as terminalRawForKey };
+export { isReadableInputStream, rawForKey as terminalRawForKey };
