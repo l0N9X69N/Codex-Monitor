@@ -109,6 +109,7 @@ export async function runSessionManagerTui({
   let clearStatus = '';
   const clearSelectedIds = new Set();
   let selectedDetail = null;
+  let archiveInspectOpen = false;
   let inspectTab = 'info';
   let timelineFilter = 'all';
   let timelineSearch = '';
@@ -123,6 +124,7 @@ export async function runSessionManagerTui({
   let telemetryTimer = null;
   let archiveStatus = managerArchiveStatusFromResult({ archiveEnabled: monitorConfig?.archive?.enabled === true });
 
+  const inspectOpen = () => Boolean(core.selectedId || archiveInspectOpen);
   const selectedDashboardRow = () => {
     if (!lastFrame?.model?.rows?.length) return null;
     const index = Math.max(0, Math.min(lastFrame.model.rows.length - 1, selectedIndex));
@@ -186,7 +188,7 @@ export async function runSessionManagerTui({
         mode: colorMode,
         status: clearStatus
       });
-    } else if (core.selectedId && selectedDetail) {
+    } else if (inspectOpen() && selectedDetail) {
       frame = renderSessionInspect({
         detail: selectedDetail,
         width,
@@ -231,12 +233,12 @@ export async function runSessionManagerTui({
       }
     }
 
-    if (!configOpen && !core.selectedId && !storageOpen && !clearConfirming && frame.model) {
+    if (!configOpen && !inspectOpen() && !storageOpen && !clearConfirming && frame.model) {
       selectedIndex = frame.model.selectedIndex < 0 ? 0 : frame.model.selectedIndex;
       selectedId = frame.model.selected?.id ?? null;
       lastFrame = frame;
       lastInspectFrame = null;
-    } else if (!configOpen && core.selectedId && !storageOpen && !clearConfirming) {
+    } else if (!configOpen && inspectOpen() && !storageOpen && !clearConfirming) {
       lastInspectFrame = frame;
       if (frame.timeline && frame.timeline.selectedIndex >= 0) timelineSelectedIndex = frame.timeline.selectedIndex;
     }
@@ -246,7 +248,7 @@ export async function runSessionManagerTui({
   };
 
   const sampleTelemetry = () => {
-    if (done || configOpen || core.selectedId || searching || storageOpen || clearConfirming) return;
+    if (done || configOpen || inspectOpen() || searching || storageOpen || clearConfirming) return;
     telemetry = telemetrySeries.sample(rows, { scope, search, atMs: now() });
     draw(false);
   };
@@ -451,7 +453,7 @@ export async function runSessionManagerTui({
       return;
     }
 
-    if (core.selectedId) {
+    if (inspectOpen()) {
       if (timelineSearching) {
         if (action === 'search-cancel') {
           timelineSearching = false;
@@ -479,6 +481,7 @@ export async function runSessionManagerTui({
 
       if (action === 'quit') {
         core.releaseSelection();
+        archiveInspectOpen = false;
         selectedDetail = null;
         inspectTab = 'info';
         timelineFilter = 'all';
@@ -566,16 +569,26 @@ export async function runSessionManagerTui({
     } else if (action === 'inspect') {
       const selected = lastFrame?.model?.selected;
       if (selected) {
-        core.select(selected.id);
-        selectedDetail = core.selectedDetail();
-        inspectTab = 'timeline';
-        timelineFilter = 'all';
-        timelineSearch = '';
-        timelineSearchDraft = '';
-        timelineSearching = false;
-        timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
-        timelineDetail = false;
-        forceDraw = true;
+        const archiveDetail = tracker.archiveDetailForRow(selected);
+        if (archiveDetail) {
+          core.releaseSelection();
+          archiveInspectOpen = true;
+          selectedDetail = archiveDetail;
+        } else {
+          archiveInspectOpen = false;
+          core.select(selected.id);
+          selectedDetail = core.selectedDetail();
+        }
+        if (selectedDetail) {
+          inspectTab = 'timeline';
+          timelineFilter = 'all';
+          timelineSearch = '';
+          timelineSearchDraft = '';
+          timelineSearching = false;
+          timelineSelectedIndex = Number.MAX_SAFE_INTEGER;
+          timelineDetail = false;
+          forceDraw = true;
+        }
       }
     }
     draw(forceDraw);
@@ -615,6 +628,7 @@ export async function runSessionManagerTui({
       clearStatus,
       storageCursorIndex,
       configOpen,
+      archiveInspectOpen,
       configDirty: configController.dirty,
       config: configController.savedConfig,
       archiveStatus
