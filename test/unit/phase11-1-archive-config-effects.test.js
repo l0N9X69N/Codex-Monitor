@@ -23,13 +23,17 @@ function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-phase11-1-config-'));
 }
 
-test('OFF to ON bootstraps SQLite before starting service', () => {
+test('OFF to ON bootstraps SQLite, installs hooks, then starts service', () => {
   const order = [];
   let closed = false;
   const result = applyArchiveConfigSideEffects(config(false), config(true), {
     openDatabase() {
       order.push('db');
       return { filePath: '/archive.sqlite3', close() { closed = true; order.push('close'); } };
+    },
+    installHooks() {
+      order.push('hooks');
+      return { installed: true, changed: true, trustRequired: true, error: null };
     },
     kickService(next) {
       order.push('service');
@@ -38,21 +42,40 @@ test('OFF to ON bootstraps SQLite before starting service', () => {
     }
   });
 
-  assert.deepEqual(order, ['db', 'close', 'service']);
+  assert.deepEqual(order, ['db', 'close', 'hooks', 'service']);
   assert.equal(closed, true);
   assert.equal(result.transition, 'off-to-on');
   assert.equal(result.ok, true);
   assert.equal(result.bootstrap.initialized, true);
+  assert.equal(result.hooks.installed, true);
 });
 
-test('ON to OFF requests service stop without opening or deleting archive database', () => {
+test('OFF to ON remains service-capable when hook install needs attention', () => {
+  let services = 0;
+  const result = applyArchiveConfigSideEffects(config(false), config(true), {
+    openDatabase() { return { filePath: '/archive.sqlite3', close() {} }; },
+    installHooks() { return { installed: false, changed: false, error: 'invalid-hooks-json' }; },
+    kickService() {
+      services += 1;
+      return { started: true, running: true, error: null };
+    }
+  });
+  assert.equal(services, 1);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'invalid-hooks-json');
+});
+
+test('ON to OFF removes Monitor hooks and requests service stop without opening or deleting archive database', () => {
   let opens = 0;
+  let removals = 0;
   let stops = 0;
   const result = applyArchiveConfigSideEffects(config(true), config(false), {
     openDatabase() { opens += 1; throw new Error('must not open'); },
+    uninstallHooks() { removals += 1; return { removed: true, changed: true, error: null }; },
     requestStop() { stops += 1; return { requested: true, reason: 'stop-requested' }; }
   });
   assert.equal(opens, 0);
+  assert.equal(removals, 1);
   assert.equal(stops, 1);
   assert.equal(result.transition, 'on-to-off');
   assert.equal(result.ok, true);
@@ -62,6 +85,8 @@ test('unchanged archive state has zero runtime side effects', () => {
   let calls = 0;
   const deps = {
     openDatabase() { calls += 1; },
+    installHooks() { calls += 1; },
+    uninstallHooks() { calls += 1; },
     kickService() { calls += 1; },
     requestStop() { calls += 1; }
   };
