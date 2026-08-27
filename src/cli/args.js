@@ -1,6 +1,18 @@
 import { normalizeAuthOverride } from '../core/auth.js';
 import { validateChoice } from '../config/schema.js';
 
+const ACTION_FLAGS = Object.freeze({
+  '--help': 'help',
+  '--manager': 'manager',
+  '--doctor': 'doctor',
+  '--monitor-version': 'monitor-version',
+  '--configure': 'configure',
+  '--reset': 'reset',
+  '--config': 'config',
+  '--config-path': 'config-path',
+  '--demo': 'demo'
+});
+
 function requireValue(argv, index, flag) {
   const value = argv[index + 1];
   if (value == null || value === '') throw new Error(`${flag} requires a value`);
@@ -13,26 +25,32 @@ function normalizeChoice(kind, value, flag) {
   return normalized;
 }
 
+function selectAction(current, next, flag) {
+  if (current === 'run' || current === next) return next;
+  throw new Error(`Conflicting Monitor actions: ${current} and ${next} (${flag})`);
+}
+
+function selectImplicitAction(current, next, flag) {
+  if (current === 'run' || current === next) return next;
+  throw new Error(`Conflicting Monitor actions: ${current} and ${next} (${flag})`);
+}
+
 export function parseMonitorArgs(argv = []) {
   const codexArgs = [];
   let auth = 'auto';
   let action = 'run';
   let parsingMonitor = true;
-  const overrides = { preset: null, theme: null, background: null, language: null };
+  const overrides = { preset: null, theme: null, background: null, language: null, managerView: null };
   const demo = { state: 'idle' };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (parsingMonitor && arg === '--') { parsingMonitor = false; continue; }
-    if (parsingMonitor && arg === '--help') { action = 'help'; continue; }
-    if (parsingMonitor && arg === '--manager') { action = 'manager'; continue; }
-    if (parsingMonitor && arg === '--doctor') { action = 'doctor'; continue; }
-    if (parsingMonitor && arg === '--monitor-version') { action = 'monitor-version'; continue; }
-    if (parsingMonitor && arg === '--configure') { action = 'configure'; continue; }
-    if (parsingMonitor && arg === '--reset') { action = 'reset'; continue; }
-    if (parsingMonitor && arg === '--config') { action = 'config'; continue; }
-    if (parsingMonitor && arg === '--config-path') { action = 'config-path'; continue; }
-    if (parsingMonitor && arg === '--demo') { action = 'demo'; continue; }
+
+    if (parsingMonitor && ACTION_FLAGS[arg]) {
+      action = selectAction(action, ACTION_FLAGS[arg], arg);
+      continue;
+    }
 
     if (parsingMonitor && arg === '--auth') {
       auth = normalizeAuthOverride(requireValue(argv, i, '--auth'));
@@ -65,11 +83,20 @@ export function parseMonitorArgs(argv = []) {
       continue;
     }
     if (parsingMonitor && arg.startsWith('--lang=')) { overrides.language = normalizeChoice('languages', arg.slice('--lang='.length), '--lang'); continue; }
+    if (parsingMonitor && arg === '--manager-view') {
+      overrides.managerView = normalizeChoice('managerViews', requireValue(argv, i, '--manager-view'), '--manager-view');
+      i += 1;
+      continue;
+    }
+    if (parsingMonitor && arg.startsWith('--manager-view=')) {
+      overrides.managerView = normalizeChoice('managerViews', arg.slice('--manager-view='.length), '--manager-view');
+      continue;
+    }
     if (parsingMonitor && arg === '--demo-state') {
       const value = String(requireValue(argv, i, '--demo-state')).trim().toLowerCase();
       if (!['idle', 'thinking', 'tool', 'approval', 'error'].includes(value)) throw new Error(`--demo-state received unsupported value: ${value}`);
       demo.state = value;
-      action = 'demo';
+      action = selectImplicitAction(action, 'demo', '--demo-state');
       i += 1;
       continue;
     }
@@ -77,11 +104,15 @@ export function parseMonitorArgs(argv = []) {
       const value = String(arg.slice('--demo-state='.length)).trim().toLowerCase();
       if (!['idle', 'thinking', 'tool', 'approval', 'error'].includes(value)) throw new Error(`--demo-state received unsupported value: ${value}`);
       demo.state = value;
-      action = 'demo';
+      action = selectImplicitAction(action, 'demo', '--demo-state');
       continue;
     }
 
     codexArgs.push(arg);
+  }
+
+  if (overrides.managerView != null && action !== 'manager') {
+    throw new Error('--manager-view requires --manager');
   }
 
   return { action, auth, codexArgs, overrides, demo };
