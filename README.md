@@ -1,59 +1,138 @@
-# Codex Monitor v1 — rearchitecture branch
+# Codex Monitor
 
-This branch is being rebuilt from the frozen `PROJECT-SPEC.md`.
+Codex Monitor is a local-first wrapper and terminal monitor for the official OpenAI Codex CLI.
 
-Current milestone: **Phase 01 — Correctness & Terminal Safety**.
+The v1 product has two primary surfaces:
 
-Phase 01 intentionally keeps the runtime visually minimal. Its job is to establish a safe official-Codex PTY wrapper, current-run-only state semantics, authentication isolation, freshness rules, session binding rules, and terminal recovery before the Live UI is rebuilt.
+- **Live Monitor** — a passive HUD around the official Codex process. After Codex starts, Codex owns 100% of stdin.
+- **Session Manager** — an independent TUI for local session inspection, storage controls, analytics, configuration and the optional Local Session Archive.
 
-## Development requirements
+## Requirements
 
-- Node.js 20–26
+- Node.js `>=22.13 <27`
 - npm
 - official `codex` CLI available on `PATH`
 
-Install dependencies:
+Node 22.13+ is required because Local Session Archive uses Node's built-in `node:sqlite` runtime. No external SQLite executable or native SQLite npm addon is required.
+
+## Install from the repository
 
 ```powershell
 npm install
+npm link
 ```
 
-Run automated Phase 01 verification:
+After linking, the product command is:
 
 ```powershell
-.\scripts\phase1-verify.ps1
+codexm
 ```
 
-Or directly:
+For source-runtime testing without linking:
 
 ```powershell
-npm run verify:phase1
-node .\src\cli\codexm.js --doctor
+node ./src/cli/codexm.js
 ```
 
-Run the current wrapper baseline:
-
-```powershell
-node .\src\cli\codexm.js
-```
-
-Explicit auth override for the current invocation:
-
-```powershell
-node .\src\cli\codexm.js --auth api
-node .\src\cli\codexm.js --auth login
-```
-
-`--` stops Monitor option parsing and passes the rest directly to official Codex:
-
-```powershell
-node .\src\cli\codexm.js -- --help
-```
-
-Manual Phase 01 acceptance steps are in:
+## Core commands
 
 ```text
-docs/qa/phase-01/MANUAL-TEST-REQUIRED.md
+codexm                              Live Monitor + official Codex
+codexm --manager                    Session Manager
+codexm --configure                  Shared Config
+codexm --reset                      Reset Monitor preferences only
+codexm --config                     Print effective Monitor config
+codexm --config-path                Print Monitor config path
+codexm --doctor / --diagnostics     Sanitized local diagnostics
+codexm --repair                     Repair Monitor-owned Archive integration
+codexm --update                     Check GitHub Releases; never auto-installs
+codexm --uninstall                  Remove Monitor-owned integration only
+codexm --version                    Codex Monitor version
 ```
 
-`PROJECT-SPEC.md` remains the source of truth. If this README conflicts with it, the spec wins.
+Unknown Codex arguments are forwarded unchanged. Use `--` for an exact passthrough boundary:
+
+```powershell
+codexm -- --version
+codexm -- --help
+```
+
+There is no Monitor-owned `--history` command in v1.
+
+## First run and configuration
+
+A clean interactive launch runs first-run setup before Manager or official Codex starts. Existing valid Monitor configs migrate without being forced through onboarding again.
+
+`Manager -> C` and `codexm --configure` use the same Config controller and persisted state. Runtime Manager view cycling with `V` does not silently change the saved default.
+
+Reset affects Monitor preferences only. It does not delete or modify official Codex login/auth, Codex session JSONL, or the Local Session Archive database.
+
+## Local Session Archive
+
+Archive is **optional, local-only, and Disabled by default**. Enabling it is an explicit Config action.
+
+Data ownership model:
+
+```text
+Codex JSONL     = Codex-owned raw source
+Archive SQLite  = Monitor-owned technical analytics archive
+```
+
+Archive hooks and filesystem watching are wake-up signals only. Reconcile against JSONL + committed offsets is the correctness mechanism, so missed signals must not mean missed data.
+
+Disabling Archive stops/removes Monitor-owned background integration while keeping the SQLite database. `Clear Archive` is not the same as deleting Codex sessions.
+
+## Updates
+
+When enabled in Config, background update checks are throttled to approximately once per 24 hours and query GitHub Releases only. They do not auto-install updates and do not upload prompts, project data, tokens, session content or archive content.
+
+Run an explicit check with:
+
+```powershell
+codexm --update
+```
+
+## Uninstall
+
+First remove Monitor-owned Archive integration safely:
+
+```powershell
+codexm --uninstall
+```
+
+Then remove the npm package/link using the package manager that installed it, for example:
+
+```powershell
+npm uninstall -g codex-monitor
+```
+
+The Monitor config and Archive database are preserved by the built-in uninstall action. Official Codex auth and sessions are never removed.
+
+## Verification
+
+```powershell
+npm run verify:phase13
+```
+
+Build a release package and SHA256 checksum:
+
+```powershell
+npm run release:artifact
+```
+
+Release artifacts are written under `dist/`, which is gitignored.
+
+## Documentation
+
+See:
+
+- `docs/CLI.md`
+- `docs/CONFIGURATION.md`
+- `docs/MANAGER.md`
+- `docs/LOCAL-SESSION-ARCHIVE.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/RELEASE-MANUAL-CHECKLIST.md`
+- `SECURITY.md`
+- `PRIVACY.md`
+
+`PROJECT-SPEC.md` remains the top-level product source of truth. Accepted decision docs and numbered RoadMap phases provide newer execution semantics where explicitly stated.
