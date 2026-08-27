@@ -18,6 +18,17 @@ const ACTION_FLAGS = Object.freeze({
   '--demo': 'demo'
 });
 
+// Short aliases deliberately apply only before Codex arguments begin. This keeps
+// convenient product commands such as `codexm -m` while preserving Codex short
+// flags in commands such as `codexm resume -m <model>`. A leading Codex short
+// flag that collides with a Monitor alias can always be forced through with `--`.
+const SHORT_ACTION_FLAGS = Object.freeze({
+  '-h': 'help',
+  '-m': 'manager',
+  '-c': 'configure',
+  '-v': 'monitor-version'
+});
+
 function requireValue(argv, index, flag) {
   const value = argv[index + 1];
   if (value == null || value === '') throw new Error(`${flag} requires a value`);
@@ -54,6 +65,11 @@ export function parseMonitorArgs(argv = []) {
 
     if (parsingMonitor && ACTION_FLAGS[arg]) {
       action = selectAction(action, ACTION_FLAGS[arg], arg);
+      continue;
+    }
+
+    if (parsingMonitor && codexArgs.length === 0 && SHORT_ACTION_FLAGS[arg]) {
+      action = selectAction(action, SHORT_ACTION_FLAGS[arg], arg);
       continue;
     }
 
