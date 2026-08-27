@@ -27,6 +27,12 @@ function rowSignature(row) {
     row?.observedTurnCount ?? '',
     row?.toolCount ?? '',
     row?.observedToolCount ?? '',
+    row?.archiveSyncState ?? '',
+    row?.archiveVerified === true ? 'verified' : '',
+    row?.rawSourceExists === false ? 'archived-raw' : '',
+    row?.archiveCommittedOffset ?? '',
+    row?.archiveObservedFileSize ?? '',
+    row?.archiveLastError ?? '',
     stableRecent(row?.recentErrors),
     stableRecent(row?.recentRetries),
     stableRecent(row?.recentCompactions)
@@ -82,7 +88,14 @@ function snapshotSignature(result) {
     diagnostics.stickyMatchCount,
     diagnostics.startMatchCount,
     diagnostics.missingAssociationCount,
-    result.processError ?? ''
+    result.processError ?? '',
+    result.archiveEnabled === true ? 'archive-on' : '',
+    result.archiveAvailable === true ? 'archive-open' : '',
+    result.archiveSourceScanComplete === true ? 'scan-complete' : '',
+    result.archiveSyncState ?? '',
+    result.archivePendingFileCount ?? '',
+    result.archivePendingByteCount ?? '',
+    result.archiveError ?? ''
   ].join('::');
 }
 
@@ -182,6 +195,7 @@ export async function runSessionManagerRuntime({
   } finally {
     processRef?.removeListener?.('SIGINT', stop);
     processRef?.removeListener?.('SIGTERM', stop);
+    try { tracker.archiveIndex?.close?.(); } catch {}
     await platformAdapter.cleanup?.();
   }
   return { code: 0, core, tracker, runtime };
