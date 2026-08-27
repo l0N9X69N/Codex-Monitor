@@ -59,7 +59,12 @@ async function main() {
     kickArchiveService(config);
     const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
     const result = interactive
-      ? await runSessionManagerTui({ platformAdapter, theme: config.theme })
+      ? await runSessionManagerTui({
+        platformAdapter,
+        theme: config.theme,
+        monitorConfig: config,
+        configPath
+      })
       : await runSessionManagerRuntime({ platformAdapter });
     return result.code;
   }
