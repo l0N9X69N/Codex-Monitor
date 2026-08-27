@@ -80,11 +80,7 @@ function printHelp() {
 }
 
 function scheduleProductUpdateCheck(config) {
-  scheduleBackgroundUpdateCheck(config, {
-    onUpdate(report) {
-      process.stderr.write(`codexm: update available (${report.latestVersion}); run codexm --update for details.\n`);
-    }
-  });
+  scheduleBackgroundUpdateCheck(config);
 }
 
 async function main() {
