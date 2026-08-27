@@ -5,6 +5,8 @@ import { detectAuth } from '../core/auth.js';
 import { createCurrentRunState, withDetectedAuth } from '../core/state.js';
 import { applyRuntimeOverrides, DEFAULT_CONFIG, normalizeConfig } from '../config/schema.js';
 import { configureMonitor } from '../config/configure.js';
+import { runFirstRunOnboarding } from '../config/onboarding-tui.js';
+import { shouldRunFirstRunOnboarding } from '../config/onboarding.js';
 import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
@@ -41,6 +43,7 @@ function printHelp() {
   process.stdout.write('  --demo                        Render passive Live HUD demo\n');
   process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n');
   process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n\n');
+  process.stdout.write('A clean interactive first launch runs setup before Manager or official Codex starts.\n');
   process.stdout.write('Live Monitor is display-only after Codex starts: every keyboard byte belongs to official Codex.\n');
   process.stdout.write('Plain `codexm resume` uses a local pre-launch session picker so history can hydrate immediately.\n');
   process.stdout.write('There is no public --history mode in the current v1 contract.\n');
@@ -52,25 +55,13 @@ async function main() {
   const platformAdapter = createPlatformAdapter();
   const configPath = getMonitorConfigPath();
   const loaded = loadMonitorConfig({ filePath: configPath });
-  const config = applyRuntimeOverrides(loaded.config, parsed.overrides);
+  let persistedConfig = loaded.config;
+  let config = applyRuntimeOverrides(persistedConfig, parsed.overrides);
+  const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
 
   if (loaded.error) process.stderr.write(`codexm: config could not be read; using defaults (${loaded.error.message}).\n`);
 
   if (parsed.action === 'help') { printHelp(); return 0; }
-  if (parsed.action === 'manager') {
-    kickArchiveService(config);
-    const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
-    const result = interactive
-      ? await runSessionManagerTui({
-        platformAdapter,
-        theme: config.theme,
-        monitorConfig: loaded.config,
-        configPath,
-        initialViewMode: config.manager?.view ?? 'operations'
-      })
-      : await runSessionManagerRuntime({ platformAdapter });
-    return result.code;
-  }
   if (parsed.action === 'monitor-version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (parsed.action === 'doctor') {
     const report = doctorReport();
@@ -104,6 +95,31 @@ async function main() {
     });
     process.stdout.write(`${frame.lines.join('\n')}\n`);
     return 0;
+  }
+
+  if (shouldRunFirstRunOnboarding({ action: parsed.action, interactive, loaded })) {
+    const onboarding = await runFirstRunOnboarding({
+      currentConfig: loaded.valid ? loaded.config : normalizeConfig(DEFAULT_CONFIG),
+      previousConfig: loaded.valid ? loaded.config : normalizeConfig(DEFAULT_CONFIG),
+      filePath: configPath
+    });
+    if (!onboarding.saved) return onboarding.code ?? 1;
+    persistedConfig = onboarding.config;
+    config = applyRuntimeOverrides(persistedConfig, parsed.overrides);
+  }
+
+  if (parsed.action === 'manager') {
+    kickArchiveService(config);
+    const result = interactive
+      ? await runSessionManagerTui({
+        platformAdapter,
+        theme: config.theme,
+        monitorConfig: persistedConfig,
+        configPath,
+        initialViewMode: config.manager?.view ?? 'operations'
+      })
+      : await runSessionManagerRuntime({ platformAdapter });
+    return result.code;
   }
 
   const codexPath = resolveCodexExecutable();
