@@ -35,6 +35,7 @@ function healthRow(row) {
     reconcileGeneration: integer(row.reconcile_generation, 0),
     pendingFileCount: integer(row.pending_file_count, 0),
     pendingByteCount: integer(row.pending_byte_count, 0),
+    failedFileCount: integer(row.failed_file_count, 0),
     hookLastSeenAt: timestamp(row.hook_last_seen_at, null),
     watcherLastSeenAt: timestamp(row.watcher_last_seen_at, null),
     serviceInstanceId: row.service_instance_id ?? null,
@@ -70,7 +71,12 @@ export class ArchiveHealthStore {
   }
 
   getHealth() {
-    return healthRow(this.db.prepare('SELECT * FROM archive_meta WHERE singleton_id = 1').get());
+    return healthRow(this.db.prepare(`
+      SELECT m.*,
+        (SELECT COUNT(*) FROM ingest_state WHERE last_error IS NOT NULL) AS failed_file_count
+      FROM archive_meta m
+      WHERE singleton_id = 1
+    `).get());
   }
 
   markServiceStarted(instanceId) {
