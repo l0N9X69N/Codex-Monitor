@@ -40,6 +40,27 @@ test('Git branch-only does not request diff or ahead-behind collectors', () => {
   assert.equal(graph.hasCollector('git-ahead-behind'), false);
 });
 
+test('Git header forces cheap branch demand even when preset metric is off', () => {
+  const graph = buildDemandGraph(config({
+    header: ['git'],
+    enabledMetrics: {
+      activity: true,
+      model: true,
+      context: true,
+      usage: true,
+      session: true,
+      gitBranch: false,
+      gitDiff: false,
+      gitAheadBehind: false
+    },
+    git: { diffStats: false, aheadBehind: false }
+  }));
+  assert.equal(graph.hasMetric('gitBranch'), true);
+  assert.equal(graph.hasCollector('git-branch'), true);
+  assert.equal(graph.hasCollector('git-diff'), false);
+  assert.equal(graph.hasCollector('git-ahead-behind'), false);
+});
+
 test('Git expensive details are requested only when configured', () => {
   const graph = buildDemandGraph(config({ header: ['git'], git: { diffStats: true, aheadBehind: true } }));
   assert.equal(graph.hasCollector('git-branch'), true);
