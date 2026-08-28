@@ -687,7 +687,7 @@ function enabledCards(config, state, width) {
   for (const option of options) {
     if (option.mode !== 'auto') continue;
     const nextRows = gridRowCountFor(width, cards.length + 1);
-    if (nextRows <= baselineRows) {
+    if (baselineRows === 1 && nextRows === 1) {
       cards.push(option.card);
       baselineRows = nextRows;
     }
