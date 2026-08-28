@@ -90,6 +90,8 @@ There is no Monitor-owned `--history` command in v1.
 
 A clean interactive launch runs first-run setup before Manager or official Codex starts. Existing valid Monitor configs migrate without being forced through onboarding again.
 
+A clean uninstall followed by the GitHub bootstrap installer is treated as a fresh product install. The first `codexm` launch opens Initial Setup again, while preserved Monitor preferences are used as the starting values. Monitor config and Archive data are not deleted just to re-arm setup.
+
 `Manager -> C` and `codexm --configure` use the same Config controller and persisted state. Runtime Manager view cycling with `V` does not silently change the saved default.
 
 Reset affects Monitor preferences only. It does not delete or modify official Codex login/auth, Codex session JSONL, or the Local Session Archive database.
@@ -121,15 +123,21 @@ codexm --update
 
 ## Uninstall
 
-From a repository/source installation on Windows:
+For an installation created by the GitHub bootstrap, run this directly from PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/l0N9X69N/Codex-Monitor/v1-rearchitecture/uninstall.ps1 | iex
+```
+
+The direct GitHub uninstaller delegates to the installed ownership-aware uninstaller when available. It removes Monitor-owned Archive integration, the global npm package/link, recognized `codexm` shims, and the GitHub bootstrap source under `%LOCALAPPDATA%\CodexMonitor\app`.
+
+From a repository/source installation on Windows you can instead run:
 
 ```powershell
 npm run uninstall:windows
 ```
 
-The Windows uninstaller runs the built-in `codexm --uninstall` integration cleanup first, then removes the global npm package/link and recognized stale Codex Monitor shims.
-
-The Monitor config and Archive database are preserved. Official Codex auth and sessions are never removed.
+The Monitor config and Archive database are preserved. Official Codex auth and sessions are never removed. Because the bootstrap app directory is removed, a later direct GitHub install is a fresh install and first launch opens Initial Setup again.
 
 ## Verification
 
