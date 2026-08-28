@@ -32,16 +32,23 @@ test('hook installer preserves user hooks, installs only low-frequency archive w
       }
     }, null, 2)}\n`);
 
-    const handler = buildArchiveHookHandler({ execPath: '/node', entryPath: '/archive-hook.js' });
+    const handler = buildArchiveHookHandler({ execPath: '/node', entryPath: '/archive-hook.js', platform: 'linux' });
     assert.equal(handler.timeout, 10);
     assert.match(handler.command, /--codexm-archive-hook/);
-    assert.match(handler.commandWindows, /^powershell\.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand /);
-    assert.equal(handler.commandWindows.includes('"'), false);
 
-    const encoded = handler.commandWindows.split(' ').at(-1);
+    const windowsHandler = buildArchiveHookHandler({
+      execPath: 'C:\\Program Files\\nodejs\\node.exe',
+      entryPath: 'C:\\Users\\Test User\\Codex Monitor\\hook-entry.js',
+      platform: 'win32'
+    });
+    assert.equal(windowsHandler.timeout, 10);
+    assert.match(windowsHandler.command, /^powershell\.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand /);
+    assert.equal(windowsHandler.command.includes('"'), false);
+    assert.equal(windowsHandler.commandWindows, undefined);
+    const encoded = windowsHandler.command.split(' ').at(-1);
     const decoded = Buffer.from(encoded, 'base64').toString('utf16le');
-    assert.match(decoded, /\/node/);
-    assert.match(decoded, /\/archive-hook\.js/);
+    assert.match(decoded, /Program Files/);
+    assert.match(decoded, /Test User/);
     assert.match(decoded, /--codexm-archive-hook/);
     assert.match(decoded, /exit 0/);
 
@@ -68,11 +75,15 @@ test('hook installer preserves user hooks, installs only low-frequency archive w
   }
 });
 
-test('hook uninstaller removes only Monitor-owned handlers', () => {
+test('hook uninstaller recognizes and removes encoded Windows Monitor handlers', () => {
   const root = tempRoot();
   const hooksPath = path.join(root, 'hooks.json');
   try {
-    const handler = buildArchiveHookHandler({ execPath: '/node', entryPath: '/archive-hook.js' });
+    const handler = buildArchiveHookHandler({
+      execPath: 'C:\\Program Files\\nodejs\\node.exe',
+      entryPath: 'C:\\Users\\Test User\\hook-entry.js',
+      platform: 'win32'
+    });
     installArchiveHooks({ hooksPath, handler });
     const document = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
     document.hooks.SessionStart.push({ hooks: [{ type: 'command', command: 'echo keep-me' }] });
@@ -83,7 +94,7 @@ test('hook uninstaller removes only Monitor-owned handlers', () => {
     assert.equal(result.changed, true);
     const after = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
     const commands = Object.values(after.hooks).flat().flatMap((group) => group.hooks ?? []).map((hook) => hook.command ?? '');
-    assert.equal(commands.some((command) => command.includes(ARCHIVE_HOOK_MARKER)), false);
+    assert.equal(commands.some((command) => command.startsWith('powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ')), false);
     assert.equal(commands.includes('echo keep-me'), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
