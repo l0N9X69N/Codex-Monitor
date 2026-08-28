@@ -1,6 +1,6 @@
 import { DEFAULT_ARCHIVE_CONFIG } from '../archive/constants.js';
 
-export const CONFIG_VERSION = 3;
+export const CONFIG_VERSION = 4;
 
 const VALID = Object.freeze({
   languages: new Set(['vi', 'en']),
@@ -192,10 +192,19 @@ export function normalizeConfig(input = {}, { base = DEFAULT_CONFIG } = {}) {
 
 export function migrateConfig(input = {}, { existing = false } = {}) {
   const rawVersion = Number(input?.configVersion);
+  const hasVersion = Number.isSafeInteger(rawVersion);
+  const upgrading = existing && (!hasVersion || rawVersion < CONFIG_VERSION);
   const migrated = clone(input && typeof input === 'object' ? input : {});
-  if (existing && (!Number.isSafeInteger(rawVersion) || rawVersion < CONFIG_VERSION) && typeof migrated.setupComplete !== 'boolean') {
-    migrated.setupComplete = true;
+
+  if (upgrading && typeof migrated.setupComplete !== 'boolean') migrated.setupComplete = true;
+
+  // v3 Recommended shipped System as forced-on. A user who explicitly edits
+  // System becomes Custom, so Recommended + on is safe to migrate to the new
+  // automatic policy without overriding an intentional Custom choice.
+  if (upgrading && (!hasVersion || rawVersion < 4) && migrated.preset === 'recommended' && String(migrated.systemMode ?? '').toLowerCase() === 'on') {
+    migrated.systemMode = 'auto';
   }
+
   if (!migrated.manager || typeof migrated.manager !== 'object') migrated.manager = { view: 'operations' };
   return normalizeConfig(migrated);
 }
