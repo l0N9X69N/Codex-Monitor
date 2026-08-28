@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import process from 'node:process';
+import { detectHistoryColorMode } from '../history/theme.js';
 import { attachTerminalKeyInput } from '../terminal/key-input.js';
 import { runSessionManagerTui as runRawSessionManagerTui } from './tui.js';
 
@@ -15,6 +16,15 @@ function createDecodedInputProxy(stdin) {
   return proxy;
 }
 
+function managerColorCapability(options = {}) {
+  const capability = options.colorCapability ?? detectHistoryColorMode();
+  const theme = String(options.theme ?? options.monitorConfig?.theme ?? 'color').toLowerCase();
+  if (theme === 'cyberpunk' && capability !== 'mono' && !String(capability).startsWith('cyberpunk:')) {
+    return `cyberpunk:${capability}`;
+  }
+  return capability;
+}
+
 export async function runPortableSessionManagerTui(options = {}) {
   const stdin = options.stdin ?? process.stdin;
   const proxy = createDecodedInputProxy(stdin);
@@ -27,10 +37,14 @@ export async function runPortableSessionManagerTui(options = {}) {
   });
 
   try {
-    return await runRawSessionManagerTui({ ...options, stdin: proxy });
+    return await runRawSessionManagerTui({
+      ...options,
+      stdin: proxy,
+      colorCapability: managerColorCapability(options)
+    });
   } finally {
     detach();
   }
 }
 
-export { createDecodedInputProxy };
+export { createDecodedInputProxy, managerColorCapability };
