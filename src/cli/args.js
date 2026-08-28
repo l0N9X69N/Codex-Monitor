@@ -12,7 +12,6 @@ const CONTROL_COMMANDS = new Set([
   'doctor',
   'repair',
   'update',
-  'uninstall',
   'version',
   'config',
   'config-path',

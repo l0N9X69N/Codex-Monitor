@@ -2,10 +2,8 @@
 import process from 'node:process';
 import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
-import { scheduleProductRemoval } from '../platform/product-uninstall.js';
 import { PRODUCT_VERSION } from '../product/meta.js';
 import { checkForUpdates, printUpdateReport } from '../product/update.js';
-import { printUninstallReport, uninstallMonitorIntegration } from '../product/uninstall.js';
 import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { renderDemo } from '../ui/demo.js';
@@ -40,12 +38,6 @@ async function main() {
     const report = await checkForUpdates();
     printUpdateReport(report);
     return 0;
-  }
-  if (parsed.command === 'uninstall') {
-    const report = uninstallMonitorIntegration();
-    const removal = report.ok ? scheduleProductRemoval() : { scheduled: false, reason: 'integration-cleanup-failed' };
-    printUninstallReport(report, process.stdout, { packageRemoval: removal });
-    return report.ok && (removal.scheduled || removal.reason === 'package-manager-required') ? 0 : 2;
   }
   if (parsed.command === 'config-path') {
     process.stdout.write(`${configPath}\n`);

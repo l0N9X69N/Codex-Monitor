@@ -13,7 +13,7 @@ The v1 product has two primary surfaces:
 - npm
 - official `codex` CLI available on `PATH`
 
-Node 22.13+ is required because Local Session Archive uses Node's built-in `node:sqlite` runtime. No external SQLite executable or native SQLite npm addon is required.
+Node 22.13+ is required because Local Session Archive uses Node's built-in `node:sqlite` runtime.
 
 ## Install from GitHub on Windows
 
@@ -23,7 +23,14 @@ Run this from PowerShell:
 irm https://raw.githubusercontent.com/l0N9X69N/Codex-Monitor/v1-rearchitecture/install.ps1 | iex
 ```
 
-The bootstrap installer installs a supported Node.js runtime when needed, downloads Codex Monitor, installs dependencies, exposes the command family, and preserves existing Monitor config/Archive data across upgrades.
+`install.ps1` is the only public installer. It downloads the latest source from the configured GitHub ref and installs Monitor dependencies from `package-lock.json` with `npm ci`.
+
+Shared-runtime safety:
+
+- if a supported Node/npm already exists, it is reused and never upgraded/replaced by the installer;
+- if Node/npm are both absent, the installer may install the current Node.js LTS package through `winget` (npm is bundled with Node);
+- if an existing Node installation is unsupported or incomplete, installation stops and asks the user to repair/update it manually rather than modifying a shared runtime;
+- official Codex is never installed, upgraded or modified by Codex Monitor.
 
 After installation:
 
@@ -33,19 +40,6 @@ codexmh
 codexm
 ```
 
-## Install from an existing repository checkout
-
-```powershell
-npm run install:windows
-```
-
-For manual development setup:
-
-```powershell
-npm install
-npm link
-```
-
 ## Command family
 
 ```text
@@ -53,20 +47,10 @@ codexm              Live Monitor + official Codex
 codexmm             Session Manager
 codexmc             Shared Config
 codexmh             Codex Monitor help
-codexmctl            Diagnostics / repair / update / uninstall / product controls
+codexmctl            Diagnostics / repair / update / product controls
 ```
 
-`codexm` is intentionally a transparent Codex wrapper. Every argument belongs to official Codex and is forwarded in original order:
-
-```powershell
-codexm -h
-codexm -v
-codexm -m gpt-5
-codexm -c model_reasoning_effort=high
-codexm resume -m gpt-5
-```
-
-Codex Monitor does not reserve `-m`, `-c`, `-h`, `-v`, `--help`, `--version`, or other Codex flags in the `codexm` entrypoint.
+`codexm` is intentionally a transparent Codex wrapper. Every argument belongs to official Codex and is forwarded in original order.
 
 Monitor-specific commands use their own namespace:
 
@@ -76,62 +60,53 @@ codexmc --reset
 codexmctl doctor
 codexmctl repair
 codexmctl update
-codexmctl uninstall
 codexmctl version
 codexmctl config
 codexmctl config-path
 ```
 
+Install/uninstall are intentionally **not** CLI commands. This avoids a running executable trying to remove itself and keeps product ownership logic in one external entrypoint.
+
 `codexmh`, `codexmm -h`, `codexmc -h`, and `codexmctl` display help in the Monitor language selected during initial setup (`vi` or `en`).
 
 ## First run and configuration
 
-A clean interactive **bare** `codexm` launch runs initial setup before official Codex starts. If the invocation already contains Codex arguments, onboarding does not intercept them; for example `codexm -h` always belongs to official Codex.
+A clean interactive **bare** `codexm` launch runs initial setup before official Codex starts. If the invocation already contains Codex arguments, onboarding does not intercept them.
 
-`Manager -> C` and `codexmc` use the same Config controller and persisted state. Runtime Manager view cycling with `V` does not silently change the saved default.
-
-Reset with `codexmc --reset` affects Monitor preferences only. It does not delete or modify official Codex login/auth, Codex session JSONL, or the Local Session Archive database.
+`Manager -> C` and `codexmc` use the same Config controller and persisted state. Reset with `codexmc --reset` affects Monitor preferences only.
 
 ## Local Session Archive
 
-Archive is **optional, local-only, and Disabled by default**. Enabling it is an explicit Config action.
-
-Data ownership model:
+Archive is optional, local-only, and Disabled by default.
 
 ```text
 Codex JSONL     = Codex-owned raw source
 Archive SQLite  = Monitor-owned technical analytics archive
 ```
 
-Archive hooks and filesystem watching are wake-up signals only. Reconcile against JSONL + committed offsets is the correctness mechanism, so missed signals must not mean missed data.
-
-Disabling Archive stops/removes Monitor-owned background integration while keeping the SQLite database. `Clear Archive` is not the same as deleting Codex sessions.
+Archive hooks and filesystem watching are wake-up signals only. Reconcile against JSONL + committed offsets is the correctness mechanism.
 
 ## Updates
 
-When enabled in Config, background update checks are throttled to approximately once per 24 hours and query GitHub Releases only. They do not auto-install updates and do not upload prompts, project data, tokens, session content or archive content.
-
-Run an explicit check with:
-
-```powershell
-codexmctl update
-```
+`codexmctl update` checks for a newer Monitor release but never installs it automatically. Background checks are throttled and can be disabled in Config.
 
 ## Uninstall
 
-For an installation created by the GitHub bootstrap, run this directly from PowerShell:
+Run the external GitHub uninstaller:
 
 ```powershell
 irm https://raw.githubusercontent.com/l0N9X69N/Codex-Monitor/v1-rearchitecture/uninstall.ps1 | iex
 ```
 
-From a repository/source installation on Windows you can instead run:
+`uninstall.ps1` removes only Codex Monitor-owned integration, the global `codex-monitor` npm link/package registration, Monitor-owned command shims, and the recognized source directory under `%LOCALAPPDATA%\CodexMonitor\app`.
 
-```powershell
-npm run uninstall:windows
-```
+It deliberately preserves shared/system tools and user data:
 
-The Monitor config and Archive database are preserved. Official Codex auth and sessions are never removed.
+- Node.js and npm — even when the installer originally had to install them, because other software may now depend on them;
+- official Codex CLI;
+- Codex auth and Codex sessions;
+- Monitor config;
+- Local Session Archive SQLite database.
 
 ## Verification
 
@@ -139,25 +114,4 @@ The Monitor config and Archive database are preserved. Official Codex auth and s
 npm run verify:phase13
 ```
 
-Build a release package and SHA256 checksum:
-
-```powershell
-npm run release:artifact
-```
-
-Release artifacts are written under `dist/`, which is gitignored.
-
-## Documentation
-
-See:
-
-- `docs/CLI.md`
-- `docs/CONFIGURATION.md`
-- `docs/MANAGER.md`
-- `docs/LOCAL-SESSION-ARCHIVE.md`
-- `docs/TROUBLESHOOTING.md`
-- `docs/RELEASE-MANUAL-CHECKLIST.md`
-- `SECURITY.md`
-- `PRIVACY.md`
-
-`PROJECT-SPEC.md` remains the top-level product source of truth. Accepted decision docs and numbered RoadMap phases provide newer execution semantics where explicitly stated.
+See `docs/CLI.md`, `docs/CONFIGURATION.md`, `docs/MANAGER.md`, `docs/LOCAL-SESSION-ARCHIVE.md`, `docs/TROUBLESHOOTING.md` and `docs/RELEASE-MANUAL-CHECKLIST.md` for details.

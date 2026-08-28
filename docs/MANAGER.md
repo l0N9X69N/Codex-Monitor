@@ -3,7 +3,7 @@
 Launch independently from Codex:
 
 ```text
-codexm --manager
+codexmm
 ```
 
 Manager does not spawn official Codex.
@@ -19,7 +19,7 @@ Charts
 Auto
 ```
 
-Use `V` at runtime to cycle views. Runtime view changes do not silently persist. Use Config or `--manager-view <view> --manager` for explicit preference/one-shot behavior.
+Use `V` at runtime to cycle views. Runtime view changes do not silently persist. Use Config or `codexmm --view <view>` for one-shot behavior.
 
 ## Core workflows
 
@@ -37,4 +37,4 @@ Manager can represent LIVE, ENDED and ARCHIVED sessions. When Archive is enabled
 
 ## Terminal behavior
 
-Manager uses raw-mode terminal input while active and must restore raw mode, cursor, alternate screen and mouse state on normal exit, Esc flows, Ctrl+C and handled signals.
+Manager uses raw-mode terminal input while active and must restore terminal state on normal exit, Esc flows, Ctrl+C and handled signals.
