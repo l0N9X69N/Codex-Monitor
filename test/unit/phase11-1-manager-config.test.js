@@ -183,16 +183,35 @@ test('Fields explain what each metric means and align descriptions into one colu
   assert.ok(starts.every((start) => start === starts[0] && start > 0));
 });
 
-test('Vietnamese language changes Config navigation, descriptions and footer', () => {
+test('Vietnamese Config keeps canonical English UI vocabulary and localizes explanations', () => {
   const controller = new ManagerConfigController({ config: config(false, 'vi'), archivePanel: panel() });
+
   controller.moveTab(3);
-  const frame = renderManagerConfig({ controller, width: 180, height: 30, mode: 'mono' });
-  const text = frame.lines.join('\n');
-  assert.match(text, /\[Thanh đầu\]/);
-  assert.match(text, /Hoạt động/);
+  let frame = renderManagerConfig({ controller, width: 180, height: 30, mode: 'mono' });
+  let text = frame.lines.join('\n');
+  assert.match(text, /\[Header\]/);
+  assert.match(text, /\[x\] Activity/);
   assert.match(text, /Trạng thái Codex hiện tại/);
-  assert.match(text, /đổi tab/);
-  assert.doesNotMatch(text, /Current Codex state so you can see/);
+  assert.doesNotMatch(text, /\[Thanh đầu\]/);
+  assert.doesNotMatch(text, /\[x\] Hoạt động/);
+
+  controller.moveTab(-2);
+  frame = renderManagerConfig({ controller, width: 180, height: 30, mode: 'mono' });
+  text = frame.lines.join('\n');
+  assert.match(text, /\[Cards\]/);
+  assert.match(text, /\[[ x]\] Context/);
+  assert.match(text, /Hiển thị áp lực cửa sổ context/);
+
+  controller.moveTab(4);
+  frame = renderManagerConfig({ controller, width: 180, height: 30, mode: 'mono' });
+  text = frame.lines.join('\n');
+  assert.match(text, /\[Appearance\]/);
+  assert.match(text, /Theme/);
+  assert.match(text, /Background/);
+  assert.match(text, /Language/);
+  assert.match(text, /Chọn cách phối màu terminal/);
+
+  assert.match(text, /đổi tab|chọn|thay đổi/);
 });
 
 test('Vietnamese Fields keep canonical English metric names while localizing explanations', () => {
