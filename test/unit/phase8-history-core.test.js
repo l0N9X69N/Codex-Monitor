@@ -36,16 +36,16 @@ function captureStream() {
   return { stream: { write(value) { text += String(value); return true; } }, text: () => text };
 }
 
-test('--manager is Monitor-owned while --history is forwarded to official Codex', () => {
+test('codexm forwards --manager, --history and the explicit -- boundary to official Codex', () => {
   const manager = parseMonitorArgs(['--manager']);
   const history = parseMonitorArgs(['--history']);
   const explicit = parseMonitorArgs(['--', '--history']);
-  assert.equal(manager.action, 'manager');
-  assert.deepEqual(manager.codexArgs, []);
+  assert.equal(manager.action, 'run');
+  assert.deepEqual(manager.codexArgs, ['--manager']);
   assert.equal(history.action, 'run');
   assert.deepEqual(history.codexArgs, ['--history']);
   assert.equal(explicit.action, 'run');
-  assert.deepEqual(explicit.codexArgs, ['--history']);
+  assert.deepEqual(explicit.codexArgs, ['--', '--history']);
 });
 
 test('Session Manager entrypoint discovers local sessions without spawning Codex', async () => {
