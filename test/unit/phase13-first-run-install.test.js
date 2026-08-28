@@ -72,10 +72,10 @@ test('fresh install does not rewrite malformed preserved config', () => {
   }
 });
 
-test('recommended defaults expose System telemetry by default', () => {
+test('recommended defaults expose System telemetry in automatic layout mode', () => {
   const config = normalizeConfig(DEFAULT_CONFIG);
   assert.equal(config.preset, 'recommended');
-  assert.equal(config.systemMode, 'on');
+  assert.equal(config.systemMode, 'auto');
   assert.equal(config.sections.system, true);
   assert.equal(config.metrics.system, true);
   assert.equal(config.setupComplete, false);
