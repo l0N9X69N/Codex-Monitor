@@ -3,14 +3,28 @@ import { hpaint } from '../history/theme.js';
 import { cellWidth, padCells, truncateCells } from '../ui/cell-width.js';
 import { MANAGER_CONFIG_TABS, MANAGER_CONFIG_TAB_LABELS } from './config-controller.js';
 
+const CONFIG_HINT_KEY_TOKENS = Object.freeze({
+  'Tab/←/→': 'cyberCyan',
+  '↑/↓': 'cyberCyan',
+  'Enter/Space': 'cyberCyan',
+  P: 'cyberGreen',
+  M: 'cyberMagenta',
+  S: 'cyberGreen',
+  R: 'cyberAmber',
+  'Esc/Q': 'cyberMagenta'
+});
+
 function padLine(text, width) {
   return truncateCells(String(text ?? ''), width, '');
 }
 
-function localizedRow(row, language) {
+function localizedRow(row, language, activeTab) {
   return {
     ...row,
-    label: configText(row?.label, language),
+    // Field names mirror the canonical English labels shown by the Live HUD.
+    // Localize only their explanations so Vietnamese users learn what the
+    // metric means without seeing a different name in Config versus Live.
+    label: activeTab === 'fields' ? row?.label : configText(row?.label, language),
     value: configText(row?.value, language),
     description: configText(row?.description, language)
   };
@@ -56,6 +70,19 @@ function renderRow(row, selected, width, mode, stemWidth, language) {
   return truncateCells(text, width, '…');
 }
 
+function renderHintLine(text, mode) {
+  const segments = String(text ?? '').split(' · ');
+  return segments.map((segment) => {
+    const splitAt = segment.indexOf(' ');
+    const key = splitAt >= 0 ? segment.slice(0, splitAt) : segment;
+    const description = splitAt >= 0 ? segment.slice(splitAt + 1) : '';
+    const keyToken = CONFIG_HINT_KEY_TOKENS[key];
+    if (!keyToken) return hpaint(segment, 'text', mode);
+    const paintedKey = hpaint(key, keyToken, mode);
+    return description ? `${paintedKey} ${hpaint(description, 'text', mode)}` : paintedKey;
+  }).join(` ${hpaint('·', 'grid', mode)} `);
+}
+
 export function renderManagerConfig({
   controller,
   width = 120,
@@ -67,7 +94,7 @@ export function renderManagerConfig({
   const safeHeight = Math.max(16, Number(height) || 36);
   const language = controller?.draftConfig?.language ?? controller?.savedConfig?.language ?? 'en';
   const rawRows = controller?.rows?.() ?? [];
-  const rows = rawRows.map((row) => localizedRow(row, language));
+  const rows = rawRows.map((row) => localizedRow(row, language, controller?.activeTab));
   const cursorIndex = Math.max(0, Math.min(rows.length - 1, Number(controller?.cursorIndex) || 0));
   const stemWidth = descriptionStemWidth(rows, safeWidth - 2);
   const tabs = MANAGER_CONFIG_TABS.map((tab) => {
@@ -96,17 +123,16 @@ export function renderManagerConfig({
   while (lines.length < safeHeight - 3) lines.push('');
   if (controller?.status) lines.push(padLine(hpaint(configText(controller.status, language), controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
   else lines.push('');
-  lines.push(padLine(hpaint(
-    configText(
-      previewAvailable
-        ? 'Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview'
-        : 'Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change',
-      language
-    ),
-    'dim',
-    mode
-  ), safeWidth));
-  lines.push(padLine(hpaint(configText('S save · R revert · Esc/Q back · Archive uses the same lifecycle engine; side effects run only after Save.', language), 'dim', mode), safeWidth));
+  lines.push(padLine(renderHintLine(configText(
+    previewAvailable
+      ? 'Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview'
+      : 'Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change',
+    language
+  ), mode), safeWidth));
+  lines.push(padLine(renderHintLine(configText(
+    'S save · R revert · Esc/Q back · Archive uses the same lifecycle engine; side effects run only after Save.',
+    language
+  ), mode), safeWidth));
 
   return {
     lines: lines.slice(0, safeHeight),
