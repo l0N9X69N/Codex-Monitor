@@ -117,8 +117,9 @@ test('onboarding cancel never saves or applies Archive side effects', () => {
   assert.equal(effects, 0);
 });
 
-test('onboarding renderer shows explicit no-write promise and Archive disabled summary', () => {
-  const controller = new OnboardingController({ currentConfig: normalizeConfig(DEFAULT_CONFIG) });
+test('English onboarding renderer keeps explicit no-write promise and Archive disabled summary', () => {
+  const english = normalizeConfig({ ...DEFAULT_CONFIG, language: 'en' });
+  const controller = new OnboardingController({ currentConfig: english, previousConfig: english });
   const welcome = renderOnboarding({ controller, width: 100, height: 28, mode: 'mono' }).lines.join('\n');
   assert.match(welcome, /INITIAL SETUP/);
   assert.match(welcome, /No preference is written until explicit Save/);
@@ -128,6 +129,25 @@ test('onboarding renderer shows explicit no-write promise and Archive disabled s
   assert.match(summary, /READY TO SAVE/);
   assert.match(summary, /Archive\s+Disabled/);
   assert.match(summary, /Enter\s+Save and continue/);
+});
+
+test('Vietnamese onboarding renderer changes guidance after choosing Vietnamese', () => {
+  const vietnamese = normalizeConfig({ ...DEFAULT_CONFIG, language: 'vi' });
+  const controller = new OnboardingController({ currentConfig: vietnamese, previousConfig: vietnamese });
+  const welcome = renderOnboarding({ controller, width: 110, height: 28, mode: 'mono' }).lines.join('\n');
+  assert.match(welcome, /Chào mừng/);
+  assert.match(welcome, /Không tùy chọn nào được ghi xuống/);
+
+  controller.activateCurrent();
+  const language = renderOnboarding({ controller, width: 110, height: 28, mode: 'mono' }).lines.join('\n');
+  assert.match(language, /Ngôn ngữ/);
+  assert.match(language, /Tiếng Việt/);
+
+  controller.step = ONBOARDING_STEP.SUMMARY;
+  const summary = renderOnboarding({ controller, width: 110, height: 28, mode: 'mono' }).lines.join('\n');
+  assert.match(summary, /SẴN SÀNG LƯU/);
+  assert.match(summary, /Lưu trữ\s+Tắt/);
+  assert.match(summary, /Enter\s+Lưu và tiếp tục/);
 });
 
 test('onboarding TUI is a no-op in non-interactive environments', async () => {
