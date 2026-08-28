@@ -18,14 +18,14 @@ function padLine(text, width) {
   return truncateCells(String(text ?? ''), width, '');
 }
 
-function localizedRow(row, language, activeTab) {
+function localizedRow(row, language) {
   return {
     ...row,
-    // Field names mirror the canonical English labels shown by the Live HUD.
-    // Localize only their explanations so Vietnamese users learn what the
-    // metric means without seeing a different name in Config versus Live.
-    label: activeTab === 'fields' ? row?.label : configText(row?.label, language),
-    value: configText(row?.value, language),
+    // Config mirrors the canonical English vocabulary used by the real Live
+    // HUD and schema. Vietnamese is explanatory: descriptions and guidance
+    // are localized, while setting names and technical values stay stable.
+    label: row?.label,
+    value: row?.value,
     description: configText(row?.description, language)
   };
 }
@@ -44,7 +44,7 @@ function descriptionStemWidth(rows, width) {
   return Math.max(10, Math.min(widest, maxStem));
 }
 
-function renderRow(row, selected, width, mode, stemWidth, language) {
+function renderRow(row, selected, width, mode, stemWidth) {
   const prefix = selected ? '▸ ' : '  ';
   const rawStem = rowStem(row);
   const hasDescription = Boolean(row.description);
@@ -52,7 +52,7 @@ function renderRow(row, selected, width, mode, stemWidth, language) {
     ? padCells(truncateCells(rawStem, stemWidth, '…'), stemWidth)
     : rawStem;
   const description = hasDescription ? `  (${row.description})` : '';
-  const readOnly = row.editable ? '' : ` · ${configText('read-only', language)}`;
+  const readOnly = row.editable ? '' : ' · read-only';
 
   if (selected) {
     const plain = `${prefix}${visibleStem}${description}${readOnly}`;
@@ -94,20 +94,20 @@ export function renderManagerConfig({
   const safeHeight = Math.max(16, Number(height) || 36);
   const language = controller?.draftConfig?.language ?? controller?.savedConfig?.language ?? 'en';
   const rawRows = controller?.rows?.() ?? [];
-  const rows = rawRows.map((row) => localizedRow(row, language, controller?.activeTab));
+  const rows = rawRows.map((row) => localizedRow(row, language));
   const cursorIndex = Math.max(0, Math.min(rows.length - 1, Number(controller?.cursorIndex) || 0));
   const stemWidth = descriptionStemWidth(rows, safeWidth - 2);
   const tabs = MANAGER_CONFIG_TABS.map((tab) => {
-    const label = configText(MANAGER_CONFIG_TAB_LABELS[tab] ?? tab, language);
+    const label = MANAGER_CONFIG_TAB_LABELS[tab] ?? tab;
     return tab === controller?.activeTab ? hpaint(`[${label}]`, 'nav', mode) : hpaint(label, 'dim', mode);
   }).join('  ');
 
-  const activeTabLabel = configText(MANAGER_CONFIG_TAB_LABELS[controller?.activeTab] ?? controller?.activeTab ?? 'Config', language);
+  const activeTabLabel = MANAGER_CONFIG_TAB_LABELS[controller?.activeTab] ?? controller?.activeTab ?? 'Config';
   const lines = [
     padLine(hpaint('CODEX MONITOR · CONFIG', 'heading', mode), safeWidth),
     padLine(tabs, safeWidth),
     padLine(hpaint('─'.repeat(Math.max(0, safeWidth)), 'grid', mode), safeWidth),
-    padLine(`${activeTabLabel}${controller?.dirty ? ` ${hpaint(`· ${configText('UNSAVED', language)}`, 'pressure', mode)}` : ''}`, safeWidth),
+    padLine(`${activeTabLabel}${controller?.dirty ? ` ${hpaint('· UNSAVED', 'pressure', mode)}` : ''}`, safeWidth),
     ''
   ];
 
@@ -117,7 +117,7 @@ export function renderManagerConfig({
   for (let index = 0; index < visible.length; index += 1) {
     const row = visible[index];
     const absoluteIndex = start + index;
-    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode, stemWidth, language));
+    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode, stemWidth));
   }
 
   while (lines.length < safeHeight - 3) lines.push('');
