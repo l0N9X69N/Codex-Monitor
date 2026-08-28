@@ -5,6 +5,7 @@ const steps = [
   ['Syntax', process.execPath, ['./scripts/check-syntax.mjs']],
   ['Phase 13 productization controls', process.execPath, ['--test',
     'test/unit/phase13-productization.test.js',
+    'test/unit/phase13-cli-family.test.js',
     'test/unit/cli-args.test.js',
     'test/unit/phase12-control-plane.test.js'
   ]],
@@ -23,5 +24,5 @@ for (const [label, command, args] of steps) {
 }
 
 process.stdout.write('\nPhase 13 release-candidate auto verification: PASS\n');
-process.stdout.write('Gate covers product control routing, updater fail-soft/throttle behavior, uninstall ownership safety, diagnostics privacy, Archive OFF zero-service assertion, full Phase 12/11-1 regressions, full repository tests, and npm package smoke.\n');
+process.stdout.write('Gate covers transparent Codex passthrough, dedicated Monitor CLI routing, bilingual help, updater fail-soft/throttle behavior, uninstall ownership safety, diagnostics privacy, Archive OFF zero-service assertion, full Phase 12/11-1 regressions, full repository tests, and npm package smoke.\n');
 process.stdout.write('Real-machine release/manual UX, platform-specific Archive integration, performance baseline, signing/timestamping and final visual approval remain manual RC gates.\n');
