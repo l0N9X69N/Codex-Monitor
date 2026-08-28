@@ -241,7 +241,7 @@ export class OnboardingController {
       const key = id.slice('section:'.length);
       if (key === 'system') {
         const enabling = this.draftConfig.systemMode === 'off';
-        this.draftConfig.systemMode = enabling ? 'auto' : 'off';
+        this.draftConfig.systemMode = enabling ? 'on' : 'off';
         this.draftConfig.metrics.system = enabling;
       } else {
         this.draftConfig.sections[key] = !this.draftConfig.sections[key];
