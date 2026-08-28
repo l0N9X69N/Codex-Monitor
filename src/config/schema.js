@@ -38,7 +38,7 @@ const PRESET_DEFINITIONS = Object.freeze({
       quota: true, session: true, health: true, freshness: true, system: true, tools: true,
       gitBranch: false, gitDiff: false, gitAheadBehind: false
     }),
-    systemMode: 'on',
+    systemMode: 'auto',
     beastMode: 'off',
     header: Object.freeze(['activity', 'model', 'reasoning', 'project'])
   }),
@@ -137,7 +137,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   preset: 'recommended',
   theme: 'color',
   background: 'terminal',
-  systemMode: 'on',
+  systemMode: 'auto',
   beastMode: 'off',
   layout: 'auto',
   sections: PRESET_DEFINITIONS.recommended.sections,
