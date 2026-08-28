@@ -3,27 +3,15 @@ import process from 'node:process';
 import { kickArchiveService } from '../archive/integration.js';
 import { detectAuth } from '../core/auth.js';
 import { createCurrentRunState, withDetectedAuth } from '../core/state.js';
-import { applyRuntimeOverrides, DEFAULT_CONFIG, normalizeConfig } from '../config/schema.js';
-import { configureMonitor } from '../config/configure.js';
+import { normalizeConfig, DEFAULT_CONFIG } from '../config/schema.js';
 import { runFirstRunOnboarding } from '../config/onboarding-tui.js';
-import { shouldRunFirstRunOnboarding } from '../config/onboarding.js';
-import { confirmMonitorReset } from '../config/reset-confirm.js';
 import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
-import { scheduleProductRemoval } from '../platform/product-uninstall.js';
-import { PRODUCT_VERSION } from '../product/meta.js';
-import { checkForUpdates, printUpdateReport } from '../product/update.js';
 import { scheduleBackgroundUpdateCheck } from '../product/update-scheduler.js';
-import { printUninstallReport, uninstallMonitorIntegration } from '../product/uninstall.js';
-import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
-import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
 import { codexArgsForLocalResume, localResumePickerIntent, pickLocalResumeSession } from '../runtime/local-resume-picker.js';
-import { runSessionManagerRuntime } from '../manager/runtime.js';
-import { runPortableSessionManagerTui } from '../manager/portable-tui.js';
-import { renderDemo } from '../ui/demo.js';
 import { parseMonitorArgs } from './args.js';
 
 function configRecoveryNotice(loaded) {
@@ -40,132 +28,21 @@ function configErrorNotice(loaded) {
   return 'codexm: Monitor config could not be read; original file preserved.\n';
 }
 
-function printHelp() {
-  process.stdout.write(`Codex Monitor ${PRODUCT_VERSION}\n\n`);
-  process.stdout.write('QUICK COMMANDS\n');
-  process.stdout.write('  -h, --help                    Show this help\n');
-  process.stdout.write('  -m, --manager                 Open Session Manager\n');
-  process.stdout.write('  -c, --configure               Open shared Config\n');
-  process.stdout.write('  -v, --version                 Show Codex Monitor version\n\n');
-  process.stdout.write('LIVE / CODEX\n');
-  process.stdout.write('  codexm [monitor options] [codex arguments]\n');
-  process.stdout.write('  --auth auto|api|login         Auth detection/override\n');
-  process.stdout.write('  --preset recommended|compact|full|custom\n');
-  process.stdout.write('  --theme color|mono|matrix\n');
-  process.stdout.write('  --background terminal|black|dark\n');
-  process.stdout.write('  --lang vi|en\n\n');
-  process.stdout.write('SESSION MANAGER\n');
-  process.stdout.write('  --manager-view operations|table|charts|auto\n');
-  process.stdout.write('                                Override Manager view for this run only\n');
-  process.stdout.write('  Inside Manager: C Config · P/M preview inside Config\n\n');
-  process.stdout.write('CUSTOMIZE\n');
-  process.stdout.write('  --reset                       Confirm reset, then open Config with defaults\n');
-  process.stdout.write('  Config: P Live preview · M Manager preview\n\n');
-  process.stdout.write('DIAGNOSTICS / PRODUCT\n');
-  process.stdout.write('  --doctor, --diagnostics       Run sanitized diagnostics, including Archive health\n');
-  process.stdout.write('  --repair                      Repair Monitor-owned Archive hook/service integration\n');
-  process.stdout.write('  --update                      Check GitHub Releases; never auto-installs\n');
-  process.stdout.write('  --uninstall                   Uninstall Codex Monitor; preserve user/Codex data\n');
-  process.stdout.write('  --config                      Show effective Monitor config\n');
-  process.stdout.write('  --config-path                 Show Monitor config path\n');
-  process.stdout.write('  --monitor-version             Explicit Monitor version alias\n');
-  process.stdout.write('  --demo                        Render passive Live HUD demo\n');
-  process.stdout.write('  --demo-state idle|thinking|tool|approval|error\n\n');
-  process.stdout.write('PASSTHROUGH\n');
-  process.stdout.write('  --                            Stop Monitor option parsing; pass remainder to Codex\n');
-  process.stdout.write('  Short Monitor aliases only apply before Codex arguments begin.\n');
-  process.stdout.write('  Example: codexm resume -m gpt-5   # -m belongs to official Codex\n');
-  process.stdout.write('  Example: codexm -- -m gpt-5       # force a leading -m to official Codex\n\n');
-  process.stdout.write('A clean interactive first launch runs setup before Manager or official Codex starts.\n');
-  process.stdout.write('Live Monitor is passive after Codex starts: every keyboard byte belongs to official Codex.\n');
-  process.stdout.write('Unknown Codex arguments are forwarded; use -- for an exact passthrough boundary.\n');
-  process.stdout.write('Local Session Archive is optional/local-only and remains disabled until explicit opt-in.\n');
-  process.stdout.write('--repair touches only Monitor-owned integration. --uninstall preserves Codex auth/sessions plus Monitor config/Archive DB.\n');
-  process.stdout.write('Background update checks are throttled to about once per 24h, never auto-install, and can be disabled in Config.\n');
-  process.stdout.write('There is no public Monitor-owned --history mode in v1.\n');
-}
-
-function scheduleProductUpdateCheck(config) {
-  scheduleBackgroundUpdateCheck(config);
-}
-
 async function main() {
   const parsed = parseMonitorArgs(process.argv.slice(2));
   const platformAdapter = createPlatformAdapter();
   const configPath = getMonitorConfigPath();
   const loaded = loadMonitorConfig({ filePath: configPath });
-  let persistedConfig = loaded.config;
-  let config = applyRuntimeOverrides(persistedConfig, parsed.overrides);
+  let config = loaded.config;
   const interactive = Boolean(process.stdin?.isTTY && process.stdout?.isTTY);
   const recoveryNotice = configRecoveryNotice(loaded);
 
   if (loaded.error) process.stderr.write(configErrorNotice(loaded));
 
-  if (parsed.action === 'help') { printHelp(); return 0; }
-  if (parsed.action === 'monitor-version') { process.stdout.write(`${PRODUCT_VERSION}\n`); return 0; }
-  if (parsed.action === 'doctor') {
-    const report = doctorReport({ monitorConfig: loaded.config });
-    printDoctor(report);
-    return report.codexPath ? 0 : 2;
-  }
-  if (parsed.action === 'repair') {
-    const report = repairMonitorIntegration(loaded.config);
-    printRepairReport(report);
-    return report.ok ? 0 : 2;
-  }
-  if (parsed.action === 'update') {
-    const report = await checkForUpdates();
-    printUpdateReport(report);
-    return 0;
-  }
-  if (parsed.action === 'uninstall') {
-    const report = uninstallMonitorIntegration();
-    const removal = report.ok ? scheduleProductRemoval() : { scheduled: false, reason: 'integration-cleanup-failed' };
-    printUninstallReport(report, process.stdout, { packageRemoval: removal });
-    return report.ok && (removal.scheduled || removal.reason === 'package-manager-required') ? 0 : 2;
-  }
-  if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
-  if (parsed.action === 'config') { process.stdout.write(`${JSON.stringify(config, null, 2)}\n`); return 0; }
-  if (parsed.action === 'configure') {
-    const result = await configureMonitor({
-      currentConfig: loaded.config,
-      previousConfig: loaded.config,
-      filePath: configPath,
-      notice: recoveryNotice
-    });
-    return result.code;
-  }
-  if (parsed.action === 'reset') {
-    if (!interactive) {
-      process.stderr.write('codexm: --reset requires an interactive TTY; no preferences were changed.\n');
-      return 2;
-    }
-    const confirmation = await confirmMonitorReset({ archiveEnabled: loaded.config?.archive?.enabled === true });
-    if (!confirmation.confirmed) return confirmation.code ?? 1;
-    const result = await configureMonitor({
-      currentConfig: normalizeConfig(DEFAULT_CONFIG),
-      previousConfig: loaded.config,
-      filePath: configPath,
-      notice: 'RESET DRAFT: defaults loaded. Nothing changes until you press S to Save.'
-    });
-    return result.code;
-  }
-  if (parsed.action === 'demo') {
-    const width = Math.max(20, process.stdout.columns || 100);
-    const height = Math.max(8, process.stdout.rows || 30);
-    const frame = renderDemo({
-      state: parsed.demo.state,
-      config,
-      width,
-      height,
-      authMode: parsed.auth === 'api' ? 'api' : 'login',
-      cwd: process.cwd()
-    });
-    process.stdout.write(`${frame.lines.join('\n')}\n`);
-    return 0;
-  }
-
-  if (shouldRunFirstRunOnboarding({ action: parsed.action, interactive, loaded })) {
+  // First-run setup is only allowed for the bare `codexm` command. Any Codex
+  // argument, including -h/-v/-m/--help/--version, must pass through exactly
+  // as it would when invoking official Codex directly.
+  if (interactive && parsed.codexArgs.length === 0 && loaded?.config?.setupComplete !== true) {
     const onboarding = await runFirstRunOnboarding({
       currentConfig: loaded.valid ? loaded.config : normalizeConfig(DEFAULT_CONFIG),
       previousConfig: loaded.valid ? loaded.config : normalizeConfig(DEFAULT_CONFIG),
@@ -173,25 +50,10 @@ async function main() {
       notice: recoveryNotice
     });
     if (!onboarding.saved) return onboarding.code ?? 1;
-    persistedConfig = onboarding.config;
-    config = applyRuntimeOverrides(persistedConfig, parsed.overrides);
+    config = onboarding.config;
   }
 
-  scheduleProductUpdateCheck(config);
-
-  if (parsed.action === 'manager') {
-    kickArchiveService(config);
-    const result = interactive
-      ? await runPortableSessionManagerTui({
-        platformAdapter,
-        theme: config.theme,
-        monitorConfig: persistedConfig,
-        configPath,
-        initialViewMode: config.manager?.view ?? 'operations'
-      })
-      : await runSessionManagerRuntime({ platformAdapter });
-    return result.code;
-  }
+  scheduleBackgroundUpdateCheck(config);
 
   const codexPath = resolveCodexExecutable();
   if (!codexPath) {
@@ -222,14 +84,13 @@ async function main() {
     }
   }
 
-  const codexArgsFinal = codexArgs;
   let state = createCurrentRunState({ startedAtMs: Date.now() });
-  const auth = detectAuth({ override: parsed.auth, codexPath });
+  const auth = detectAuth({ override: 'auto', codexPath });
   state = withDetectedAuth(state, auth);
 
   return await runCodexLive({
     codexPath,
-    codexArgs: codexArgsFinal,
+    codexArgs,
     resumeTargetPath,
     auth,
     monitorState: state,
