@@ -11,8 +11,9 @@ import { severityToken, systemPressureSeverity } from './severity.js';
 
 export * from './live-renderer-responsive-legacy.js';
 
-// SYSTEM is optional telemetry. It must never make the four primary cards
-// unreadable just because a fifth card technically fits in the grid.
+// Automatic SYSTEM telemetry is optional. It must never make the four primary
+// cards unreadable just because a fifth card technically fits in the grid.
+// Explicit `on` remains the forced override chosen by the user.
 export const SYSTEM_CARD_MIN_OUTER_CELLS = 44;
 
 function value(metric, fallback = null) {
@@ -72,8 +73,12 @@ function systemLayoutDecision(config, state, width, height) {
   const systemIndex = cards.findIndex((card) => card.id === 'system');
   if (systemIndex < 0) return { visible: false, mode, reason: 'disabled' };
 
-  // Use a generous height here: visibility is a horizontal-layout decision.
-  // Actual height degradation still belongs to the legacy renderer.
+  // Explicit On is the user's forced override. Keep the legacy responsive
+  // behavior, including a second row or compact representation if necessary.
+  if (mode === 'on') return { visible: true, mode, reason: 'forced-on' };
+
+  // Use a generous height here: auto visibility is a horizontal-layout
+  // decision. Actual height degradation still belongs to the base renderer.
   const widthPlan = planGrid(cards, width, Math.max(50, Number(height) || 24));
   let systemItem = null;
   for (const row of widthPlan.rows) {
@@ -88,11 +93,9 @@ function systemLayoutDecision(config, state, width, height) {
     return { visible: false, mode, reason: 'below-min-width', outerWidth: systemItem?.outerWidth ?? 0 };
   }
 
-  if (mode === 'auto') {
-    const columns = balancedColumnCountFor(width, cards.length);
-    if (columns !== cards.length || widthPlan.rows.length !== 1) {
-      return { visible: false, mode, reason: 'auto-needs-one-row', outerWidth: systemItem.outerWidth };
-    }
+  const columns = balancedColumnCountFor(width, cards.length);
+  if (columns !== cards.length || widthPlan.rows.length !== 1) {
+    return { visible: false, mode, reason: 'auto-needs-one-row', outerWidth: systemItem.outerWidth };
   }
 
   return { visible: true, mode, reason: 'fits', outerWidth: systemItem.outerWidth };
@@ -168,6 +171,9 @@ function systemGaugeLines(state, innerWidth, theme) {
 }
 
 function rewriteSystemDashboard(frame, state, config, width, height) {
+  // Only automatic System uses the compact quota-style dashboard. Forced On
+  // intentionally preserves the richer legacy System presentation.
+  if (String(config?.systemMode ?? 'off') !== 'auto') return frame;
   if (!frame?.semantic?.systemVisible) return frame;
   const fields = config?.fields?.system;
   if (fields && (fields.cpu === false || fields.ram === false || fields.ramCapacity === false)) return frame;
