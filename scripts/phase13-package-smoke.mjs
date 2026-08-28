@@ -41,7 +41,17 @@ try {
 
 const pack = Array.isArray(payload) ? payload[0] : payload;
 const files = (pack?.files ?? []).map((entry) => String(entry.path ?? entry).replaceAll('\\', '/'));
-const required = ['package.json', 'src/cli/codexm.js', 'README.md', 'LICENSE'];
+const required = [
+  'package.json',
+  'src/cli/codexm.js',
+  'src/cli/codexmm.js',
+  'src/cli/codexmc.js',
+  'src/cli/codexmh.js',
+  'src/cli/codexmctl.js',
+  'src/cli/help.js',
+  'README.md',
+  'LICENSE'
+];
 for (const file of required) {
   if (!files.includes(file)) {
     process.stderr.write(`Package smoke FAILED: missing ${file}\n`);
@@ -57,9 +67,18 @@ if (forbidden.length) {
 }
 
 const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
-if (manifest.bin?.codexm !== './src/cli/codexm.js') {
-  process.stderr.write('Package smoke FAILED: codexm bin is not exposed correctly.\n');
-  process.exit(1);
+const expectedBins = {
+  codexm: './src/cli/codexm.js',
+  codexmm: './src/cli/codexmm.js',
+  codexmc: './src/cli/codexmc.js',
+  codexmh: './src/cli/codexmh.js',
+  codexmctl: './src/cli/codexmctl.js'
+};
+for (const [name, entry] of Object.entries(expectedBins)) {
+  if (manifest.bin?.[name] !== entry) {
+    process.stderr.write(`Package smoke FAILED: ${name} bin is not exposed correctly.\n`);
+    process.exit(1);
+  }
 }
 if (!String(manifest.engines?.node ?? '').includes('>=22.13')) {
   process.stderr.write('Package smoke FAILED: Node >=22.13 runtime contract is missing.\n');
