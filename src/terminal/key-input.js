@@ -43,15 +43,31 @@ export function attachTerminalKeyInput(stream, onInput) {
   readline.emitKeypressEvents(stream);
   let escapeFallbackTimer = null;
   let lastEscapeKeypressAt = 0;
+  const fallbackEscapesAwaitingDecoder = [];
+
+  const pruneFallbackEscapes = (now = Date.now()) => {
+    while (fallbackEscapesAwaitingDecoder.length && now - fallbackEscapesAwaitingDecoder[0] > 1000) {
+      fallbackEscapesAwaitingDecoder.shift();
+    }
+  };
 
   const onKeypress = (str, key) => {
     const raw = rawForKey(str, key);
     if (raw == null) return;
     if (raw === '\x1b') {
-      lastEscapeKeypressAt = Date.now();
+      const now = Date.now();
+      lastEscapeKeypressAt = now;
       if (escapeFallbackTimer) {
         clearTimeout(escapeFallbackTimer);
         escapeFallbackTimer = null;
+      }
+      pruneFallbackEscapes(now);
+      // readline may decode a standalone Esc hundreds of milliseconds after
+      // the raw-byte fallback already delivered it. Consume that delayed echo
+      // one-for-one so repeated Esc presses still each produce one event.
+      if (fallbackEscapesAwaitingDecoder.length) {
+        fallbackEscapesAwaitingDecoder.shift();
+        return;
       }
     }
     onInput(raw, key ?? null);
@@ -60,8 +76,7 @@ export function attachTerminalKeyInput(stream, onInput) {
   // A few Windows TTY/ConPTY stacks deliver the raw ESC byte but Node's
   // readline decoder does not always emit a standalone `keypress` for it.
   // Keep a tiny delayed fallback for the exact ESC byte only. Arrow/function
-  // sequences are never matched, and the timestamp/timer prevents a normal
-  // keypress from being dispatched twice.
+  // sequences are never matched. A later readline echo is deduplicated above.
   const onData = (data) => {
     const raw = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
     if (raw !== '\x1b') return;
@@ -69,7 +84,10 @@ export function attachTerminalKeyInput(stream, onInput) {
     if (escapeFallbackTimer) clearTimeout(escapeFallbackTimer);
     escapeFallbackTimer = setTimeout(() => {
       escapeFallbackTimer = null;
-      if (Date.now() - lastEscapeKeypressAt < 50) return;
+      const now = Date.now();
+      if (now - lastEscapeKeypressAt < 50) return;
+      pruneFallbackEscapes(now);
+      fallbackEscapesAwaitingDecoder.push(now);
       onInput('\x1b', { name: 'escape', sequence: '\x1b', fallback: true });
     }, 25);
     escapeFallbackTimer.unref?.();
@@ -82,6 +100,7 @@ export function attachTerminalKeyInput(stream, onInput) {
       clearTimeout(escapeFallbackTimer);
       escapeFallbackTimer = null;
     }
+    fallbackEscapesAwaitingDecoder.length = 0;
     try { stream.off?.('keypress', onKeypress); } catch {}
     try { stream.off?.('data', onData); } catch {}
   };
