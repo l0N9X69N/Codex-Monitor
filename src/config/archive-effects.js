@@ -18,10 +18,41 @@ export function applyArchiveConfigSideEffects(previousConfig, nextConfig, {
   const wasEnabled = previous.archive.enabled === true;
   const isEnabled = next.archive.enabled === true;
 
-  if (wasEnabled === isEnabled) {
+  if (wasEnabled && isEnabled) {
+    let hooks = null;
+    let hookError = null;
+    try {
+      hooks = installHooks();
+      if (hooks?.installed === false) hookError = hooks?.error ?? 'archive hook installation failed';
+    } catch (error) {
+      hookError = error?.message ?? String(error);
+      hooks = { installed: false, changed: false, error: hookError };
+    }
+
+    let service = null;
+    let serviceError = null;
+    try {
+      service = kickService(next);
+      serviceError = service?.error ?? null;
+    } catch (error) {
+      serviceError = error?.message ?? String(error);
+    }
+
+    return {
+      changed: Boolean(hooks?.changed || service?.started),
+      transition: 'on-to-on',
+      ok: hookError == null && serviceError == null,
+      bootstrap: null,
+      hooks,
+      service,
+      error: hookError ?? serviceError
+    };
+  }
+
+  if (!wasEnabled && !isEnabled) {
     return {
       changed: false,
-      transition: isEnabled ? 'on-to-on' : 'off-to-off',
+      transition: 'off-to-off',
       ok: true,
       bootstrap: null,
       hooks: null,
