@@ -34,11 +34,13 @@ No ambiguous short aliases are assigned to reset/repair or update/uninstall.
 ```text
 --auth auto|api|login
 --preset recommended|compact|full|custom
---theme color|mono|matrix
+--theme color|cyberpunk|mono|matrix
 --background terminal|black|dark
 --lang vi|en
 --manager-view operations|table|charts|auto   (requires --manager)
 ```
+
+`color` is the balanced everyday palette. `cyberpunk` uses the brighter cyan/magenta/neon-green/amber dashboard palette.
 
 Runtime overrides affect one invocation only. Persisted preferences change only through an explicit Config Save.
 
