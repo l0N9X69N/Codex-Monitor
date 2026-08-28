@@ -1,7 +1,7 @@
 {
   "name": "codex-monitor",
   "version": "1.0.0-alpha.1",
-  "description": "Local-first monitor wrapper for the official OpenAI Codex CLI.",
+  "description": "Local-first terminal monitor and session manager for the official OpenAI Codex CLI.",
   "type": "module",
   "bin": {
     "codexm": "./src/cli/codexm.js",
@@ -13,7 +13,6 @@
   "files": [
     "src/",
     "scripts/",
-    "docs/",
     "README.md",
     "SECURITY.md",
     "PRIVACY.md",
@@ -66,6 +65,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/l0N9X69N/Codex-Monitor.git"
+  },
+  "homepage": "https://github.com/l0N9X69N/Codex-Monitor#readme",
+  "bugs": {
+    "url": "https://github.com/l0N9X69N/Codex-Monitor/issues"
   },
   "license": "MIT"
 }
