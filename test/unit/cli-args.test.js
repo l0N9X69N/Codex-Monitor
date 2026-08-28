@@ -42,10 +42,12 @@ test('codexmc owns Config help and reset only', () => {
   assert.throws(() => parseConfigArgs(['--manager']), /Unknown codexmc option/);
 });
 
-test('codexmctl routes maintenance commands without occupying codexm flags', () => {
+test('codexmctl routes maintenance commands without install or uninstall ownership', () => {
   assert.deepEqual(parseControlArgs([]), { command: 'help', demoState: 'idle' });
   assert.deepEqual(parseControlArgs(['diagnostics']), { command: 'doctor', demoState: 'idle' });
   assert.deepEqual(parseControlArgs(['repair']), { command: 'repair', demoState: 'idle' });
   assert.deepEqual(parseControlArgs(['demo', 'approval']), { command: 'demo', demoState: 'approval' });
+  assert.throws(() => parseControlArgs(['uninstall']), /Unknown codexmctl command/);
+  assert.throws(() => parseControlArgs(['install']), /Unknown codexmctl command/);
   assert.throws(() => parseControlArgs(['unknown']), /Unknown codexmctl command/);
 });
