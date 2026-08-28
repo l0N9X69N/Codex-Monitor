@@ -101,10 +101,21 @@ test('archive service control failure never escapes into Manager or Codex launch
   assert.equal(result.error, 'lock unavailable');
 });
 
-test('CLI wires archive self-heal/service kick into Manager and official Codex launch paths', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'src', 'cli', 'codexm.js'), 'utf8');
-  const calls = source.match(/kickArchiveService\(config\);/g) ?? [];
-  assert.equal(calls.length, 2);
-  assert.match(source, /if \(parsed\.action === 'manager'\) \{\s+kickArchiveService\(config\);/);
-  assert.match(source, /const codexPath = resolveCodexExecutable\(\);[\s\S]*?if \(!codexPath\)[\s\S]*?return 2;[\s\S]*?kickArchiveService\(config\);/);
+test('CLI wires archive self-heal/service kick into dedicated Manager and official Codex launch paths', () => {
+  const codexSource = fs.readFileSync(path.join(ROOT, 'src', 'cli', 'codexm.js'), 'utf8');
+  const managerSource = fs.readFileSync(path.join(ROOT, 'src', 'cli', 'codexmm.js'), 'utf8');
+
+  const codexCalls = codexSource.match(/kickArchiveService\(config\);/g) ?? [];
+  const managerCalls = managerSource.match(/kickArchiveService\(config\);/g) ?? [];
+  assert.equal(codexCalls.length, 1);
+  assert.equal(managerCalls.length, 1);
+
+  assert.match(
+    codexSource,
+    /const codexPath = resolveCodexExecutable\(\);[\s\S]*?if \(!codexPath\)[\s\S]*?return 2;[\s\S]*?kickArchiveService\(config\);/
+  );
+  assert.match(
+    managerSource,
+    /kickArchiveService\(config\);[\s\S]*?runPortableSessionManagerTui|kickArchiveService\(config\);[\s\S]*?runSessionManagerRuntime/
+  );
 });
