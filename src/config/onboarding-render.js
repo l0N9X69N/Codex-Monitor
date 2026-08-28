@@ -52,9 +52,10 @@ export function renderOnboarding({ controller, width = 100, height = 30, mode = 
   const language = controller?.draftConfig?.language ?? 'vi';
   const cursorIndex = Math.max(0, Math.min(Math.max(0, rows.length - 1), Number(controller?.cursorIndex) || 0));
   const t = (text) => configText(text, language);
+  const setupHint = t('Configure once, change anytime with codexm --configure').replace('codexm --configure', 'codexmc');
   const lines = [
     line(hpaint('CODEX MONITOR // INITIAL SETUP', 'heading', mode), safeWidth),
-    line(hpaint(t('Configure once, change anytime with codexm --configure'), 'dim', mode), safeWidth),
+    line(hpaint(setupHint, 'dim', mode), safeWidth),
     line(hpaint('─'.repeat(safeWidth), 'grid', mode), safeWidth),
     ''
   ];
