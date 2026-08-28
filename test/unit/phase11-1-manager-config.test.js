@@ -239,6 +239,6 @@ test('Config footer hotkeys use visible semantic accents in cyberpunk mode', () 
   assert.match(footer, /\x1b\[1;38;5;45mTab\/←\/→\x1b\[0m/);
   assert.match(footer, /\x1b\[1;38;5;84mP\x1b\[0m/);
   assert.match(footer, /\x1b\[1;38;5;213mM\x1b\[0m/);
-  assert.match(footer, /\x1b\[1;38;5;156mR\x1b\[0m/);
+  assert.match(footer, /\x1b\[1;38;5;220mR\x1b\[0m/);
   assert.match(footer, /\x1b\[38;5;255mđổi tab\x1b\[0m/);
 });
