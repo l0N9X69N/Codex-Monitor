@@ -12,8 +12,19 @@ function quotePosix(value) {
   return `'${String(value).replace(/'/g, `'"'"'`)}'`;
 }
 
-function quoteWindows(value) {
-  return `"${String(value).replace(/"/g, '""')}"`;
+function quotePowerShell(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function buildWindowsEncodedCommand(execPath, entryPath) {
+  // Codex currently launches Windows hooks through cmd.exe /C and versions in
+  // the wild can fail when the hook command itself contains embedded quotes.
+  // Keep commandWindows quote-free and move all quoted paths inside a UTF-16LE
+  // PowerShell EncodedCommand payload. The hook stays fail-open: if Node cannot
+  // be started, the wrapper still exits 0 so Codex input is never blocked.
+  const script = `& ${quotePowerShell(execPath)} ${quotePowerShell(entryPath)} ${quotePowerShell(ARCHIVE_HOOK_MARKER)}; exit 0`;
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  return `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}`;
 }
 
 function isObject(value) {
@@ -106,8 +117,8 @@ export function inspectArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = f
 
 export function buildArchiveHookHandler({ execPath = process.execPath, entryPath = ARCHIVE_HOOK_ENTRY_PATH } = {}) {
   const posixCommand = `${quotePosix(execPath)} ${quotePosix(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
-  const windowsCommand = `${quoteWindows(execPath)} ${quoteWindows(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
-  return { type: 'command', command: posixCommand, commandWindows: windowsCommand, timeout: 1 };
+  const windowsCommand = buildWindowsEncodedCommand(execPath, entryPath);
+  return { type: 'command', command: posixCommand, commandWindows: windowsCommand, timeout: 10 };
 }
 
 export function installArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = fs, handler = buildArchiveHookHandler() } = {}) {
