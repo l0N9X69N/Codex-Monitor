@@ -7,13 +7,19 @@ import { kickArchiveService } from '../../src/archive/integration.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('archive integration does not touch service control when archive is disabled', () => {
+function hookDeps({ complete = true, installResult = { installed: true, changed: true } } = {}) {
+  return {
+    inspectHooks() { return { installed: complete, complete, error: null }; },
+    installHooks() { return installResult; }
+  };
+}
+
+test('archive integration does not touch hooks or service control when archive is disabled', () => {
   let calls = 0;
   const result = kickArchiveService({ archive: { enabled: false } }, {
-    ensureService() {
-      calls += 1;
-      throw new Error('must not run');
-    }
+    inspectHooks() { calls += 1; throw new Error('must not run'); },
+    installHooks() { calls += 1; throw new Error('must not run'); },
+    ensureService() { calls += 1; throw new Error('must not run'); }
   });
 
   assert.equal(calls, 0);
@@ -26,16 +32,20 @@ test('archive integration does not touch service control when archive is disable
   });
 });
 
-test('archive integration starts or wakes enabled service through one fail-soft boundary', () => {
+test('archive integration leaves complete hooks untouched and starts or wakes enabled service', () => {
   let received = null;
+  let installs = 0;
   const config = { archive: { enabled: true } };
   const result = kickArchiveService(config, {
+    inspectHooks() { return { installed: true, complete: true, error: null }; },
+    installHooks() { installs += 1; throw new Error('complete hook must not be rewritten'); },
     ensureService(options) {
       received = options;
       return { started: false, running: true, reason: 'already-running' };
     }
   });
 
+  assert.equal(installs, 0);
   assert.equal(received.config, config);
   assert.deepEqual(result, {
     attempted: true,
@@ -46,8 +56,39 @@ test('archive integration starts or wakes enabled service through one fail-soft 
   });
 });
 
+test('archive integration repairs missing or partial hooks before waking SQLite service', () => {
+  const order = [];
+  const config = { archive: { enabled: true } };
+  const result = kickArchiveService(config, {
+    inspectHooks() { order.push('inspect'); return { installed: true, complete: false, error: null }; },
+    installHooks() { order.push('install'); return { installed: true, changed: true, error: null }; },
+    ensureService() { order.push('service'); return { started: true, running: true, reason: 'spawned' }; }
+  });
+
+  assert.deepEqual(order, ['inspect', 'install', 'service']);
+  assert.equal(result.started, true);
+  assert.equal(result.running, true);
+});
+
+test('hook inspection or repair failure never blocks SQLite service wake', () => {
+  let services = 0;
+  const result = kickArchiveService({ archive: { enabled: true } }, {
+    inspectHooks() { throw new Error('hooks unreadable'); },
+    installHooks() { throw new Error('must not be reached after inspect throw'); },
+    ensureService() {
+      services += 1;
+      return { started: false, running: true, reason: 'already-running' };
+    }
+  });
+
+  assert.equal(services, 1);
+  assert.equal(result.running, true);
+  assert.equal(result.error, null);
+});
+
 test('archive service control failure never escapes into Manager or Codex launch path', () => {
   const result = kickArchiveService({ archive: { enabled: true } }, {
+    ...hookDeps(),
     ensureService() {
       throw new Error('lock unavailable');
     }
@@ -60,7 +101,7 @@ test('archive service control failure never escapes into Manager or Codex launch
   assert.equal(result.error, 'lock unavailable');
 });
 
-test('CLI wires archive kick only into Manager and official Codex launch paths', () => {
+test('CLI wires archive self-heal/service kick into Manager and official Codex launch paths', () => {
   const source = fs.readFileSync(path.join(ROOT, 'src', 'cli', 'codexm.js'), 'utf8');
   const calls = source.match(/kickArchiveService\(config\);/g) ?? [];
   assert.equal(calls.length, 2);
