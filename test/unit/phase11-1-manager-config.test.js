@@ -8,9 +8,10 @@ import {
 } from '../../src/manager/config-controller.js';
 import { renderManagerConfig } from '../../src/manager/config-render.js';
 
-function config(enabled = false) {
+function config(enabled = false, language = 'en') {
   return normalizeConfig({
     ...DEFAULT_CONFIG,
+    language,
     archive: { ...DEFAULT_CONFIG.archive, enabled }
   });
 }
@@ -180,4 +181,16 @@ test('Fields explain what each metric means and align descriptions into one colu
   const starts = fieldLines.slice(0, 12).map((line) => line.indexOf('  ('));
   assert.ok(starts.length >= 10);
   assert.ok(starts.every((start) => start === starts[0] && start > 0));
+});
+
+test('Vietnamese language changes Config navigation, descriptions and footer', () => {
+  const controller = new ManagerConfigController({ config: config(false, 'vi'), archivePanel: panel() });
+  controller.moveTab(3);
+  const frame = renderManagerConfig({ controller, width: 180, height: 30, mode: 'mono' });
+  const text = frame.lines.join('\n');
+  assert.match(text, /\[Thanh đầu\]/);
+  assert.match(text, /Hoạt động/);
+  assert.match(text, /Trạng thái Codex hiện tại/);
+  assert.match(text, /đổi tab/);
+  assert.doesNotMatch(text, /Current Codex state so you can see/);
 });
