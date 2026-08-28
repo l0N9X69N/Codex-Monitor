@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ManifestPath = Join-Path $RepoRoot 'package.json'
+$CommandNames = @('codexm', 'codexmm', 'codexmc', 'codexmh', 'codexmctl')
 
 function Invoke-Npm {
   param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -17,7 +18,7 @@ function Invoke-Npm {
   }
 }
 
-function Test-OwnedCodexmShim {
+function Test-OwnedCodexMonitorShim {
   param([string]$Path)
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
   try {
@@ -62,8 +63,6 @@ try {
     Invoke-Npm install
   }
 
-  # Remove a currently registered Codex Monitor global link/package first.
-  # This is package-manager-owned cleanup and never touches Monitor config/archive data.
   & npm.cmd uninstall -g codex-monitor *> $null
   if ($LASTEXITCODE -ne 0) {
     Write-Warning 'npm could not remove an existing codex-monitor global registration; checking shims before continuing.'
@@ -74,35 +73,35 @@ try {
     throw 'Could not determine the npm global prefix.'
   }
 
-  $shimPaths = @(
-    (Join-Path $globalPrefix 'codexm'),
-    (Join-Path $globalPrefix 'codexm.cmd'),
-    (Join-Path $globalPrefix 'codexm.ps1')
-  )
-
-  foreach ($shim in $shimPaths) {
-    if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { continue }
-    if (-not (Test-OwnedCodexmShim -Path $shim)) {
-      throw "Refusing to overwrite existing command not recognized as Codex Monitor-owned: $shim"
+  foreach ($name in $CommandNames) {
+    foreach ($suffix in @('', '.cmd', '.ps1')) {
+      $shim = Join-Path $globalPrefix "$name$suffix"
+      if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { continue }
+      if (-not (Test-OwnedCodexMonitorShim -Path $shim)) {
+        throw "Refusing to overwrite existing command not recognized as Codex Monitor-owned: $shim"
+      }
+      Write-Host "Removing stale Codex Monitor shim: $shim"
+      Remove-Item -LiteralPath $shim -Force
     }
-    Write-Host "Removing stale Codex Monitor shim: $shim"
-    Remove-Item -LiteralPath $shim -Force
   }
 
   Write-Host 'Linking codex-monitor globally...'
   Invoke-Npm link
 
-  $command = Get-Command codexm -ErrorAction Stop
-  Write-Host "codexm: $($command.Source)"
+  foreach ($name in $CommandNames) {
+    $command = Get-Command $name -ErrorAction Stop
+    Write-Host "$name: $($command.Source)"
+  }
 
-  & codexm --version
+  & codexmctl version
   if ($LASTEXITCODE -ne 0) {
-    throw 'codexm was linked but the version smoke test failed.'
+    throw 'Codex Monitor CLI family was linked but the Monitor version smoke test failed.'
   }
 
   Write-Host ''
   Write-Host 'Codex Monitor installation complete.'
-  Write-Host 'Run: codexm --doctor'
+  Write-Host 'Run: codexmctl doctor'
+  Write-Host 'Help: codexmh'
   Write-Host 'Then: codexm'
 } finally {
   Pop-Location
