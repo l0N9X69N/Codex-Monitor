@@ -64,8 +64,8 @@ export function buildDemandGraph({
   const activeTabEnabled = enabledTabs.includes(activeTab);
   const requested = new Map();
 
-  const request = (metric, consumer, { active = true } = {}) => {
-    if (!metricEnabled(metric, enabledMetrics)) return;
+  const request = (metric, consumer, { active = true, required = false } = {}) => {
+    if (!required && !metricEnabled(metric, enabledMetrics)) return;
     const definition = metricDefinitions[metric];
     if (!definition) return;
     if (definition.activeViewOnly && !active) return;
@@ -96,7 +96,12 @@ export function buildDemandGraph({
   }
 
   if (header.includes('git')) {
-    request('gitBranch', 'header:git');
+    // Header > Git is an explicit display choice. Always collect the cheap
+    // branch dependency even when the preset's optional gitBranch metric is
+    // disabled; otherwise the renderer receives no branch and silently drops
+    // the checked header item. Expensive diff/ahead-behind collectors remain
+    // opt-in through their own metric flags.
+    request('gitBranch', 'header:git', { required: true });
     if (git.diffStats) request('gitDiff', 'header:git');
     if (git.aheadBehind) request('gitAheadBehind', 'header:git');
   }
