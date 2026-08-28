@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { kickArchiveService } from '../../src/archive/integration.js';
+import { scheduleProductRemoval } from '../../src/platform/product-uninstall.js';
 import { compareVersions, checkForUpdates } from '../../src/product/update.js';
 import { shouldCheckForUpdates, scheduleBackgroundUpdateCheck, UPDATE_CHECK_INTERVAL_MS } from '../../src/product/update-scheduler.js';
-import { scheduleProductRemoval, uninstallMonitorIntegration } from '../../src/product/uninstall.js';
+import { uninstallMonitorIntegration } from '../../src/product/uninstall.js';
 import { PRODUCT_VERSION } from '../../src/product/meta.js';
 import { archiveDoctorReport, sanitizeArchiveError } from '../../src/runtime/archive-control.js';
 
