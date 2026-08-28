@@ -194,3 +194,32 @@ test('Vietnamese language changes Config navigation, descriptions and footer', (
   assert.match(text, /đổi tab/);
   assert.doesNotMatch(text, /Current Codex state so you can see/);
 });
+
+test('Vietnamese Fields keep canonical English metric names while localizing explanations', () => {
+  const controller = new ManagerConfigController({ config: config(false, 'vi'), archivePanel: panel() });
+  controller.moveTab(2);
+  const frame = renderManagerConfig({ controller, width: 180, height: 50, mode: 'mono' });
+  const text = frame.lines.join('\n');
+
+  assert.match(text, /CONTEXT · Used % \/ tokens/);
+  assert.match(text, /USAGE · Weekly quota/);
+  assert.match(text, /SESSION · Elapsed/);
+  assert.match(text, /ACTIVITY · Approval/);
+  assert.match(text, /SYSTEM · RAM capacity/);
+  assert.match(text, /Phần cửa sổ context của model đã sử dụng/);
+  assert.match(text, /Hạn mức Codex tuần còn lại/);
+  assert.doesNotMatch(text, /CONTEXT · % \/ token đã dùng/);
+  assert.doesNotMatch(text, /USAGE · Hạn mức tuần/);
+});
+
+test('Config footer hotkeys use visible semantic accents in cyberpunk mode', () => {
+  const controller = new ManagerConfigController({ config: config(false, 'vi'), archivePanel: panel() });
+  const frame = renderManagerConfig({ controller, width: 180, height: 30, mode: 'cyberpunk:256', previewAvailable: true });
+  const footer = frame.lines.slice(-2).join('\n');
+
+  assert.match(footer, /\x1b\[1;38;5;45mTab\/←\/→\x1b\[0m/);
+  assert.match(footer, /\x1b\[1;38;5;84mP\x1b\[0m/);
+  assert.match(footer, /\x1b\[1;38;5;213mM\x1b\[0m/);
+  assert.match(footer, /\x1b\[1;38;5;156mR\x1b\[0m/);
+  assert.match(footer, /\x1b\[38;5;255mđổi tab\x1b\[0m/);
+});
