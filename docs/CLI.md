@@ -1,62 +1,77 @@
 # CLI Reference
 
-## Product actions
+## Command family
 
 ```text
-codexm                              Start passive Live Monitor and official Codex
-codexm -h / --help                  Show Codex Monitor help
-codexm -m / --manager               Open Session Manager without spawning Codex
-codexm -c / --configure             Open shared Config
-codexm -v / --version               Print Codex Monitor version
-codexm --reset                      Confirm Monitor-preferences reset
-codexm --config                     Print effective Monitor config
-codexm --config-path                Print Monitor config path
-codexm --doctor                     Sanitized diagnostics
-codexm --diagnostics                Alias of --doctor
-codexm --repair                     Repair Monitor-owned Archive integration
-codexm --update                     Check GitHub Releases; no auto-install
-codexm --uninstall                  Uninstall Codex Monitor while preserving user/Codex data
-codexm --monitor-version            Explicit version alias
+codexm              Start passive Live Monitor and official Codex
+codexmm             Open Session Manager without spawning Codex
+codexmc             Open shared Config
+codexmh             Show Codex Monitor help
+codexmctl            Monitor maintenance/control commands
 ```
 
-Short Monitor aliases are recognized only before Codex arguments begin. This keeps common Codex short flags intact:
+`codexm` is a transparent wrapper around the official Codex CLI. Codex Monitor does not own short or long flags in this entrypoint.
 
 ```text
-codexm -m                           Monitor Session Manager
-codexm resume -m gpt-5              `-m` belongs to official Codex
-codexm -- -m gpt-5                  force a leading `-m` through to official Codex
+codexm -h                       official Codex help
+codexm -v                       official Codex version behavior
+codexm -m gpt-5                 official Codex model flag
+codexm -c key=value             official Codex config override
+codexm resume -m gpt-5          forwarded unchanged
+codexm --some-future-flag       forwarded unchanged
 ```
 
-No ambiguous short aliases are assigned to reset/repair or update/uninstall.
+This keeps `codexm <args>` compatible with `codex <args>` even when official Codex adds new flags later.
 
-## Runtime overrides
+## Session Manager
 
 ```text
---auth auto|api|login
---preset recommended|compact|full|custom
---theme color|cyberpunk|mono|matrix
---background terminal|black|dark
---lang vi|en
---manager-view operations|table|charts|auto   (requires --manager)
+codexmm                          Open Session Manager
+codexmm --view operations
+codexmm --view table
+codexmm --view charts
+codexmm --view auto
+codexmm -h / --help             Context help in the saved Monitor language
 ```
 
-`color` is the balanced everyday palette. `cyberpunk` uses the brighter cyan/magenta/neon-green/amber dashboard palette.
+`--view` affects the current Manager run only. Persisted default view changes through Config.
 
-Runtime overrides affect one invocation only. Persisted preferences change only through an explicit Config Save.
-
-## Codex passthrough
-
-Unknown arguments are forwarded to official Codex in original order.
-
-`--` ends Monitor parsing and forwards every following argument unchanged:
+## Config
 
 ```text
-codexm -- --version
-codexm -- --help
-codexm -- --some-future-codex-flag
+codexmc                          Open shared Config
+codexmc --reset                  Confirm Monitor-preferences reset, then open Config
+codexmc -h / --help              Context help in the saved Monitor language
 ```
 
-`--history` is not Monitor-owned in v1 and is therefore forwarded to official Codex.
+Config changes are persisted only after an explicit Save.
+
+## Help
+
+```text
+codexmh                          Show Codex Monitor product help
+```
+
+Monitor help follows the language selected during initial setup (`vi` or `en`). Manager, Config and maintenance help use the same saved language.
+
+## Maintenance
+
+```text
+codexmctl doctor                 Sanitized diagnostics
+codexmctl diagnostics            Alias of doctor
+codexmctl repair                 Repair Monitor-owned Archive integration
+codexmctl update                 Check GitHub Releases; no auto-install
+codexmctl uninstall              Uninstall Codex Monitor while preserving user/Codex data
+codexmctl version                Print Codex Monitor version
+codexmctl config                 Print effective Monitor config
+codexmctl config-path            Print Monitor config path
+codexmctl demo [state]           Render HUD demo: idle|thinking|tool|approval|error
+codexmctl help                   Maintenance help in the saved Monitor language
+```
+
+## First run
+
+A clean interactive bare `codexm` launch may open initial setup before official Codex starts. If any Codex argument is present, including `-h`, `-v`, `-m`, `-c`, `--help` or `--version`, onboarding does not intercept the command and the arguments go directly to Codex.
 
 ## Input ownership
 
