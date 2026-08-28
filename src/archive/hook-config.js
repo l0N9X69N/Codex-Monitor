@@ -2,43 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import {
+  buildPlatformArchiveHookCommands,
+  isOwnedArchiveHookHandler
+} from '../platform/archive-hook.js';
 import { codexHome } from '../platform/common.js';
 
 export const ARCHIVE_HOOK_MARKER = '--codexm-archive-hook';
 export const ARCHIVE_HOOK_EVENTS = Object.freeze(['SessionStart', 'UserPromptSubmit']);
 export const ARCHIVE_HOOK_ENTRY_PATH = fileURLToPath(new URL('./hook-entry.js', import.meta.url));
 
-function quotePosix(value) {
-  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
-}
-
-function quotePowerShell(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
-function buildWindowsEncodedCommand(execPath, entryPath) {
-  const script = `& ${quotePowerShell(execPath)} ${quotePowerShell(entryPath)} ${quotePowerShell(ARCHIVE_HOOK_MARKER)}; exit 0`;
-  const encoded = Buffer.from(script, 'utf16le').toString('base64');
-  return `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}`;
-}
-
 function isObject(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 function isOwnedHandler(handler) {
-  if (handler?.type !== 'command') return false;
-  if (typeof handler.command !== 'string') return false;
-  if (handler.command.includes(ARCHIVE_HOOK_MARKER)) return true;
-  // Windows handlers use EncodedCommand, so the marker is not visible in the
-  // persisted command. Decode only our PowerShell shape for ownership checks.
-  const match = handler.command.match(/^powershell\.exe\s+-NoLogo\s+-NoProfile\s+-NonInteractive\s+-EncodedCommand\s+([A-Za-z0-9+/=]+)$/i);
-  if (!match) return false;
-  try {
-    return Buffer.from(match[1], 'base64').toString('utf16le').includes(ARCHIVE_HOOK_MARKER);
-  } catch {
-    return false;
-  }
+  return isOwnedArchiveHookHandler(handler, ARCHIVE_HOOK_MARKER);
 }
 
 function stripOwnedHandlers(document) {
@@ -122,11 +101,14 @@ export function inspectArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = f
 export function buildArchiveHookHandler({
   execPath = process.execPath,
   entryPath = ARCHIVE_HOOK_ENTRY_PATH,
-  platform = process.platform
+  platform
 } = {}) {
-  const command = platform === 'win32'
-    ? buildWindowsEncodedCommand(execPath, entryPath)
-    : `${quotePosix(execPath)} ${quotePosix(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
+  const { command } = buildPlatformArchiveHookCommands({
+    execPath,
+    entryPath,
+    marker: ARCHIVE_HOOK_MARKER,
+    platform
+  });
   return { type: 'command', command, timeout: 10 };
 }
 
