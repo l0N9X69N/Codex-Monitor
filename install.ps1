@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $Repository = 'l0N9X69N/Codex-Monitor'
-$Ref = 'v1-rearchitecture'
+$Ref = 'v1-finalization'
 $InstallRoot = Join-Path $env:LOCALAPPDATA 'CodexMonitor\app'
 $ProductRoot = Split-Path -Parent $InstallRoot
 $FreshInstall = -not (Test-Path -LiteralPath $InstallRoot)
