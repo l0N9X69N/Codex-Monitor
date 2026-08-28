@@ -4,7 +4,11 @@
   "description": "Local-first monitor wrapper for the official OpenAI Codex CLI.",
   "type": "module",
   "bin": {
-    "codexm": "./src/cli/codexm.js"
+    "codexm": "./src/cli/codexm.js",
+    "codexmm": "./src/cli/codexmm.js",
+    "codexmc": "./src/cli/codexmc.js",
+    "codexmh": "./src/cli/codexmh.js",
+    "codexmctl": "./src/cli/codexmctl.js"
   },
   "files": [
     "src/",
@@ -40,7 +44,7 @@
     "test:phase11": "node --test test/unit/phase11-storage-delete.test.js test/unit/phase11-input.test.js test/unit/phase11-storage-render.test.js test/unit/phase11-storage-navigation.test.js test/unit/phase11-stress.test.js",
     "test:phase11-1": "node --test test/unit/phase11-1-archive-foundation.test.js test/unit/phase11-1-archive-repository.test.js test/unit/phase11-1-archive-database.test.js test/unit/phase11-1-archive-fidelity.test.js test/unit/phase11-1-archive-maintenance.test.js test/unit/phase11-1-archive-resilience.test.js test/unit/phase11-1-archive-coordinator.test.js test/unit/phase11-1-archive-service.test.js test/unit/phase11-1-archive-integration.test.js test/unit/phase11-1-archive-config-effects.test.js test/unit/phase11-1-archive-hooks.test.js test/unit/phase11-1-archive-oversized-record.test.js test/unit/phase11-1-manager-config.test.js test/unit/phase11-1-manager-archive-index.test.js test/unit/phase11-1-manager-index-health.test.js test/unit/phase11-1-manager-service-health.test.js test/unit/phase11-1-manager-dynamic-archive-config.test.js test/unit/phase11-1-manager-verified-detail.test.js test/unit/phase11-1-manager-live-overlay.test.js",
     "test:phase12": "node --test test/unit/cli-args.test.js test/unit/phase12-product-shell-foundation.test.js test/unit/phase12-onboarding.test.js test/unit/phase12-config-ux.test.js test/unit/phase12-control-plane.test.js test/unit/phase11-1-manager-config.test.js",
-    "test:phase13": "node --test test/unit/phase13-productization.test.js test/unit/cli-args.test.js test/unit/phase12-control-plane.test.js",
+    "test:phase13": "node --test test/unit/phase13-productization.test.js test/unit/cli-args.test.js test/unit/phase12-control-plane.test.js test/unit/phase13-cli-family.test.js",
     "verify:phase1": "node ./scripts/phase1-auto-verify.mjs",
     "verify:phase2": "node ./scripts/phase2-auto-verify.mjs",
     "verify:phase3": "node ./scripts/phase3-auto-verify.mjs",
