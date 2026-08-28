@@ -1,9 +1,19 @@
+import { configText } from '../config/i18n.js';
 import { hpaint } from '../history/theme.js';
 import { cellWidth, padCells, truncateCells } from '../ui/cell-width.js';
 import { MANAGER_CONFIG_TABS, MANAGER_CONFIG_TAB_LABELS } from './config-controller.js';
 
 function padLine(text, width) {
   return truncateCells(String(text ?? ''), width, '');
+}
+
+function localizedRow(row, language) {
+  return {
+    ...row,
+    label: configText(row?.label, language),
+    value: configText(row?.value, language),
+    description: configText(row?.description, language)
+  };
 }
 
 function rowStem(row) {
@@ -20,7 +30,7 @@ function descriptionStemWidth(rows, width) {
   return Math.max(10, Math.min(widest, maxStem));
 }
 
-function renderRow(row, selected, width, mode, stemWidth) {
+function renderRow(row, selected, width, mode, stemWidth, language) {
   const prefix = selected ? '▸ ' : '  ';
   const rawStem = rowStem(row);
   const hasDescription = Boolean(row.description);
@@ -28,7 +38,7 @@ function renderRow(row, selected, width, mode, stemWidth) {
     ? padCells(truncateCells(rawStem, stemWidth, '…'), stemWidth)
     : rawStem;
   const description = hasDescription ? `  (${row.description})` : '';
-  const readOnly = row.editable ? '' : ' · read-only';
+  const readOnly = row.editable ? '' : ` · ${configText('read-only', language)}`;
 
   if (selected) {
     const plain = `${prefix}${visibleStem}${description}${readOnly}`;
@@ -42,7 +52,7 @@ function renderRow(row, selected, width, mode, stemWidth) {
       : 'text';
   let text = `${prefix}${hpaint(visibleStem, stemToken, mode)}`;
   if (hasDescription) text += `  ${hpaint(`(${row.description})`, 'dim', mode)}`;
-  if (!row.editable) text += hpaint(' · read-only', 'dim', mode);
+  if (!row.editable) text += hpaint(readOnly, 'dim', mode);
   return truncateCells(text, width, '…');
 }
 
@@ -55,19 +65,22 @@ export function renderManagerConfig({
 } = {}) {
   const safeWidth = Math.max(44, Number(width) || 120);
   const safeHeight = Math.max(16, Number(height) || 36);
-  const rows = controller?.rows?.() ?? [];
+  const language = controller?.draftConfig?.language ?? controller?.savedConfig?.language ?? 'en';
+  const rawRows = controller?.rows?.() ?? [];
+  const rows = rawRows.map((row) => localizedRow(row, language));
   const cursorIndex = Math.max(0, Math.min(rows.length - 1, Number(controller?.cursorIndex) || 0));
   const stemWidth = descriptionStemWidth(rows, safeWidth - 2);
   const tabs = MANAGER_CONFIG_TABS.map((tab) => {
-    const label = MANAGER_CONFIG_TAB_LABELS[tab] ?? tab;
+    const label = configText(MANAGER_CONFIG_TAB_LABELS[tab] ?? tab, language);
     return tab === controller?.activeTab ? hpaint(`[${label}]`, 'nav', mode) : hpaint(label, 'dim', mode);
   }).join('  ');
 
+  const activeTabLabel = configText(MANAGER_CONFIG_TAB_LABELS[controller?.activeTab] ?? controller?.activeTab ?? 'Config', language);
   const lines = [
     padLine(hpaint('CODEX MONITOR · CONFIG', 'heading', mode), safeWidth),
     padLine(tabs, safeWidth),
     padLine(hpaint('─'.repeat(Math.max(0, safeWidth)), 'grid', mode), safeWidth),
-    padLine(`${controller?.activeTabLabel ?? 'Config'}${controller?.dirty ? ` ${hpaint('· UNSAVED', 'pressure', mode)}` : ''}`, safeWidth),
+    padLine(`${activeTabLabel}${controller?.dirty ? ` ${hpaint(`· ${configText('UNSAVED', language)}`, 'pressure', mode)}` : ''}`, safeWidth),
     ''
   ];
 
@@ -77,20 +90,23 @@ export function renderManagerConfig({
   for (let index = 0; index < visible.length; index += 1) {
     const row = visible[index];
     const absoluteIndex = start + index;
-    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode, stemWidth));
+    lines.push(renderRow(row, absoluteIndex === cursorIndex, safeWidth, mode, stemWidth, language));
   }
 
   while (lines.length < safeHeight - 3) lines.push('');
-  if (controller?.status) lines.push(padLine(hpaint(controller.status, controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
+  if (controller?.status) lines.push(padLine(hpaint(configText(controller.status, language), controller.status.startsWith('Save failed') ? 'error' : 'secondary', mode), safeWidth));
   else lines.push('');
   lines.push(padLine(hpaint(
-    previewAvailable
-      ? 'Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview'
-      : 'Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change',
+    configText(
+      previewAvailable
+        ? 'Tab/←/→ tabs · ↑/↓ select · Enter/Space change · P Live preview · M Manager preview'
+        : 'Tab/←/→ tabs · ↑/↓ select · Enter/Space toggle/change',
+      language
+    ),
     'dim',
     mode
   ), safeWidth));
-  lines.push(padLine(hpaint('S save · R revert · Esc/Q back · Archive uses the same lifecycle engine; side effects run only after Save.', 'dim', mode), safeWidth));
+  lines.push(padLine(hpaint(configText('S save · R revert · Esc/Q back · Archive uses the same lifecycle engine; side effects run only after Save.', language), 'dim', mode), safeWidth));
 
   return {
     lines: lines.slice(0, safeHeight),
