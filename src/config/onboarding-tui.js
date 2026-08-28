@@ -10,6 +10,7 @@ import { renderConfigPreview } from './preview.js';
 function paintMode(theme, capability) {
   const normalized = String(theme ?? 'color').toLowerCase();
   if (normalized === 'mono' || capability === 'mono') return 'mono';
+  if (normalized === 'cyberpunk') return `cyberpunk:${capability}`;
   if (normalized === 'matrix') return `matrix:${capability}`;
   return capability;
 }
