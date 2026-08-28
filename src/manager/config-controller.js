@@ -319,7 +319,7 @@ export class ManagerConfigController {
       const key = id.slice('card:'.length);
       if (key === 'system') {
         const enabling = this.draftConfig.systemMode === 'off';
-        this.draftConfig.systemMode = enabling ? 'auto' : 'off';
+        this.draftConfig.systemMode = enabling ? 'on' : 'off';
         if (enabling) this.draftConfig.metrics.system = true;
       } else {
         this.draftConfig.sections[key] = !this.draftConfig.sections[key];
