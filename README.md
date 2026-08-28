@@ -23,22 +23,13 @@ Run this from PowerShell:
 irm https://raw.githubusercontent.com/l0N9X69N/Codex-Monitor/v1-rearchitecture/install.ps1 | iex
 ```
 
-The bootstrap installer:
-
-- installs a supported Node.js LTS through `winget` when Node/npm are missing or unsupported;
-- uses the npm bundled with Node.js, so npm does not need a separate installer;
-- downloads Codex Monitor from GitHub;
-- installs it under `%LOCALAPPDATA%\CodexMonitor\app`;
-- safely replaces only recognized Codex Monitor-owned `codexm` shims;
-- installs dependencies, links `codexm`, and runs a version smoke test;
-- preserves the previous source installation and attempts rollback if the new install fails.
-
-If `winget` is unavailable, install Node.js `>=22.13 <27` manually and run the same command again.
+The bootstrap installer installs a supported Node.js runtime when needed, downloads Codex Monitor, installs dependencies, exposes the command family, and preserves existing Monitor config/Archive data across upgrades.
 
 After installation:
 
 ```powershell
-codexm --doctor
+codexmctl doctor
+codexmh
 codexm
 ```
 
@@ -55,46 +46,51 @@ npm install
 npm link
 ```
 
-For source-runtime testing without linking:
-
-```powershell
-node ./src/cli/codexm.js
-```
-
-## Core commands
+## Command family
 
 ```text
-codexm                              Live Monitor + official Codex
-codexm --manager                    Session Manager
-codexm --configure                  Shared Config
-codexm --reset                      Reset Monitor preferences only
-codexm --config                     Print effective Monitor config
-codexm --config-path                Print Monitor config path
-codexm --doctor / --diagnostics     Sanitized local diagnostics
-codexm --repair                     Repair Monitor-owned Archive integration
-codexm --update                     Check GitHub Releases; never auto-installs
-codexm --uninstall                  Remove Monitor-owned integration only
-codexm --version                    Codex Monitor version
+codexm              Live Monitor + official Codex
+codexmm             Session Manager
+codexmc             Shared Config
+codexmh             Codex Monitor help
+codexmctl            Diagnostics / repair / update / uninstall / product controls
 ```
 
-Unknown Codex arguments are forwarded unchanged. Use `--` for an exact passthrough boundary:
+`codexm` is intentionally a transparent Codex wrapper. Every argument belongs to official Codex and is forwarded in original order:
 
 ```powershell
-codexm -- --version
-codexm -- --help
+codexm -h
+codexm -v
+codexm -m gpt-5
+codexm -c model_reasoning_effort=high
+codexm resume -m gpt-5
 ```
 
-There is no Monitor-owned `--history` command in v1.
+Codex Monitor does not reserve `-m`, `-c`, `-h`, `-v`, `--help`, `--version`, or other Codex flags in the `codexm` entrypoint.
+
+Monitor-specific commands use their own namespace:
+
+```text
+codexmm --view charts
+codexmc --reset
+codexmctl doctor
+codexmctl repair
+codexmctl update
+codexmctl uninstall
+codexmctl version
+codexmctl config
+codexmctl config-path
+```
+
+`codexmh`, `codexmm -h`, `codexmc -h`, and `codexmctl` display help in the Monitor language selected during initial setup (`vi` or `en`).
 
 ## First run and configuration
 
-A clean interactive launch runs first-run setup before Manager or official Codex starts. Existing valid Monitor configs migrate without being forced through onboarding again.
+A clean interactive **bare** `codexm` launch runs initial setup before official Codex starts. If the invocation already contains Codex arguments, onboarding does not intercept them; for example `codexm -h` always belongs to official Codex.
 
-A clean uninstall followed by the GitHub bootstrap installer is treated as a fresh product install. The first `codexm` launch opens Initial Setup again, while preserved Monitor preferences are used as the starting values. Monitor config and Archive data are not deleted just to re-arm setup.
+`Manager -> C` and `codexmc` use the same Config controller and persisted state. Runtime Manager view cycling with `V` does not silently change the saved default.
 
-`Manager -> C` and `codexm --configure` use the same Config controller and persisted state. Runtime Manager view cycling with `V` does not silently change the saved default.
-
-Reset affects Monitor preferences only. It does not delete or modify official Codex login/auth, Codex session JSONL, or the Local Session Archive database.
+Reset with `codexmc --reset` affects Monitor preferences only. It does not delete or modify official Codex login/auth, Codex session JSONL, or the Local Session Archive database.
 
 ## Local Session Archive
 
@@ -118,7 +114,7 @@ When enabled in Config, background update checks are throttled to approximately 
 Run an explicit check with:
 
 ```powershell
-codexm --update
+codexmctl update
 ```
 
 ## Uninstall
@@ -129,15 +125,13 @@ For an installation created by the GitHub bootstrap, run this directly from Powe
 irm https://raw.githubusercontent.com/l0N9X69N/Codex-Monitor/v1-rearchitecture/uninstall.ps1 | iex
 ```
 
-The direct GitHub uninstaller delegates to the installed ownership-aware uninstaller when available. It removes Monitor-owned Archive integration, the global npm package/link, recognized `codexm` shims, and the GitHub bootstrap source under `%LOCALAPPDATA%\CodexMonitor\app`.
-
 From a repository/source installation on Windows you can instead run:
 
 ```powershell
 npm run uninstall:windows
 ```
 
-The Monitor config and Archive database are preserved. Official Codex auth and sessions are never removed. Because the bootstrap app directory is removed, a later direct GitHub install is a fresh install and first launch opens Initial Setup again.
+The Monitor config and Archive database are preserved. Official Codex auth and sessions are never removed.
 
 ## Verification
 
