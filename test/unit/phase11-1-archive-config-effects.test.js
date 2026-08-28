@@ -65,6 +65,44 @@ test('OFF to ON remains service-capable when hook install needs attention', () =
   assert.equal(result.error, 'invalid-hooks-json');
 });
 
+test('ON to ON self-heals hooks and wakes SQLite archive service without reopening database', () => {
+  const order = [];
+  const result = applyArchiveConfigSideEffects(config(true), config(true), {
+    openDatabase() { throw new Error('must not reopen SQLite'); },
+    installHooks() {
+      order.push('hooks');
+      return { installed: true, changed: true, trustRequired: true, error: null };
+    },
+    kickService(next) {
+      order.push('service');
+      assert.equal(next.archive.enabled, true);
+      return { started: true, running: true, reason: 'spawned', error: null };
+    }
+  });
+
+  assert.deepEqual(order, ['hooks', 'service']);
+  assert.equal(result.transition, 'on-to-on');
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.equal(result.bootstrap, null);
+});
+
+test('ON to ON reports hook repair failure but still wakes archive service', () => {
+  let services = 0;
+  const result = applyArchiveConfigSideEffects(config(true), config(true), {
+    installHooks() { return { installed: false, changed: false, error: 'invalid-hooks-json' }; },
+    kickService() {
+      services += 1;
+      return { started: false, running: true, error: null };
+    }
+  });
+
+  assert.equal(services, 1);
+  assert.equal(result.transition, 'on-to-on');
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'invalid-hooks-json');
+});
+
 test('ON to OFF removes Monitor hooks and requests service stop without opening or deleting archive database', () => {
   let opens = 0;
   let removals = 0;
@@ -81,7 +119,7 @@ test('ON to OFF removes Monitor hooks and requests service stop without opening 
   assert.equal(result.ok, true);
 });
 
-test('unchanged archive state has zero runtime side effects', () => {
+test('OFF to OFF keeps zero runtime side effects', () => {
   let calls = 0;
   const deps = {
     openDatabase() { calls += 1; },
@@ -90,8 +128,9 @@ test('unchanged archive state has zero runtime side effects', () => {
     kickService() { calls += 1; },
     requestStop() { calls += 1; }
   };
-  assert.equal(applyArchiveConfigSideEffects(config(false), config(false), deps).changed, false);
-  assert.equal(applyArchiveConfigSideEffects(config(true), config(true), deps).changed, false);
+  const result = applyArchiveConfigSideEffects(config(false), config(false), deps);
+  assert.equal(result.changed, false);
+  assert.equal(result.transition, 'off-to-off');
   assert.equal(calls, 0);
 });
 
