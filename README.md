@@ -1,8 +1,12 @@
 # Codex Monitor
 
-Codex Monitor is a local-first terminal companion for the official OpenAI Codex CLI.
+**A local-first live monitor, session manager and analytics dashboard for the official OpenAI Codex CLI.**
 
-It keeps the official Codex process in control while adding a passive Live Monitor, a local Session Manager, shared configuration, diagnostics, and an optional local SQLite archive for session analytics.
+Codex Monitor keeps the official Codex process in control while adding a passive terminal HUD, a local Session Manager, shared configuration, diagnostics, and an optional local SQLite archive for session analytics.
+
+<p align="center">
+  <img src="assets/monitor_live.png" alt="Codex Monitor live terminal monitor for OpenAI Codex CLI" width="100%">
+</p>
 
 > Codex Monitor is an independent project. It does not replace, bundle, patch, or modify the official Codex CLI.
 
@@ -30,6 +34,11 @@ Once Codex starts, normal keyboard input belongs to official Codex. `codexm` doe
 `codexmm` opens an independent terminal UI for inspecting local Codex sessions.
 
 It includes multiple views for operational status, tables and charts, plus session detail, local storage tools and Archive-backed analytics when Archive is enabled.
+
+<p align="center">
+  <img src="assets/manager_1.png" alt="Codex Monitor Session Manager overview" width="49%">
+  <img src="assets/manager_2.png" alt="Codex Monitor Session Manager analytics and session details" width="49%">
+</p>
 
 ### Shared Config
 
