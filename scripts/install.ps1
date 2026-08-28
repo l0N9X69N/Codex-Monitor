@@ -90,7 +90,7 @@ try {
 
   foreach ($name in $CommandNames) {
     $command = Get-Command $name -ErrorAction Stop
-    Write-Host "$name: $($command.Source)"
+    Write-Host "${name}: $($command.Source)"
   }
 
   & codexmctl version
