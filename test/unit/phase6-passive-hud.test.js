@@ -166,7 +166,7 @@ test('API key mode never displays Login quota and keeps model plus token usage a
   }
 });
 
-test('system low-profile sparkline appears only after enough samples and never replaces essential CPU/RAM values', () => {
+test('system Manager-style braille chart appears only after enough samples and never replaces essential CPU/RAM values', () => {
   const config = fullDataConfig();
   const state = fullState('login');
   setLocal(state.system, 'samples', [
@@ -178,7 +178,7 @@ test('system low-profile sparkline appears only after enough samples and never r
   const waiting = textOf(buildLiveFrame({ state, config, width: 220, height: 50, nowMs: NOW }));
   assert.match(waiting, /CPU 30%/);
   assert.match(waiting, /RAM 75%/);
-  assert.doesNotMatch(waiting, /CPU 30%.*[▁▂▃▄]{4,}/);
+  assert.doesNotMatch(waiting, /CPU 30%.*[⡀⡄⡆⡇⣇⣧⣷⣿]{4,}/);
 
   setLocal(state.system, 'samples', [
     { cpuPercent: 10, memoryBytes: 10_000_000_000, totalMemoryBytes: 16_000_000_000 },
@@ -187,22 +187,22 @@ test('system low-profile sparkline appears only after enough samples and never r
     { cpuPercent: 30, memoryBytes: 12_000_000_000, totalMemoryBytes: 16_000_000_000 }
   ]);
   const ready = textOf(buildLiveFrame({ state, config, width: 220, height: 50, nowMs: NOW }));
-  assert.match(ready, /CPU 30%\s{2}[▁▂▃▄]{4,}/);
-  assert.match(ready, /RAM 75%\s{2}[▁▂▃▄]{4,}/);
+  assert.match(ready, /CPU 30%\s+│\s+[⡀⡄⡆⡇⣇⣧⣷⣿]{4,}/);
+  assert.match(ready, /RAM 75%\s+│\s+[⡀⡄⡆⡇⣇⣧⣷⣿]{4,}/);
   assert.equal(MIN_SPARKLINE_SAMPLES, 4);
   assert.equal(sparkline([10, 20, 15], 12), null);
   assert.equal(sparkline([10, 20, 15, 30], 80).length, 80);
   assert.match(progressBar(25, 8), /^[━─]{8}$/);
 });
 
-test('System stretches trend history across available card width while occupancy stays short', () => {
+test('System stretches Manager-style trend history across available card width while occupancy stays compact', () => {
   const config = fullDataConfig();
   const state = fullState('login');
   setLocal(state.system, 'samples', longSamples());
   const text = textOf(buildLiveFrame({ state, config, width: 300, height: 50, nowMs: NOW }));
-  assert.match(text, /CPU 30%\s{2}[▁▂▃▄]{30,}/);
-  assert.match(text, /RAM 75%\s{2}[▁▂▃▄]{30,}/);
-  assert.match(text, /USED\s+[━─]{6,10}\s+12\.0 GB\/16\.0 GB/);
+  assert.match(text, /CPU 30%\s+│\s+[⡀⡄⡆⡇⣇⣧⣷⣿]{30,}/);
+  assert.match(text, /RAM 75%\s+│\s+[⡀⡄⡆⡇⣇⣧⣷⣿]{30,}/);
+  assert.match(text, /USED 75%\s+│\s+[█·]{6,12}\s+12\.0 GB\/16\.0 GB/);
   assert.doesNotMatch(text, /\bFREE\b/);
 });
 
@@ -290,14 +290,14 @@ test('all supported responsive widths remain bounded and keep Codex priority on 
   }
 });
 
-test('Full demands displayed System and Git collectors without enabling heavy hidden collectors', () => {
+test('Recommended and Full demand displayed System collectors without enabling heavy hidden collectors', () => {
   const adapter = { paths: () => ({ sessions: null }) };
   const state = createCurrentRunState({ startedAtMs: NOW });
   const recommended = normalizeConfig(configForPreset('recommended'));
   const full = normalizeConfig(configForPreset('full'));
   const recommendedRuntime = new LiveDataRuntime({ state, config: recommended, adapter, now: () => NOW });
   const fullRuntime = new LiveDataRuntime({ state, config: full, adapter, now: () => NOW });
-  assert.equal(recommendedRuntime.graph().hasCollector('system'), false);
+  assert.equal(recommendedRuntime.graph().hasCollector('system'), true);
   assert.equal(fullRuntime.graph().hasCollector('system'), true);
   assert.equal(fullRuntime.graph().hasCollector('git-branch'), true);
   assert.equal(fullRuntime.graph().hasCollector('git-diff'), true);
