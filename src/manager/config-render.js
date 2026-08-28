@@ -18,6 +18,12 @@ function padLine(text, width) {
   return truncateCells(String(text ?? ''), width, '');
 }
 
+function localizedDescription(value, language) {
+  return configText(value, language)
+    .replaceAll('codexm --manager', 'codexmm')
+    .replaceAll('codexm --configure', 'codexmc');
+}
+
 function localizedRow(row, language) {
   return {
     ...row,
@@ -26,7 +32,7 @@ function localizedRow(row, language) {
     // are localized, while setting names and technical values stay stable.
     label: row?.label,
     value: row?.value,
-    description: configText(row?.description, language)
+    description: localizedDescription(row?.description, language)
   };
 }
 
