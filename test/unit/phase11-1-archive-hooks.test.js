@@ -33,9 +33,17 @@ test('hook installer preserves user hooks, installs only low-frequency archive w
     }, null, 2)}\n`);
 
     const handler = buildArchiveHookHandler({ execPath: '/node', entryPath: '/archive-hook.js' });
-    assert.equal(handler.timeout, 1);
+    assert.equal(handler.timeout, 10);
     assert.match(handler.command, /--codexm-archive-hook/);
-    assert.match(handler.commandWindows, /--codexm-archive-hook/);
+    assert.match(handler.commandWindows, /^powershell\.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand /);
+    assert.equal(handler.commandWindows.includes('"'), false);
+
+    const encoded = handler.commandWindows.split(' ').at(-1);
+    const decoded = Buffer.from(encoded, 'base64').toString('utf16le');
+    assert.match(decoded, /\/node/);
+    assert.match(decoded, /\/archive-hook\.js/);
+    assert.match(decoded, /--codexm-archive-hook/);
+    assert.match(decoded, /exit 0/);
 
     const first = installArchiveHooks({ hooksPath, handler });
     assert.equal(first.installed, true);
