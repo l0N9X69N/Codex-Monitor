@@ -12,10 +12,11 @@ import { getMonitorConfigPath, loadMonitorConfig } from '../config/store.js';
 import { completeHostExit } from '../platform/host-lifecycle.js';
 import { resolveCodexExecutable } from '../platform/pty.js';
 import { createPlatformAdapter } from '../platform/index.js';
+import { scheduleProductRemoval } from '../platform/product-uninstall.js';
 import { PRODUCT_VERSION } from '../product/meta.js';
 import { checkForUpdates, printUpdateReport } from '../product/update.js';
 import { scheduleBackgroundUpdateCheck } from '../product/update-scheduler.js';
-import { printUninstallReport, scheduleProductRemoval, uninstallMonitorIntegration } from '../product/uninstall.js';
+import { printUninstallReport, uninstallMonitorIntegration } from '../product/uninstall.js';
 import { printRepairReport, repairMonitorIntegration } from '../runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../runtime/doctor.js';
 import { runCodexLive } from '../runtime/live-runner.js';
@@ -120,7 +121,7 @@ async function main() {
   if (parsed.action === 'uninstall') {
     const report = uninstallMonitorIntegration();
     const removal = report.ok ? scheduleProductRemoval() : { scheduled: false, reason: 'integration-cleanup-failed' };
-    printUninstallReport(report, process.stdout, { removal });
+    printUninstallReport(report, process.stdout, { packageRemoval: removal });
     return report.ok && (removal.scheduled || removal.reason === 'package-manager-required') ? 0 : 2;
   }
   if (parsed.action === 'config-path') { process.stdout.write(`${configPath}\n`); return 0; }
