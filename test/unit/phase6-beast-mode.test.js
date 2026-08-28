@@ -38,19 +38,26 @@ test('on System plus on Beast reflows six cards as four plus two instead of five
   assert.match(text, /BEAST MODE/);
 });
 
-test('auto cards use spare horizontal slots without creating a new grid row', () => {
+test('auto cards use spare horizontal slots while System still honors its minimum width', () => {
   const base = normalizeConfig(configForPreset('full'));
   const config = normalizeConfig({ ...base, preset: 'custom', systemMode: 'auto', beastMode: 'auto' });
 
   const medium = render(180, config);
   const mediumText = stripAnsi(medium.lines.join('\n'));
   assert.equal(medium.semantic.cardCount, 5);
-  assert.equal(medium.semantic.systemVisible, true);
-  assert.equal(medium.semantic.beastVisible, false);
-  assert.match(mediumText, /SYSTEM/);
-  assert.doesNotMatch(mediumText, /BEAST MODE/);
+  assert.equal(medium.semantic.systemVisible, false);
+  assert.equal(medium.semantic.beastVisible, true);
+  assert.doesNotMatch(mediumText, /SYSTEM/);
+  assert.match(mediumText, /BEAST MODE/);
 
-  const wide = render(220, config);
+  const stillTight = render(220, config);
+  const stillTightText = stripAnsi(stillTight.lines.join('\n'));
+  assert.equal(stillTight.semantic.systemVisible, false);
+  assert.equal(stillTight.semantic.beastVisible, true);
+  assert.doesNotMatch(stillTightText, /SYSTEM/);
+  assert.match(stillTightText, /BEAST MODE/);
+
+  const wide = render(260, config);
   const wideText = stripAnsi(wide.lines.join('\n'));
   assert.equal(wide.semantic.cardCount, 6);
   assert.equal(wide.semantic.columns, 6);
