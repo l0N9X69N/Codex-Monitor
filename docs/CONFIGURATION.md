@@ -23,6 +23,17 @@ Manager
 Updates
 ```
 
+## Appearance themes
+
+`Appearance -> Theme` offers four terminal treatments:
+
+- `color` — default balanced palette with subtly colored frames and harmonious semantic text for long sessions;
+- `cyberpunk` — higher-saturation cyan, magenta, neon green and amber dashboard accents;
+- `matrix` — green terminal treatment;
+- `mono` — ANSI-color-free presentation.
+
+The selected theme applies to both Live Monitor and Session Manager. Terminal color capability can reduce the representation from truecolor to 256/16 colors without changing the selected theme semantics.
+
 ## Save model
 
 - edits happen in a draft;
