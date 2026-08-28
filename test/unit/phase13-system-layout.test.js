@@ -66,18 +66,25 @@ test('automatic System requires one row and its own minimum width instead of squ
   assert.equal(wide.semantic.systemWidthDecision, 'fits');
 });
 
-test('automatic System CPU RAM and USED use equal quota-style gauges', () => {
+test('automatic System keeps live CPU/RAM motion and USED capacity instead of static quota gauges', () => {
   const config = normalizeConfig({ ...configForPreset('recommended'), beastMode: 'off' });
-  const frame = buildLiveFrame({ state: state(), config, width: 260, height: 50, nowMs: NOW });
+  const monitorState = state();
+  monitorState.system.samples = {
+    value: [
+      { cpuPercent: 8, memoryBytes: 8_000_000_000, totalMemoryBytes: 32_000_000_000 },
+      { cpuPercent: 22, memoryBytes: 10_000_000_000, totalMemoryBytes: 32_000_000_000 },
+      { cpuPercent: 48, memoryBytes: 12_000_000_000, totalMemoryBytes: 32_000_000_000 },
+      { cpuPercent: 16, memoryBytes: 11_000_000_000, totalMemoryBytes: 32_000_000_000 },
+      { cpuPercent: 35, memoryBytes: 13_000_000_000, totalMemoryBytes: 32_000_000_000 }
+    ]
+  };
+  const frame = buildLiveFrame({ state: monitorState, config, width: 260, height: 50, nowMs: NOW });
   const text = textOf(frame);
-  const cpu = text.match(/CPU\s+([━─]{6,16})\s+\d+%/);
-  const ram = text.match(/RAM\s+([━─]{6,16})\s+\d+%/);
-  const used = text.match(/USED\s+([━─]{6,16})\s+\d+%\s+·\s+[\d.]+ [KMGTP]?B\/[\d.]+ [KMGTP]?B/);
-  assert.ok(cpu, 'CPU gauge missing');
-  assert.ok(ram, 'RAM gauge missing');
-  assert.ok(used, 'USED gauge missing');
-  assert.equal(cpu[1].length, ram[1].length);
-  assert.equal(ram[1].length, used[1].length);
+
+  assert.match(text, /CPU\s+\d+%\s+│\s+[⡀⡄⡆⡇⣇⣧⣷⣿]{4,}/);
+  assert.match(text, /RAM\s+\d+%\s+│\s+[⡀⡄⡆⡇⣇⣧⣷⣿]{4,}/);
+  assert.match(text, /USED\s+\d+%\s+│\s+[█·]{6,12}\s+[\d.]+ [KMGTP]?B\/[\d.]+ [KMGTP]?B/);
+  assert.doesNotMatch(text, /CPU\s+[━─]{6,16}\s+\d+%/);
 });
 
 test('forced System remains visible and may wrap when one row is not wide enough', () => {
