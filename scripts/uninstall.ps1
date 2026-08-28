@@ -9,8 +9,9 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $BootstrapInstallRoot = Join-Path $env:LOCALAPPDATA 'CodexMonitor\app'
+$CommandNames = @('codexm', 'codexmm', 'codexmc', 'codexmh', 'codexmctl')
 
-function Test-OwnedCodexmShim {
+function Test-OwnedCodexMonitorShim {
   param([string]$Path)
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
   try {
@@ -38,7 +39,7 @@ function Wait-ForParentExit {
     if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { return }
     Start-Sleep -Milliseconds 100
   }
-  throw "Timed out waiting for codexm process $ProcessId to exit."
+  throw "Timed out waiting for Codex Monitor process $ProcessId to exit."
 }
 
 Write-Host 'Codex Monitor uninstaller'
@@ -69,20 +70,17 @@ if ($LASTEXITCODE -ne 0 -or -not $globalPrefix) {
   throw 'Could not determine the npm global prefix.'
 }
 
-$shimPaths = @(
-  (Join-Path $globalPrefix 'codexm'),
-  (Join-Path $globalPrefix 'codexm.cmd'),
-  (Join-Path $globalPrefix 'codexm.ps1')
-)
-
-foreach ($shim in $shimPaths) {
-  if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { continue }
-  if (-not (Test-OwnedCodexmShim -Path $shim)) {
-    Write-Warning "Leaving existing command because it is not recognized as Codex Monitor-owned: $shim"
-    continue
+foreach ($name in $CommandNames) {
+  foreach ($suffix in @('', '.cmd', '.ps1')) {
+    $shim = Join-Path $globalPrefix "$name$suffix"
+    if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { continue }
+    if (-not (Test-OwnedCodexMonitorShim -Path $shim)) {
+      Write-Warning "Leaving existing command because it is not recognized as Codex Monitor-owned: $shim"
+      continue
+    }
+    Write-Host "Removing stale Codex Monitor shim: $shim"
+    Remove-Item -LiteralPath $shim -Force
   }
-  Write-Host "Removing stale Codex Monitor shim: $shim"
-  Remove-Item -LiteralPath $shim -Force
 }
 
 if (Test-SamePath -A $RepoRoot -B $BootstrapInstallRoot) {
