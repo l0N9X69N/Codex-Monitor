@@ -4,24 +4,41 @@ const RESET_STYLE = `${ESC}22;39m`;
 const RESET_ALL = `${ESC}0m`;
 const BOLD = `${ESC}1m`;
 
-// Color theme intentionally follows the proven feat/full-monitor-v2 visual
-// language. Only presentation is shared: the current normalized-state,
-// current-run and passive-input semantics remain authoritative.
+// Balanced everyday color palette: colored structure and semantic values without
+// the saturation of Cyberpunk. This remains the default Monitor theme.
 const COLOR = Object.freeze({
-  frame: `${ESC}38;2;71;85;105m`,
-  inactive: `${ESC}38;2;100;116;139m`,
-  label: `${ESC}38;2;100;116;139m`,
-  muted: `${ESC}38;2;148;163;184m`,
+  frame: `${ESC}38;2;69;91;120m`,
+  inactive: `${ESC}38;2;111;126;148m`,
+  label: `${ESC}38;2;139;151;170m`,
+  muted: `${ESC}38;2;156;164;180m`,
   bright: `${ESC}38;2;226;232;240m`,
-  healthy: `${ESC}38;2;34;197;94m`,
-  thinking: `${ESC}38;2;250;204;21m`,
-  tool: `${ESC}38;2;96;165;250m`,
-  approval: `${ESC}38;2;245;158;11m`,
-  error: `${ESC}38;2;239;68;68m`,
-  info: `${ESC}38;2;34;211;238m`,
-  nav: `${ESC}38;2;34;211;238m`,
-  reasoning: `${ESC}38;2;192;132;252m`,
+  healthy: `${ESC}38;2;105;194;139m`,
+  thinking: `${ESC}38;2;210;181;101m`,
+  tool: `${ESC}38;2;116;180;210m`,
+  approval: `${ESC}38;2;211;151;87m`,
+  error: `${ESC}38;2;220;103;108m`,
+  info: `${ESC}38;2;116;190;222m`,
+  nav: `${ESC}38;2;132;184;214m`,
+  reasoning: `${ESC}38;2;180;151;207m`,
   text: `${ESC}38;2;226;232;240m`,
+  strong: BOLD
+});
+
+const CYBERPUNK = Object.freeze({
+  frame: `${ESC}38;2;27;103;123m`,
+  inactive: `${ESC}38;2;103;112;141m`,
+  label: `${ESC}38;2;174;166;205m`,
+  muted: `${ESC}38;2;135;139;164m`,
+  bright: `${ESC}38;2;240;249;255m`,
+  healthy: `${ESC}38;2;57;255;136m`,
+  thinking: `${ESC}38;2;250;204;21m`,
+  tool: `${ESC}38;2;34;211;238m`,
+  approval: `${ESC}38;2;255;171;64m`,
+  error: `${ESC}38;2;255;75;110m`,
+  info: `${ESC}38;2;34;211;238m`,
+  nav: `${ESC}38;2;232;121;249m`,
+  reasoning: `${ESC}38;2;192;132;252m`,
+  text: `${ESC}38;2;240;249;255m`,
   strong: BOLD
 });
 
@@ -54,7 +71,7 @@ const BACKGROUNDS = Object.freeze({
   dark: `${ESC}48;2;15;23;42m`
 });
 
-const THEMES = Object.freeze({ color: COLOR, mono: MONO, matrix: MATRIX });
+const THEMES = Object.freeze({ color: COLOR, cyberpunk: CYBERPUNK, mono: MONO, matrix: MATRIX });
 
 export function themeTokens(theme = 'color') {
   const tokens = THEMES[theme] ?? COLOR;
