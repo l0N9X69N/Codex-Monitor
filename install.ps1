@@ -175,7 +175,8 @@ try {
   Write-Host ''
   Write-Host 'GitHub installation complete.'
   Write-Host "Installed source: $InstallRoot"
-  Write-Host 'Run: codexm --doctor'
+  Write-Host 'Run: codexmctl doctor'
+  Write-Host 'Help: codexmh'
   if ($FreshInstall) {
     Write-Host 'Then run: codexm  (first launch opens Initial Setup before Codex)'
   } else {
