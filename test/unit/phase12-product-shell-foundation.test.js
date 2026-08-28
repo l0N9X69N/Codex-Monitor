@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMonitorArgs } from '../../src/cli/args.js';
+import { parseManagerArgs, parseMonitorArgs } from '../../src/cli/args.js';
 import { runStandaloneConfigTui } from '../../src/config/tui.js';
 import {
   applyRuntimeOverrides,
@@ -39,20 +39,19 @@ function fakeTty() {
   return { stdin, stdout, processRef };
 }
 
-test('Phase 12 router consumes Manager view and rejects ambiguous Monitor actions', () => {
-  const parsed = parseMonitorArgs(['--theme', 'matrix', '--manager-view=charts', '--manager']);
-  assert.equal(parsed.action, 'manager');
-  assert.equal(parsed.overrides.theme, 'matrix');
-  assert.equal(parsed.overrides.managerView, 'charts');
-  assert.deepEqual(parsed.codexArgs, []);
-  assert.throws(() => parseMonitorArgs(['--doctor', '--manager']), /Conflicting Monitor actions/);
-  assert.throws(() => parseMonitorArgs(['--manager-view', 'table']), /requires --manager/);
+test('Phase 12 router leaves Codex options untouched and Manager view moved to codexmm', () => {
+  const argv = ['--theme', 'matrix', '--manager-view=charts', '--manager'];
+  const parsed = parseMonitorArgs(argv);
+  assert.equal(parsed.action, 'run');
+  assert.deepEqual(parsed.codexArgs, argv);
+  assert.deepEqual(parseManagerArgs(['--view=charts']), { help: false, view: 'charts' });
 });
 
-test('Phase 12 router preserves unknown Codex args and the exact passthrough escape hatch', () => {
-  const parsed = parseMonitorArgs(['resume', '--last', '--', '--manager', '--theme', 'matrix']);
+test('Phase 12 router preserves exact Codex args including explicit passthrough boundary', () => {
+  const argv = ['resume', '--last', '--', '--manager', '--theme', 'matrix'];
+  const parsed = parseMonitorArgs(argv);
   assert.equal(parsed.action, 'run');
-  assert.deepEqual(parsed.codexArgs, ['resume', '--last', '--manager', '--theme', 'matrix']);
+  assert.deepEqual(parsed.codexArgs, argv);
 });
 
 test('existing v2 config migrates to setup-complete Manager preferences without enabling Archive', () => {
