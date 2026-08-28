@@ -9,7 +9,7 @@ import { DEFAULT_CONFIG, normalizeConfig } from '../../src/config/schema.js';
 import { repairMonitorIntegration } from '../../src/runtime/archive-control.js';
 import { doctorReport, printDoctor } from '../../src/runtime/doctor.js';
 import { runSessionManagerTui } from '../../src/manager/tui.js';
-import { parseMonitorArgs } from '../../src/cli/args.js';
+import { parseControlArgs, parseMonitorArgs } from '../../src/cli/args.js';
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'codexm-p12-control-'));
@@ -139,8 +139,7 @@ test('repair touches only the Monitor-owned Archive hook path then wakes reconci
   assert.deepEqual(calls, ['hook', 'reconcile']);
 });
 
-test('CLI router owns --repair and keeps it mutually exclusive with other control actions', () => {
-  assert.equal(parseMonitorArgs(['--repair']).action, 'repair');
-  assert.throws(() => parseMonitorArgs(['--repair', '--manager']), /Conflicting Monitor actions/);
-  assert.deepEqual(parseMonitorArgs(['--', '--repair']).codexArgs, ['--repair']);
+test('repair moved to codexmctl while codexm forwards the same flag to Codex', () => {
+  assert.equal(parseControlArgs(['repair']).command, 'repair');
+  assert.deepEqual(parseMonitorArgs(['--repair']).codexArgs, ['--repair']);
 });
