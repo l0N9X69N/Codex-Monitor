@@ -17,11 +17,6 @@ function quotePowerShell(value) {
 }
 
 function buildWindowsEncodedCommand(execPath, entryPath) {
-  // Codex currently launches Windows hooks through cmd.exe /C and versions in
-  // the wild can fail when the hook command itself contains embedded quotes.
-  // Keep commandWindows quote-free and move all quoted paths inside a UTF-16LE
-  // PowerShell EncodedCommand payload. The hook stays fail-open: if Node cannot
-  // be started, the wrapper still exits 0 so Codex input is never blocked.
   const script = `& ${quotePowerShell(execPath)} ${quotePowerShell(entryPath)} ${quotePowerShell(ARCHIVE_HOOK_MARKER)}; exit 0`;
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
   return `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}`;
@@ -32,9 +27,18 @@ function isObject(value) {
 }
 
 function isOwnedHandler(handler) {
-  return handler?.type === 'command'
-    && typeof handler.command === 'string'
-    && handler.command.includes(ARCHIVE_HOOK_MARKER);
+  if (handler?.type !== 'command') return false;
+  if (typeof handler.command !== 'string') return false;
+  if (handler.command.includes(ARCHIVE_HOOK_MARKER)) return true;
+  // Windows handlers use EncodedCommand, so the marker is not visible in the
+  // persisted command. Decode only our PowerShell shape for ownership checks.
+  const match = handler.command.match(/^powershell\.exe\s+-NoLogo\s+-NoProfile\s+-NonInteractive\s+-EncodedCommand\s+([A-Za-z0-9+/=]+)$/i);
+  if (!match) return false;
+  try {
+    return Buffer.from(match[1], 'base64').toString('utf16le').includes(ARCHIVE_HOOK_MARKER);
+  } catch {
+    return false;
+  }
 }
 
 function stripOwnedHandlers(document) {
@@ -115,10 +119,15 @@ export function inspectArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = f
   };
 }
 
-export function buildArchiveHookHandler({ execPath = process.execPath, entryPath = ARCHIVE_HOOK_ENTRY_PATH } = {}) {
-  const posixCommand = `${quotePosix(execPath)} ${quotePosix(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
-  const windowsCommand = buildWindowsEncodedCommand(execPath, entryPath);
-  return { type: 'command', command: posixCommand, commandWindows: windowsCommand, timeout: 10 };
+export function buildArchiveHookHandler({
+  execPath = process.execPath,
+  entryPath = ARCHIVE_HOOK_ENTRY_PATH,
+  platform = process.platform
+} = {}) {
+  const command = platform === 'win32'
+    ? buildWindowsEncodedCommand(execPath, entryPath)
+    : `${quotePosix(execPath)} ${quotePosix(entryPath)} ${ARCHIVE_HOOK_MARKER}`;
+  return { type: 'command', command, timeout: 10 };
 }
 
 export function installArchiveHooks({ hooksPath = getCodexHooksPath(), fsRef = fs, handler = buildArchiveHookHandler() } = {}) {
