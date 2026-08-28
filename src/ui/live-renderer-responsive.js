@@ -7,6 +7,9 @@ import { contextUsedSeverity, quotaRemainingSeverity, severityToken, systemPress
 const ULTRAWIDE_SYSTEM_CARD_MIN_CELLS = 200;
 const MIN_SPARKLINE_SAMPLES = 4;
 const SPARK_BLOCKS = '▁▂▃▄';
+const SYSTEM_SPARK_GLYPHS = '⡀⡄⡆⡇⣇⣧⣷⣿';
+const SYSTEM_BAR_FILL = '█';
+const SYSTEM_BAR_REST = '·';
 const MIN_CARD_OUTER_CELLS = 34;
 const MAX_CARD_COLUMNS = 6;
 const BEAST_MODE_MIN_CELLS = 240;
@@ -107,6 +110,26 @@ function sparkline(values, width) {
     const index = Math.max(0, Math.min(SPARK_BLOCKS.length - 1, Math.round(((item - min) / range) * (SPARK_BLOCKS.length - 1))));
     return SPARK_BLOCKS[index];
   }).join('');
+}
+
+function systemSparkline(values, width) {
+  const clean = values.map(finite).filter((item) => item != null);
+  const cells = Math.max(0, Math.floor(width));
+  if (clean.length < MIN_SPARKLINE_SAMPLES || cells < 4) return null;
+  const source = resample(clean, cells);
+  return source.map((item) => {
+    const ratio = Math.max(0, Math.min(1, item / 100));
+    const index = Math.max(0, Math.min(SYSTEM_SPARK_GLYPHS.length - 1, Math.round(ratio * (SYSTEM_SPARK_GLYPHS.length - 1))));
+    return SYSTEM_SPARK_GLYPHS[index];
+  }).join('');
+}
+
+function systemCapacityBar(percent, width) {
+  const p = finite(percent);
+  const cells = Math.max(0, Math.floor(width));
+  if (p == null || cells < 4) return null;
+  const filled = Math.max(0, Math.min(cells, Math.round((Math.max(0, Math.min(100, p)) / 100) * cells)));
+  return `${SYSTEM_BAR_FILL.repeat(filled)}${SYSTEM_BAR_REST.repeat(cells - filled)}`;
 }
 
 function activityInfo(state) {
@@ -529,8 +552,8 @@ function activityContent(state, rep, theme) {
 
 function systemGraph(state, key, width) {
   const samples = Array.isArray(value(state?.system?.samples, [])) ? value(state?.system?.samples, []) : [];
-  if (key === 'cpu') return sparkline(samples.map((sample) => sample?.cpuPercent), Math.max(4, width));
-  return sparkline(samples.map((sample) => {
+  if (key === 'cpu') return systemSparkline(samples.map((sample) => sample?.cpuPercent), Math.max(4, width));
+  return systemSparkline(samples.map((sample) => {
     const used = finite(sample?.memoryBytes);
     const total = finite(sample?.totalMemoryBytes);
     return used != null && total != null && total > 0 ? (used / total) * 100 : null;
@@ -540,7 +563,10 @@ function systemGraph(state, key, width) {
 function pressureText(label, raw, graph, theme) {
   const token = severityToken(systemPressureSeverity(raw));
   const percent = styleText(pct(raw), token, theme, { bold: true });
-  return graph ? `${label} ${percent}  ${styleText(graph, token, theme)}` : `${label} ${percent}`;
+  const labelText = styleText(label, 'text', theme, { bold: true });
+  return graph
+    ? `${labelText} ${percent} ${paint('│', 'frame', theme)} ${styleText(graph, token, theme)}`
+    : `${labelText} ${percent}`;
 }
 
 function systemContent(state, rep, width, theme) {
@@ -548,22 +574,26 @@ function systemContent(state, rep, width, theme) {
   const used = finite(value(state?.system?.memoryBytes));
   const total = finite(value(state?.system?.totalMemoryBytes));
   const memoryPercent = used != null && total != null && total > 0 ? (used / total) * 100 : null;
-  const cpuPrefix = `CPU ${pct(cpu)}  `;
-  const ramPrefix = `RAM ${pct(memoryPercent)}  `;
-  const graphWidth = Math.max(4, width - Math.max(cellWidth(cpuPrefix), cellWidth(ramPrefix)));
+  const graphPrefix = `CPU ${pct(cpu)} │ `;
+  const graphWidth = Math.max(4, width - cellWidth(graphPrefix));
   const cpuGraph = width >= 24 ? systemGraph(state, 'cpu', graphWidth) : null;
   const ramGraph = width >= 24 ? systemGraph(state, 'ram', graphWidth) : null;
   const cpuLine = pressureText('CPU', cpu, cpuGraph, theme);
   const ramLine = pressureText('RAM', memoryPercent, ramGraph, theme);
   const cpuToken = severityToken(systemPressureSeverity(cpu));
   const ramToken = severityToken(systemPressureSeverity(memoryPercent));
-  const capacityBar = progressBar(memoryPercent, Math.max(6, Math.min(10, width - 23)));
+  const capacityText = `${formatBytes(used)}/${formatBytes(total)}`;
+  const capacityPrefix = `USED ${pct(memoryPercent)} │ `;
+  const availableBarCells = width - cellWidth(capacityPrefix) - cellWidth(capacityText) - 1;
+  const capacityBar = availableBarCells >= 6
+    ? systemCapacityBar(memoryPercent, Math.min(12, availableBarCells))
+    : null;
   const capacityLine = capacityBar
-    ? `USED ${styleText(capacityBar, ramToken, theme)} ${formatBytes(used)}/${formatBytes(total)}`
-    : `USED ${formatBytes(used)}/${formatBytes(total)}`;
+    ? `${styleText('USED', 'text', theme, { bold: true })} ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })} ${paint('│', 'frame', theme)} ${styleText(capacityBar, ramToken, theme)} ${styleText(capacityText, 'muted', theme)}`
+    : `USED ${capacityText}`;
 
   if (rep === CARD_REPRESENTATION.MINIMAL) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`];
-  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, `USED ${formatBytes(used)}/${formatBytes(total)}`];
+  if (rep === CARD_REPRESENTATION.COMPACT) return [`CPU ${styleText(pct(cpu), cpuToken, theme, { bold: true })} ${paint('·', 'frame', theme)} RAM ${styleText(pct(memoryPercent), ramToken, theme, { bold: true })}`, `USED ${capacityText}`];
   return [cpuLine, ramLine, capacityLine];
 }
 
