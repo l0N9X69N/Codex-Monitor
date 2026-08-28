@@ -30,6 +30,7 @@ const PRESET_CHOICES = Object.freeze([
 
 const THEME_CHOICES = Object.freeze([
   { value: 'color', label: 'Color' },
+  { value: 'cyberpunk', label: 'Cyberpunk' },
   { value: 'matrix', label: 'Matrix' },
   { value: 'mono', label: 'Mono' }
 ]);
