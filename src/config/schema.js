@@ -5,7 +5,7 @@ export const CONFIG_VERSION = 4;
 const VALID = Object.freeze({
   languages: new Set(['vi', 'en']),
   presets: new Set(['recommended', 'compact', 'full', 'custom']),
-  themes: new Set(['color', 'mono', 'matrix']),
+  themes: new Set(['color', 'cyberpunk', 'mono', 'matrix']),
   backgrounds: new Set(['terminal', 'black', 'dark']),
   beastModes: new Set(['off', 'auto', 'on']),
   systemModes: new Set(['off', 'auto', 'on']),
