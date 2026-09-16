@@ -33,5 +33,18 @@ test('TerminalGuard restores only modes it changed and is idempotent', () => {
   assert.match(restored, /\x1b\[\?25h/);
   assert.match(restored, /\x1b\[r/);
   assert.match(restored, /\x1b\[\?1049l/);
-  assert.match(restored, /\x1b\[\?1006l/);
+  assert.match(restored, /\x1b\[\?1007l/);
+});
+
+test('TerminalGuard uses alternate-scroll wheel navigation without pointer click reporting', () => {
+  const fake = fakeTerminal();
+  const guard = new TerminalGuard(fake);
+  guard.enableMouse();
+
+  const enabled = fake.writes.join('');
+  assert.match(enabled, /\x1b\[\?1007h/);
+  assert.doesNotMatch(enabled, /\x1b\[\?1000h/);
+  assert.doesNotMatch(enabled, /\x1b\[\?1006h/);
+  assert.equal(guard.mouseEnabled, false);
+  assert.equal(guard.alternateScrollEnabled, true);
 });
