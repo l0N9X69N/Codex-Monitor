@@ -10,6 +10,7 @@ export class TerminalGuard {
     this.scrollRegionModified = false;
     this.mouseEnabled = false;
     this.alternateScrollEnabled = false;
+    this.bracketedPasteEnabled = false;
     this.alternateScreen = false;
     this.restored = false;
   }
@@ -36,18 +37,17 @@ export class TerminalGuard {
   }
 
   enableMouse() {
-    // X10 tracking reports button presses (including wheel extensions) but not
-    // button-release packets. Pair it with SGR coordinates so Manager can keep
-    // explicit left/middle/right/wheel shortcuts without a delayed release
-    // packet being split by Windows/ConPTY into ESC + ... + M/m and leaking into
-    // normal keyboard shortcuts after an Inspect screen is opened.
+    // X10 tracking reports presses without a release event. SGR keeps usable
+    // coordinates. Bracketed paste lets Manager identify and discard the native
+    // terminal paste that some Windows/VS Code terminals still emit on right-click.
     this.write(
       `${ESC}[?1007l` +
       `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l` +
-      `${ESC}[?9h${ESC}[?1006h`
+      `${ESC}[?9h${ESC}[?1006h${ESC}[?2004h`
     );
     this.mouseEnabled = true;
     this.alternateScrollEnabled = false;
+    this.bracketedPasteEnabled = true;
   }
 
   enterAlternateScreen() {
@@ -62,6 +62,7 @@ export class TerminalGuard {
     let sequence = '';
     if (this.mouseEnabled) sequence += `${ESC}[?9l${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
     if (this.alternateScrollEnabled) sequence += `${ESC}[?1007l`;
+    if (this.bracketedPasteEnabled) sequence += `${ESC}[?2004l`;
     if (this.cursorHidden) sequence += `${ESC}[?25h`;
     if (this.scrollRegionModified) sequence += `${ESC}[r`;
     if (this.alternateScreen) sequence += `${ESC}[?1049l`;
