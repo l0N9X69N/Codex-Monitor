@@ -70,3 +70,24 @@ test('Manager mouse framing keeps a split trailing M from becoming the Storage s
   assert.equal(normalizeManagerInput('\x1b[<0;20;10'), null);
   assert.equal(normalizeManagerInput('M'), null);
 });
+
+test('Manager suppresses native bracketed paste emitted immediately after right-click Inspect', () => {
+  resetManagerInputFraming();
+  assert.equal(normalizeManagerInput('\x1b[<2;20;10M'), 'inspect');
+  assert.equal(normalizeManagerInput('\x1b[200~clipboard payload\x1b[201~', { searching: true }), null);
+});
+
+test('Manager preserves ordinary bracketed paste when it was not triggered by right-click', () => {
+  resetManagerInputFraming();
+  assert.deepEqual(
+    normalizeManagerInput('\x1b[200~hello world\x1b[201~', { searching: true }),
+    { action: 'search-text', text: 'hello world' }
+  );
+});
+
+test('Manager reassembles split bracketed paste after right-click before suppressing it', () => {
+  resetManagerInputFraming();
+  assert.equal(normalizeManagerInput('\x1b[<2;20;10M'), 'inspect');
+  assert.equal(normalizeManagerInput('\x1b[200~clipboard text', { searching: true }), null);
+  assert.equal(normalizeManagerInput('\x1b[201~', { searching: true }), null);
+});
