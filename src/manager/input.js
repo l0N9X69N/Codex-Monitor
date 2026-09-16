@@ -4,7 +4,12 @@ const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'auto']);
 
 let pendingMouseInput = '';
 let pendingMouseInputAt = 0;
+let pendingBracketedPaste = '';
+let suppressPasteUntil = 0;
 const MOUSE_FRAGMENT_TTL_MS = 250;
+const RIGHT_CLICK_PASTE_GUARD_MS = 750;
+const BRACKETED_PASTE_START = '\x1b[200~';
+const BRACKETED_PASTE_END = '\x1b[201~';
 
 function reassembleManagerMouseInput(value) {
   const now = Date.now();
@@ -33,9 +38,30 @@ function reassembleManagerMouseInput(value) {
   return text;
 }
 
+function unwrapBracketedPaste(value) {
+  let text = String(value ?? '');
+  if (pendingBracketedPaste) {
+    text = `${pendingBracketedPaste}${text}`;
+    pendingBracketedPaste = '';
+  }
+
+  if (!text.startsWith(BRACKETED_PASTE_START)) return { text, paste: false };
+  const endIndex = text.indexOf(BRACKETED_PASTE_END, BRACKETED_PASTE_START.length);
+  if (endIndex < 0) {
+    pendingBracketedPaste = text;
+    return null;
+  }
+
+  const payload = text.slice(BRACKETED_PASTE_START.length, endIndex);
+  const tail = text.slice(endIndex + BRACKETED_PASTE_END.length);
+  return { text: `${payload}${tail}`, paste: true };
+}
+
 export function resetManagerInputFraming() {
   pendingMouseInput = '';
   pendingMouseInputAt = 0;
+  pendingBracketedPaste = '';
+  suppressPasteUntil = 0;
 }
 
 export function nextManagerScope(scope = 'all') {
@@ -63,7 +89,16 @@ export function normalizeManagerInput(data, {
 } = {}) {
   const rawText = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
   if (!rawText) return null;
-  const text = reassembleManagerMouseInput(rawText);
+
+  const framedMouse = reassembleManagerMouseInput(rawText);
+  if (!framedMouse) return null;
+  const pasteResult = unwrapBracketedPaste(framedMouse);
+  if (!pasteResult) return null;
+  if (pasteResult.paste && Date.now() <= suppressPasteUntil) {
+    suppressPasteUntil = 0;
+    return null;
+  }
+  const text = pasteResult.text;
   if (!text) return null;
 
   if (configPreviewOpen) {
@@ -111,13 +146,15 @@ export function normalizeManagerInput(data, {
     const release = mouse[4] === 'm';
     if (release) return null;
 
-    // Ignore Shift/Alt/Ctrl modifier bits for the shortcut decision.
     const plainButton = button & ~0x1c;
     if (plainButton === 64) return 'up';
     if (plainButton === 65) return 'down';
-    if (plainButton === 0) return null;      // left click: focus only
-    if (plainButton === 1) return 'view';    // middle click: same as V
-    if (plainButton === 2) return 'inspect'; // right click: same as Enter
+    if (plainButton === 0) return null;
+    if (plainButton === 1) return 'view';
+    if (plainButton === 2) {
+      suppressPasteUntil = Date.now() + RIGHT_CLICK_PASTE_GUARD_MS;
+      return 'inspect';
+    }
     return null;
   }
 
