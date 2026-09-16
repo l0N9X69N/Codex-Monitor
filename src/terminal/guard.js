@@ -36,10 +36,16 @@ export class TerminalGuard {
   }
 
   enableMouse() {
-    // Manager uses SGR mouse reporting for wheel and explicit pointer shortcuts.
-    // Input framing in manager/input.js prevents split ConPTY packets from leaking
-    // their trailing M/m byte into normal keyboard shortcuts.
-    this.write(`${ESC}[?1007l${ESC}[?1000h${ESC}[?1006h`);
+    // X10 tracking reports button presses (including wheel extensions) but not
+    // button-release packets. Pair it with SGR coordinates so Manager can keep
+    // explicit left/middle/right/wheel shortcuts without a delayed release
+    // packet being split by Windows/ConPTY into ESC + ... + M/m and leaking into
+    // normal keyboard shortcuts after an Inspect screen is opened.
+    this.write(
+      `${ESC}[?1007l` +
+      `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l` +
+      `${ESC}[?9h${ESC}[?1006h`
+    );
     this.mouseEnabled = true;
     this.alternateScrollEnabled = false;
   }
@@ -54,7 +60,7 @@ export class TerminalGuard {
     this.restored = true;
 
     let sequence = '';
-    if (this.mouseEnabled) sequence += `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
+    if (this.mouseEnabled) sequence += `${ESC}[?9l${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
     if (this.alternateScrollEnabled) sequence += `${ESC}[?1007l`;
     if (this.cursorHidden) sequence += `${ESC}[?25h`;
     if (this.scrollRegionModified) sequence += `${ESC}[r`;
