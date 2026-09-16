@@ -9,6 +9,7 @@ export class TerminalGuard {
     this.cursorHidden = false;
     this.scrollRegionModified = false;
     this.mouseEnabled = false;
+    this.alternateScrollEnabled = false;
     this.alternateScreen = false;
     this.restored = false;
   }
@@ -35,8 +36,14 @@ export class TerminalGuard {
   }
 
   enableMouse() {
-    this.write(`${ESC}[?1000h${ESC}[?1006h`);
-    this.mouseEnabled = true;
+    // Manager needs wheel navigation, not pointer-button events. Full VT mouse
+    // tracking emits SGR packets ending in M/m; on Windows/ConPTY those packets
+    // can be split across stdin chunks and the trailing M can look like the
+    // Manager's keyboard shortcut. Alternate-scroll mode keeps click reporting
+    // disabled while translating the wheel to cursor Up/Down in alt-screen TUIs.
+    this.write(`${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l${ESC}[?1007h`);
+    this.mouseEnabled = false;
+    this.alternateScrollEnabled = true;
   }
 
   enterAlternateScreen() {
@@ -50,6 +57,7 @@ export class TerminalGuard {
 
     let sequence = '';
     if (this.mouseEnabled) sequence += `${ESC}[?1000l${ESC}[?1002l${ESC}[?1003l${ESC}[?1006l`;
+    if (this.alternateScrollEnabled) sequence += `${ESC}[?1007l`;
     if (this.cursorHidden) sequence += `${ESC}[?25h`;
     if (this.scrollRegionModified) sequence += `${ESC}[r`;
     if (this.alternateScreen) sequence += `${ESC}[?1049l`;
