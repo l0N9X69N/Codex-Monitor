@@ -35,9 +35,10 @@ test('TerminalGuard restores only modes it changed and is idempotent', () => {
   assert.match(restored, /\x1b\[\?1049l/);
   assert.match(restored, /\x1b\[\?9l/);
   assert.match(restored, /\x1b\[\?1006l/);
+  assert.match(restored, /\x1b\[\?2004l/);
 });
 
-test('TerminalGuard enables press-only SGR mouse reporting and disables release/motion modes', () => {
+test('TerminalGuard enables press-only SGR mouse reporting and bracketed paste detection', () => {
   const fake = fakeTerminal();
   const guard = new TerminalGuard(fake);
   guard.enableMouse();
@@ -46,9 +47,11 @@ test('TerminalGuard enables press-only SGR mouse reporting and disables release/
   assert.match(enabled, /\x1b\[\?1007l/);
   assert.match(enabled, /\x1b\[\?9h/);
   assert.match(enabled, /\x1b\[\?1006h/);
+  assert.match(enabled, /\x1b\[\?2004h/);
   assert.doesNotMatch(enabled, /\x1b\[\?1000h/);
   assert.doesNotMatch(enabled, /\x1b\[\?1002h/);
   assert.doesNotMatch(enabled, /\x1b\[\?1003h/);
   assert.equal(guard.mouseEnabled, true);
   assert.equal(guard.alternateScrollEnabled, false);
+  assert.equal(guard.bracketedPasteEnabled, true);
 });
