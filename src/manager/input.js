@@ -2,6 +2,42 @@ const SORT_FIELDS = Object.freeze(['lastActivity', 'context', 'input', 'tools', 
 const SCOPES = Object.freeze(['all', 'live', 'ended']);
 const VIEW_MODES = Object.freeze(['operations', 'table', 'charts', 'auto']);
 
+let pendingMouseInput = '';
+let pendingMouseInputAt = 0;
+const MOUSE_FRAGMENT_TTL_MS = 250;
+
+function reassembleManagerMouseInput(value) {
+  const now = Date.now();
+  let text = String(value ?? '');
+
+  if (pendingMouseInput && now - pendingMouseInputAt > MOUSE_FRAGMENT_TTL_MS) {
+    pendingMouseInput = '';
+    pendingMouseInputAt = 0;
+  }
+
+  if (pendingMouseInput) {
+    text = `${pendingMouseInput}${text}`;
+    pendingMouseInput = '';
+    pendingMouseInputAt = 0;
+  }
+
+  // Windows Terminal/ConPTY may split an SGR mouse packet before its final
+  // M/m byte. Hold only unambiguously incomplete CSI/SGR mouse fragments so a
+  // trailing "M" can never be mistaken for the Manager's Storage shortcut.
+  if (text === '\x1b[' || /^\x1b\[<[0-9;]*$/.test(text)) {
+    pendingMouseInput = text;
+    pendingMouseInputAt = now;
+    return null;
+  }
+
+  return text;
+}
+
+export function resetManagerInputFraming() {
+  pendingMouseInput = '';
+  pendingMouseInputAt = 0;
+}
+
 export function nextManagerScope(scope = 'all') {
   const index = SCOPES.indexOf(String(scope).toLowerCase());
   return SCOPES[(index < 0 ? 0 : index + 1) % SCOPES.length];
@@ -25,7 +61,9 @@ export function normalizeManagerInput(data, {
   configPreviewOpen = false,
   configPreviewAvailable = false
 } = {}) {
-  const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
+  const rawText = Buffer.isBuffer(data) ? data.toString('utf8') : String(data ?? '');
+  if (!rawText) return null;
+  const text = reassembleManagerMouseInput(rawText);
   if (!text) return null;
 
   if (configPreviewOpen) {
@@ -67,12 +105,20 @@ export function normalizeManagerInput(data, {
   if (text === '\x1b[F' || text === '\x1b[4~' || text === '\x1bOF') return 'end';
   if (text === '\t') return 'tab';
 
-  const mouse = text.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/);
+  const mouse = text.match(/^\x1b\[<(\d+);(\d+);(\d+)([Mm])/);
   if (mouse) {
     const button = Number(mouse[1]);
-    if (button === 64) return 'up';
-    if (button === 65) return 'down';
-    return { action: 'mouse', button, x: Number(mouse[2]), y: Number(mouse[3]), release: mouse[4] === 'm' };
+    const release = mouse[4] === 'm';
+    if (release) return null;
+
+    // Ignore Shift/Alt/Ctrl modifier bits for the shortcut decision.
+    const plainButton = button & ~0x1c;
+    if (plainButton === 64) return 'up';
+    if (plainButton === 65) return 'down';
+    if (plainButton === 0) return null;      // left click: focus only
+    if (plainButton === 1) return 'view';    // middle click: same as V
+    if (plainButton === 2) return 'inspect'; // right click: same as Enter
+    return null;
   }
 
   const enter = /^[\r\n]+$/.test(text);
