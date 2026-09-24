@@ -52,6 +52,9 @@ test('History/Manager color capability recognizes Windows Terminal and preserves
   assert.equal(detectHistoryColorMode({ TERM: 'xterm-256color' }), '256');
   assert.equal(detectHistoryColorMode({ TERM: 'xterm' }), '16');
   assert.equal(detectHistoryColorMode({ TERM: 'dumb' }), 'mono');
+  assert.equal(detectHistoryColorMode({ OS: 'Windows_NT' }), '16');
+  assert.equal(detectHistoryColorMode({ ANSICON: '1' }), '16');
+  assert.equal(detectHistoryColorMode({ ConEmuANSI: 'ON' }), '16');
   assert.equal(detectHistoryColorMode({ NO_COLOR: '1', WT_SESSION: 'abc', TERM: 'xterm-256color' }), 'mono');
   assert.match(hpaint('LIVE', 'live', 'matrix:truecolor'), /\x1b\[/);
   assert.equal(hpaint('LIVE', 'live', 'mono'), 'LIVE');
