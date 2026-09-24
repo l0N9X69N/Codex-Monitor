@@ -156,11 +156,19 @@ export function detectHistoryColorMode(env = process.env) {
   const term = String(env.TERM ?? '').toLowerCase();
   const color = String(env.COLORTERM ?? '').toLowerCase();
   const termProgram = String(env.TERM_PROGRAM ?? '').toLowerCase();
+  const os = String(env.OS ?? '').toLowerCase();
   if (color.includes('truecolor') || color.includes('24bit')) return 'truecolor';
   if (env.WT_SESSION) return 'truecolor';
   if (['vscode', 'wezterm', 'ghostty'].some((name) => termProgram.includes(name))) return 'truecolor';
   if (term.includes('256color')) return '256';
   if (term && term !== 'dumb') return '16';
+
+  // Windows shells do not consistently expose TERM/COLORTERM/TERM_PROGRAM.
+  // Falling back to mono on a real Windows TTY makes the Manager suddenly lose
+  // all semantic colors even though modern Windows consoles understand ANSI.
+  // Keep NO_COLOR and TERM=dumb authoritative, otherwise use the conservative
+  // 16-color palette when Windows itself is the only capability signal.
+  if (os === 'windows_nt' || env.ANSICON || String(env.ConEmuANSI ?? '').toLowerCase() === 'on') return '16';
   return 'mono';
 }
 
